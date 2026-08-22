@@ -3,7 +3,7 @@
 
 /* =========================================================================
    FIREBASE — projet "Controle Nettoyage"
-   L'apiKey n'est pas un secret : la sécurité vient des règles Firestore,
+   L'  n'est pas un secret : la sécurité vient des règles Firestore,
    pas de cacher cette config (elle est de toute façon visible dans le
    navigateur de n'importe quel visiteur).
    ========================================================================= */
