@@ -2,6 +2,23 @@
 'use strict';
 
 /* =========================================================================
+   FIREBASE — projet "Controle Nettoyage"
+   L'apiKey n'est pas un secret : la sécurité vient des règles Firestore,
+   pas de cacher cette config (elle est de toute façon visible dans le
+   navigateur de n'importe quel visiteur).
+   ========================================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyA4pQGdFIgDtt1GxfohxexgHauc4wXM4sk",
+  authDomain: "controle-nettoyage.firebaseapp.com",
+  projectId: "controle-nettoyage",
+  storageBucket: "controle-nettoyage.firebasestorage.app",
+  messagingSenderId: "1032576632030",
+  appId: "1:1032576632030:web:4650e2bce60a2c7b67ae4f"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+/* =========================================================================
    RÉFÉRENTIEL — à terme chargé depuis Firestore, en dur pour le MVP
    ========================================================================= */
 const ZONES = [
@@ -192,8 +209,11 @@ async function queueForSync(controle){
 }
 
 async function pushToServer(item){
-  // TODO backend : remplacer par l'appel réel (Cloud Function / Firestore SDK)
-  throw new Error('backend non connecté');
+  // Écrit le contrôle dans Firestore. NOTE : les photos sont encore
+  // stockées en base64 dans le document (limite Firestore : 1 Mo/document).
+  // Ça passe pour tester, mais à migrer vers Drive avant un usage réel
+  // avec plusieurs photos par contrôle (équipe + contre-visite cumulées).
+  await db.collection('controles').doc(item.controle.id).set(item.controle, { merge:true });
 }
 
 async function trySync(){
