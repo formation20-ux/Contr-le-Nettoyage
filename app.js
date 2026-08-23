@@ -1063,7 +1063,7 @@ async function renderMailScheduleAdmin(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE (SECURISATION PRISES PHOTOS)
+   SAISIE CONTRÔLE / PRESTATION ZONE (CORRECTION PERSISTANCE DES PHOTOS)
    ========================================================================= */
 async function renderControle(){
   resetInactivityTimer();
@@ -1144,13 +1144,13 @@ async function renderControle(){
     await pushToCloud('controles', c.id, c);
   };
 
-  const renderPhotosHtml = (photos, isMine, pId) => {
-    return photos.map((pSrc, idx) => `
+  const renderSinglePhotoHtml = (src, pId, idx) => {
+    return `
       <div style="position:relative;display:inline-block;margin-right:8px;margin-top:4px;">
-        <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo - ${pId}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;">
-        ${isMine ? `<button class="del-photo-btn" data-point="${pId}" data-idx="${idx}">✕</button>` : ''}
+        <img class="photo-thumb click-zoom" src="${src}" data-title="Photo - ${pId}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;">
+        <button class="del-photo-btn" data-point="${pId}" data-idx="${idx}">✕</button>
       </div>
-    `).join('');
+    `;
   };
 
   const listEl = document.getElementById('pointsList');
@@ -1202,7 +1202,9 @@ async function renderControle(){
             ${isContreVisite ? t('Tes photos contrôleur (exigée si passage en NOK) :') : t('Photo obligatoire pour activer la réponse :')}
           </div>
           <div class="point-photo-row" id="photos_${p.id}" style="display:flex;align-items:center;overflow-x:auto;margin-top:4px;">
-            ${renderPhotosHtml(myPhotos, true, p.id)}
+            <div class="my-photos-container" style="display:inline-flex;align-items:center;">
+              ${myPhotos.map((pSrc, idx) => renderSinglePhotoHtml(pSrc, p.id, idx)).join('')}
+            </div>
             <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
               ${t('📷 + Photo')}
               <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
@@ -1220,19 +1222,36 @@ async function renderControle(){
       img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
     });
 
-    listEl.querySelectorAll('.del-photo-btn').forEach(btn => {
-      btn.onclick = async (e) => {
-        e.stopPropagation();
-        const pId = btn.dataset.point;
-        const idx = parseInt(btn.dataset.idx);
-        if(currentBranch.reponses[pId] && currentBranch.reponses[pId].photos){
-          currentBranch.reponses[pId].photos.splice(idx, 1);
-          await triggerAutoSave();
-          toast(t('Photo supprimée'));
-          await refreshPointsListUI();
-        }
-      };
-    });
+    // Attachement dynamique de la suppression de photo sans détruire le DOM
+    const attachDelButtons = () => {
+      listEl.querySelectorAll('.del-photo-btn').forEach(btn => {
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          const pId = btn.dataset.point;
+          const idx = parseInt(btn.dataset.idx);
+          if(currentBranch.reponses[pId] && currentBranch.reponses[pId].photos){
+            currentBranch.reponses[pId].photos.splice(idx, 1);
+            btn.parentElement.remove();
+            
+            // Verrouiller les boutons OK/NOK si la liste de photos devient vide pour l'équipe
+            if(!isContreVisite && currentBranch.reponses[pId].photos.length === 0){
+              const parentCard = document.querySelector(`.point-item[data-point="${pId}"]`);
+              if(parentCard){
+                parentCard.querySelectorAll('.toggle-btn').forEach(b => {
+                  b.setAttribute('disabled', 'true');
+                  b.style.opacity = '0.4';
+                  b.style.cursor = 'not-allowed';
+                });
+              }
+            }
+            
+            await triggerAutoSave();
+            toast(t('Photo supprimée'));
+          }
+        };
+      });
+    };
+    attachDelButtons();
 
     listEl.querySelectorAll('.point-item').forEach(item=>{
       const pId = item.dataset.point;
@@ -1278,9 +1297,30 @@ async function renderControle(){
           
           currentBranch.reponses[pId].photos.push(dataUrl);
 
+          // Injection DOM locale instantanée
+          const myContainer = item.querySelector('.my-photos-container');
+          if(myContainer){
+            const newIdx = currentBranch.reponses[pId].photos.length - 1;
+            myContainer.insertAdjacentHTML('beforeend', renderSinglePhotoHtml(dataUrl, pId, newIdx));
+            
+            const newImg = myContainer.lastElementChild.querySelector('.click-zoom');
+            if(newImg) newImg.onclick = () => openPhotoViewer(newImg.src, newImg.dataset.title);
+            
+            attachDelButtons();
+          }
+
+          // Déverrouiller les boutons OK/NOK pour l'Équipe
+          if(!isContreVisite){
+            item.querySelectorAll('.toggle-btn').forEach(b => {
+              b.removeAttribute('disabled');
+              b.style.opacity = '1';
+              b.style.cursor = 'pointer';
+            });
+          }
+
           await triggerAutoSave();
           toast(t('Photo ajoutée'));
-          await refreshPointsListUI();
+          fileInput.value = '';
         } catch (err) {
           console.error("Erreur capture photo :", err);
           toast("Erreur d'enregistrement photo");
