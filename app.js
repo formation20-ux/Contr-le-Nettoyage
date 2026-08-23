@@ -14,7 +14,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 /* =========================================================================
-   RÉFÉRENTIEL TÂCHES SASU SOAN
+   RÉFÉRENTIEL TÂCHES PAR DÉFAUT (SASU SOAN)
    ========================================================================= */
 const ZONES = [
   { id:'lobby',           nom:'Lobby' },
@@ -23,7 +23,7 @@ const ZONES = [
   { id:'comptoir',        nom:'Comptoir' }
 ];
 
-const POINTS = {
+const DEFAULT_POINTS = {
   lobby: [
     { id:'lob_1', label:'Nettoyage complet int/ext des blocs poubelles', freq:'J' },
     { id:'lob_2', label:'Nettoyage des tables dessus et tranches', freq:'J' },
@@ -200,6 +200,94 @@ async function syncPendingQueue(){
 window.addEventListener('online', syncPendingQueue);
 
 /* =========================================================================
+   RÉCUPÉRATION DYNAMIQUE DE TOUTES LES TÂCHES (DEFAULT + CLOUD)
+   ========================================================================= */
+async function getAllTasksMap(){
+  let tasksMap = JSON.parse(JSON.stringify(DEFAULT_POINTS));
+  
+  // Appliquer les surcharges / ajouts du stockage local
+  const localTasks = await idbGetAll('task_schedule');
+  localTasks.forEach(item => {
+    if(item.deleted) {
+      // Tâche supprimée
+      if(tasksMap[item.zoneId]) {
+        tasksMap[item.zoneId] = tasksMap[item.zoneId].filter(p => p.id !== item.taskId);
+      }
+    } else {
+      // Mise à jour ou ajout
+      const zId = item.zoneId || 'lobby';
+      if(!tasksMap[zId]) tasksMap[zId] = [];
+      const existingIdx = tasksMap[zId].findIndex(p => p.id === item.taskId);
+      
+      const taskObj = {
+        id: item.taskId,
+        label: item.label,
+        freq: item.freq,
+        targetValue: item.targetValue
+      };
+
+      if(existingIdx >= 0){
+        tasksMap[zId][existingIdx] = Object.assign(tasksMap[zId][existingIdx], taskObj);
+      } else {
+        tasksMap[zId].push(taskObj);
+      }
+    }
+  });
+
+  if(navigator.onLine){
+    try {
+      const snap = await db.collection('task_schedule').get();
+      snap.docs.forEach(doc => {
+        const item = doc.data();
+        idbPut('task_schedule', item);
+        
+        const zId = item.zoneId || 'lobby';
+        if(!tasksMap[zId]) tasksMap[zId] = [];
+
+        if(item.deleted){
+          tasksMap[zId] = tasksMap[zId].filter(p => p.id !== item.taskId);
+        } else {
+          const existingIdx = tasksMap[zId].findIndex(p => p.id === item.taskId);
+          const taskObj = {
+            id: item.taskId,
+            label: item.label,
+            freq: item.freq,
+            targetValue: item.targetValue
+          };
+
+          if(existingIdx >= 0){
+            tasksMap[zId][existingIdx] = Object.assign(tasksMap[zId][existingIdx], taskObj);
+          } else {
+            tasksMap[zId].push(taskObj);
+          }
+        }
+      });
+    } catch(e){}
+  }
+
+  return tasksMap;
+}
+
+async function getPointsForToday(zoneId, dateIso){
+  const d = new Date(dateIso);
+  const currentDay = d.getDay();
+  const currentDate = d.getDate();
+  
+  const allMap = await getAllTasksMap();
+  const zonePoints = allMap[zoneId] || [];
+
+  return zonePoints.filter(p => {
+    const freq = p.freq || 'J';
+    const targetVal = Number(p.targetValue || 1);
+
+    if(freq === 'J') return true;
+    if(freq === 'H') return currentDay === targetVal;
+    if(freq === 'M') return currentDate === targetVal;
+    return false;
+  });
+}
+
+/* =========================================================================
    APPLICATION LOGIC & STATE
    ========================================================================= */
 let session = null;
@@ -256,38 +344,6 @@ function fileToResizedBase64(file, maxWidth){
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
-  });
-}
-
-async function getPointsForToday(zoneId, dateIso){
-  const d = new Date(dateIso);
-  const currentDay = d.getDay();
-  const currentDate = d.getDate();
-  const allPoints = POINTS[zoneId] || [];
-  
-  let schedMap = {};
-  const localSched = await idbGetAll('task_schedule');
-  localSched.forEach(s => { schedMap[s.taskId] = s; });
-
-  if(navigator.onLine){
-    try {
-      const snap = await db.collection('task_schedule').get();
-      snap.docs.forEach(doc => { 
-        schedMap[doc.id] = doc.data(); 
-        idbPut('task_schedule', doc.data());
-      });
-    } catch(e) {}
-  }
-
-  return allPoints.filter(p=>{
-    const custom = schedMap[p.id];
-    const activeFreq = custom ? custom.freq : p.freq;
-    const targetVal = custom ? Number(custom.targetValue) : 1;
-
-    if(activeFreq === 'J') return true;
-    if(activeFreq === 'H') return currentDay === targetVal;
-    if(activeFreq === 'M') return currentDate === targetVal;
-    return false;
   });
 }
 
@@ -410,7 +466,7 @@ async function renderZones(){
       <button class="btn ghost block" id="globalPdfBtn" style="margin-bottom:15px;border-color:#C7791B;color:#C7791B;">📄 Générer Rapport Global PDF de la Journée</button>
 
       ${session.role==='controleur' ? `
-        <button class="btn amber block" id="adminTasksBtn" style="margin-bottom:10px;">📅 Planning & Fréquence des Tâches</button>
+        <button class="btn amber block" id="adminTasksBtn" style="margin-bottom:10px;">📅 Planning & Gestion des Tâches</button>
         <button class="btn amber block" id="adminUsersBtn" style="margin-bottom:10px;">👤 Gestion des Utilisateurs / Accès</button>
       ` : ''}
       <button class="btn ghost block" id="logoutBtn">Déconnexion</button>
@@ -1270,34 +1326,34 @@ async function generateGlobalPDF(){
 }
 
 /* =========================================================================
-   ADMINISTRATION DU PLANNING (TOUTES LES TÂCHES ET RÉCURRENCES ÉDITABLES)
+   ADMINISTRATION DU PLANNING & DE L'ÉDITION DES TÂCHES (CRUD COMPLET)
    ========================================================================= */
 async function renderTaskAdmin(){
-  let schedMap = {};
-  const localSched = await idbGetAll('task_schedule');
-  localSched.forEach(s => { schedMap[s.taskId] = s; });
-
-  if(navigator.onLine){
-    try {
-      const snap = await db.collection('task_schedule').get();
-      snap.docs.forEach(doc => { schedMap[doc.id] = doc.data(); });
-    } catch(e){}
-  }
+  const allMap = await getAllTasksMap();
 
   let tasksHtml = '';
   ZONES.forEach(z => {
-    const zonePoints = POINTS[z.id] || [];
-    if(zonePoints.length){
-      tasksHtml += `<div class="section-title" style="margin-top:20px;font-size:16px;color:#C7791B;border-bottom:2px solid #C7791B;padding-bottom:4px;">${z.nom.toUpperCase()}</div>`;
-      
+    const zonePoints = allMap[z.id] || [];
+    tasksHtml += `
+      <div style="margin-top:20px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #C7791B;padding-bottom:6px;">
+        <div class="section-title" style="margin:0;font-size:16px;color:#C7791B;">${z.nom.toUpperCase()}</div>
+        <button class="btn amber small add-task-btn" data-zone="${z.id}">+ Ajouter une tâche</button>
+      </div>
+    `;
+    
+    if(zonePoints.length === 0){
+      tasksHtml += `<div style="font-size:12px;color:#6B655C;font-style:italic;padding:8px 0;">Aucune tâche enregistrée dans cette zone.</div>`;
+    } else {
       zonePoints.forEach(p => {
-        const custom = schedMap[p.id];
-        const currentFreq = custom ? custom.freq : p.freq;
-        const currentVal = custom ? custom.targetValue : 1;
+        const currentFreq = p.freq || 'J';
+        const currentVal = p.targetValue || 1;
 
         tasksHtml += `
-          <div class="task-admin-card" data-task-id="${p.id}" style="background:#fff;border:1px solid #E7E1D6;padding:12px;border-radius:8px;margin-top:10px;">
-            <div style="font-weight:600;font-size:13px;color:#211E1A;margin-bottom:8px;">${p.label}</div>
+          <div class="task-admin-card" data-task-id="${p.id}" data-zone-id="${z.id}" style="background:#fff;border:1px solid #E7E1D6;padding:12px;border-radius:8px;margin-top:10px;">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+              <input type="text" class="task-label-input" value="${p.label.replace(/"/g, '&quot;')}" style="flex:1;padding:8px;border-radius:6px;border:1px solid #E7E1D6;font-size:13px;font-weight:600;color:#211E1A;">
+              <button class="btn danger small delete-task-btn" data-task-id="${p.id}" data-zone-id="${z.id}" style="padding:6px 10px;">Suppr.</button>
+            </div>
             
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
               <div style="flex:1;min-width:130px;">
@@ -1335,19 +1391,19 @@ async function renderTaskAdmin(){
 
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Planning des Tâches', 'Administration Complète')}
+      ${topbarHtml('Planning & Référentiel', 'Gestion des Tâches')}
       <div class="back-link" id="backBtn">← Retour aux zones</div>
       <div class="section" style="padding:16px;">
-        <div class="section-note">Gérez la récurrence et le jour d'exécution de TOUTES les tâches de la SASU SOAN.</div>
+        <div class="section-note">Modifiez les libellés, récurrences, ou ajoutez/supprimez des tâches par zone.</div>
         ${tasksHtml}
-        <button class="btn amber block" id="saveTasksBtn" style="margin-top:20px;margin-bottom:20px;">Enregistrer le planning global</button>
+        <button class="btn amber block" id="saveTasksBtn" style="margin-top:20px;margin-bottom:20px;">Sauvegarder les modifications</button>
       </div>
     </div>
   `;
 
   document.getElementById('backBtn').onclick = goToZones;
 
-  // Gestion dynamique du basculement des options
+  // Gestion du basculement Quotidien / Hebdo / Mensuel
   document.querySelectorAll('.freq-select').forEach(sel => {
     sel.onchange = () => {
       const taskId = sel.dataset.task;
@@ -1370,10 +1426,55 @@ async function renderTaskAdmin(){
     };
   });
 
+  // Ajouter une tâche
+  document.querySelectorAll('.add-task-btn').forEach(btn => {
+    btn.onclick = async () => {
+      const zoneId = btn.dataset.zone;
+      const label = prompt("Nom de la nouvelle tâche :");
+      if(!label || !label.trim()) return;
+
+      const newTaskId = uid(`task_${zoneId}`);
+      const taskData = {
+        taskId: newTaskId,
+        zoneId: zoneId,
+        label: label.trim(),
+        freq: 'J',
+        targetValue: 1,
+        deleted: false
+      };
+
+      await pushToCloud('task_schedule', newTaskId, taskData);
+      toast('Tâche ajoutée !');
+      renderTaskAdmin();
+    };
+  });
+
+  // Supprimer une tâche
+  document.querySelectorAll('.delete-task-btn').forEach(btn => {
+    btn.onclick = async () => {
+      if(!confirm("Supprimer définitivement cette tâche ?")) return;
+      const taskId = btn.dataset.taskId;
+      const zoneId = btn.dataset.zoneId;
+
+      const taskData = {
+        taskId: taskId,
+        zoneId: zoneId,
+        deleted: true
+      };
+
+      await pushToCloud('task_schedule', taskId, taskData);
+      toast('Tâche supprimée !');
+      renderTaskAdmin();
+    };
+  });
+
+  // Sauvegarder les modifications de texte et de fréquence
   document.getElementById('saveTasksBtn').onclick = async ()=>{
     const cards = document.querySelectorAll('.task-admin-card');
     for(const card of cards){
       const taskId = card.dataset.taskId;
+      const zoneId = card.dataset.zoneId;
+      const label = card.querySelector('.task-label-input').value.trim();
       const freq = card.querySelector('.freq-select').value;
       let targetValue = 1;
 
@@ -1383,10 +1484,18 @@ async function renderTaskAdmin(){
         targetValue = parseInt(card.querySelector('.val-input-mensuel').value) || 1;
       }
 
-      const data = { taskId, freq, targetValue };
+      const data = {
+        taskId,
+        zoneId,
+        label: label || 'Tâche sans nom',
+        freq,
+        targetValue,
+        deleted: false
+      };
+
       await pushToCloud('task_schedule', taskId, data);
     }
-    toast('Planning global sauvegardé et synchronisé !');
+    toast('Tâches et planning sauvegardés !');
     goToZones();
   };
 }
