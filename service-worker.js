@@ -1,4 +1,4 @@
-const CACHE_NAME = 'controle-nettoyage-v3';
+const CACHE_NAME = 'controle-nettoyage-v4';
 const APP_SHELL = [
   './index.html',
   './app.js',
