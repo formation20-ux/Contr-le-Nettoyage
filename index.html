@@ -140,10 +140,27 @@ button{font-family:var(--sans);}
 .dash-tabs{display:flex;gap:4px;border-bottom:1.5px solid var(--line);margin-bottom:14px;}
 .dash-tab{padding:8px 12px;font-weight:600;font-size:13px;color:var(--ink-soft);cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-1.5px;}
 .dash-tab.active{color:var(--ink);border-color:var(--amber);}
+
+/* Gestion des utilisateurs */
+.agent-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);}
+.agent-row:last-child{border-bottom:none;}
+.agent-name{font-weight:600;font-size:14.5px;}
+.agent-meta{font-family:var(--mono);font-size:11px;color:var(--ink-soft);}
+.agent-actions{display:flex;gap:6px;}
+.field label{display:block;font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);margin-bottom:5px;}
+.field input, .field select{width:100%;padding:9px 10px;border:1.3px solid var(--line);border-radius:7px;background:#fff;font-family:var(--sans);}
+.field{margin-bottom:12px;}
+.modal-backdrop{position:fixed;inset:0;background:rgba(33,30,26,.45);display:flex;align-items:center;justify-content:center;z-index:70;padding:20px;}
+.modal{background:#fff;border-radius:14px;padding:22px;max-width:380px;width:100%;}
+.modal h3{font-family:var(--display);font-size:19px;margin:0 0 14px;}
+.badge-role{font-family:var(--mono);font-size:10px;text-transform:uppercase;padding:2px 8px;border-radius:20px;background:var(--amber-soft);color:var(--amber);font-weight:700;margin-left:6px;}
+.badge-inactif{font-family:var(--mono);font-size:10px;text-transform:uppercase;padding:2px 8px;border-radius:20px;background:var(--red-soft);color:var(--red);font-weight:700;margin-left:6px;}
   </style>
 </head>
 <body>
 <div id="app-root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
