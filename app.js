@@ -472,7 +472,7 @@ async function renderZones(){
       
       <div style="display:flex;gap:10px;margin-bottom:12px;">
         <button class="btn ghost block" id="historyBtn" style="flex:1;">📜 Historique</button>
-        <button class="btn ghost block" id="statsBtn" style="flex:1;">📊 Suivi NOK & Stats</button>
+        <button class="btn ghost block" id="statsBtn" style="flex:1;">📊 Dashboard</button>
       </div>
 
       <button class="btn ghost block" id="globalPdfBtn" style="margin-bottom:15px;border-color:#C7791B;color:#C7791B;">📄 Générer Rapport Global PDF de la Journée</button>
