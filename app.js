@@ -676,6 +676,9 @@ async function renderControle(){
 /* =========================================================================
    ÉCRAN HISTORIQUE (DESIGN CARTE ÉLÉGANT & DÉTAILLÉ)
    ========================================================================= */
+/* =========================================================================
+   ÉCRAN HISTORIQUE (BADGES DE COULEURS INDIVIDUELS)
+   ========================================================================= */
 async function renderHistory(){
   root.innerHTML = `
     <div class="wrap">
@@ -720,7 +723,7 @@ async function renderHistory(){
               <div style="font-size:11px;color:#E7E1D6;">${fmtDate(selectedDate)}</div>
             </div>
             
-            <div style="background:#FAF8F3;padding:10px 16px;border-bottom:1px solid #E7E1D6;font-size:12px;color:#6B655C;display:flex;gap:15px;">
+            <div style="background:#FAF8F3;padding:10px 16px;border-bottom:1px solid #E7E1D6;font-size:12px;color:#6B655C;display:flex;gap:15px;flex-wrap:wrap;">
               <div>👥 <strong>Équipe :</strong> ${eq.agentNom||'N/A'} <small>(${eq.heure||'--:--'})</small></div>
               <div>🕵️ <strong>Contrôleur :</strong> ${cv.controleurNom||'N/A'} <small>(${cv.heure||'--:--'})</small></div>
             </div>
@@ -737,6 +740,7 @@ async function renderHistory(){
           const eqPhotos = rEq.photos || [];
           const cvPhotos = rCv.photos || [];
 
+          // Validation stricte Équipe (avec photo) et Contrôleur
           const eqOk = (eqPhotos.length > 0 && rEq.conforme !== false);
           const cvOk = (rCv.conforme !== false);
 
@@ -745,25 +749,30 @@ async function renderHistory(){
           html += `
             <div style="border:1px solid ${isEcart?'#B23A34':'#E7E1D6'};background:${isEcart?'#FEF2F2':'#FAF8F3'};padding:12px;border-radius:8px;margin-bottom:10px;">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
-                <div style="font-weight:600;font-size:13px;color:#211E1A;flex:1;">${p.label}</div>
+                <div style="font-weight:600;font-size:13.5px;color:#211E1A;flex:1;">${p.label}</div>
                 ${isEcart ? `<span style="background:#B23A34;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap;">ÉCART</span>` : ''}
               </div>
 
-              <!-- Badges de Statuts -->
-              <div style="display:flex;gap:8px;margin-bottom:8px;">
-                <span style="font-size:11px;padding:3px 8px;border-radius:6px;font-weight:600;background:${eqOk?'#DCEEEC':'#F6DEDC'};color:${eqOk?'#2B6E68':'#B23A34'};">
-                  Équipe: ${eqOk?'✓ OK':'✕ NOK'}
-                </span>
-                <span style="font-size:11px;padding:3px 8px;border-radius:6px;font-weight:600;background:${cvOk?'#DCEEEC':'#F6DEDC'};color:${cvOk?'#2B6E68':'#B23A34'};">
-                  Contrôleur: ${cvOk?'✓ OK':'✕ NOK'}
-                </span>
+              <!-- Badges Individuels Colorés -->
+              <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                <!-- Badge Équipe -->
+                <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${eqOk?'#DCEEEC':'#F6DEDC'};color:${eqOk?'#2B6E68':'#B23A34'};border:1px solid ${eqOk?'#2B6E68':'#B23A34'};">
+                  <span>Équipe :</span>
+                  <strong>${eqOk?'✓ OK':'✕ NOK'}</strong>
+                </div>
+
+                <!-- Badge Contrôleur -->
+                <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${cvOk?'#DCEEEC':'#F6DEDC'};color:${cvOk?'#2B6E68':'#B23A34'};border:1px solid ${cvOk?'#2B6E68':'#B23A34'};">
+                  <span>Contrôleur :</span>
+                  <strong>${cvOk?'✓ OK':'✕ NOK'}</strong>
+                </div>
               </div>
 
-              <!-- Remarques -->
+              <!-- Observations -->
               ${rEq.commentaire ? `<div style="font-size:11px;color:#6B655C;margin-top:4px;">💬 <em>Obs. Équipe (${rEq.agentNom||'Agent'}) :</em> ${rEq.commentaire}</div>` : ''}
               ${rCv.commentaire ? `<div style="font-size:11px;color:#C7791B;margin-top:4px;">💬 <em>Obs. Contrôleur (${rCv.controleurNom||'Ctrl'}) :</em> ${rCv.commentaire}</div>` : ''}
 
-              <!-- Galerie Photos -->
+              <!-- Photos -->
               ${(eqPhotos.length || cvPhotos.length) ? `
                 <div style="display:flex;gap:8px;margin-top:10px;overflow-x:auto;padding-bottom:4px;">
                   ${eqPhotos.map(pSrc => `
