@@ -492,7 +492,7 @@ async function renderZones(){
       const eqReponses = (c && c.passageEquipe && c.passageEquipe.reponses) || {};
       activePoints.forEach(p => {
         const r = eqReponses[p.id];
-        if(!r || !r.photos || r.photos.length === 0){
+        if(!r || r.conforme === null || r.conforme === undefined){
           remaining++;
         }
       });
@@ -500,7 +500,7 @@ async function renderZones(){
       const cvReponses = (c && c.contreVisite && c.contreVisite.reponses) || {};
       activePoints.forEach(p => {
         const r = cvReponses[p.id];
-        if(!r || r.conforme === undefined){
+        if(!r || r.conforme === undefined || r.conforme === null){
           remaining++;
         }
       });
@@ -545,10 +545,11 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE (ENREGISTREMENT AUTOMATIQUE INSTANTANÉ)
+   SAISIE CONTRÔLE / PRESTATION ZONE (RÈGLES D'HEURES LIMITES & SAUVEGARDE)
    ========================================================================= */
 async function renderControle(){
   const date = todayISO();
+  const currentHour = new Date().getHours(); // Heure actuelle pour appliquer les limites
   
   let c = await idbGet('controles', activeControleId) || {
     id: activeControleId, zoneId: activeZoneId, date,
@@ -575,6 +576,28 @@ async function renderControle(){
   const currentBranch = isContreVisite ? c.contreVisite : c.passageEquipe;
   const equipeReponses = (c.passageEquipe && c.passageEquipe.reponses) || {};
 
+  // Application des limites d'heures lors du chargement
+  activePoints.forEach(p => {
+    if(!isContreVisite){
+      // ÉQUIPE : Après 10h -> si non validé avec photo = bascule automatique en NOK
+      if(currentHour >= 10){
+        if(!currentBranch.reponses[p.id]){
+          currentBranch.reponses[p.id] = { conforme: false, photos:[], commentaire:'Non réalisé avant 10h' };
+        } else if(!currentBranch.reponses[p.id].photos || currentBranch.reponses[p.id].photos.length === 0){
+          currentBranch.reponses[p.id].conforme = false;
+        }
+      }
+    } else {
+      // CONTRÔLEUR : Après 18h -> si non renseigné = validation automatique en OK
+      if(currentHour >= 18){
+        if(!currentBranch.reponses[p.id] || currentBranch.reponses[p.id].conforme === null || currentBranch.reponses[p.id].conforme === undefined){
+          currentBranch.reponses[p.id] = currentBranch.reponses[p.id] || { photos:[], commentaire:'' };
+          currentBranch.reponses[p.id].conforme = true;
+        }
+      }
+    }
+  });
+
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml(zone.nom, isContreVisite ? 'Contre-visite Contrôleur' : 'Réalisation Prestation')}
@@ -588,7 +611,6 @@ async function renderControle(){
 
   document.getElementById('backBtn').onclick = goToZones;
 
-  // Moteur de sauvegarde instantanée en arrière-plan
   const triggerAutoSave = async () => {
     const currentTime = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
     currentBranch.heure = currentTime;
@@ -612,8 +634,7 @@ async function renderControle(){
   
   const refreshPointsListUI = () => {
     listEl.innerHTML = activePoints.map(p=>{
-      const r = currentBranch.reponses[p.id] || { conforme: (isContreVisite ? true : null), photos:[], commentaire:'' };
-      if(isContreVisite && r.conforme === null) r.conforme = true;
+      const r = currentBranch.reponses[p.id] || { conforme: null, photos:[], commentaire:'' };
 
       const myPhotos = r.photos || [];
       const eqR = equipeReponses[p.id] || {};
@@ -669,7 +690,6 @@ async function renderControle(){
       img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
     });
 
-    // Suppression de photo -> Sauvegarde instantanée
     listEl.querySelectorAll('.del-photo-btn').forEach(btn => {
       btn.onclick = async (e) => {
         e.stopPropagation();
@@ -687,11 +707,10 @@ async function renderControle(){
     listEl.querySelectorAll('.point-item').forEach(item=>{
       const pId = item.dataset.point;
       if(!currentBranch.reponses[pId]) {
-        currentBranch.reponses[pId] = { conforme: (isContreVisite ? true : null), photos:[], commentaire:'' };
+        currentBranch.reponses[pId] = { conforme: null, photos:[], commentaire:'' };
       }
       const r = currentBranch.reponses[pId];
 
-      // Clic OK / NOK -> Sauvegarde instantanée
       item.querySelectorAll('.toggle-btn').forEach(btn=>{
         btn.onclick = async (e)=>{
           if(btn.hasAttribute('disabled')){
@@ -712,7 +731,6 @@ async function renderControle(){
         };
       });
 
-      // Dépose de photo -> Sauvegarde instantanée
       const fileInput = item.querySelector('[data-photo-input]');
       fileInput.onchange = async ()=>{
         if(!fileInput.files.length) return;
@@ -720,16 +738,11 @@ async function renderControle(){
         r.photos = r.photos || [];
         r.photos.push(dataUrl);
 
-        if(!isContreVisite && r.conforme === null){
-          r.conforme = true; // Valide OK par défaut dès la première photo déposée
-        }
-
         await triggerAutoSave();
         toast('Photo ajoutée et sauvegardée');
         refreshPointsListUI();
       };
 
-      // Saisie commentaire avec temporisation -> Sauvegarde instantanée
       item.querySelector('.point-comment').oninput = (e)=>{
         r.commentaire = e.target.value;
         clearTimeout(item.__commentTimer);
@@ -1007,8 +1020,8 @@ async function renderStats(){
 
     let topEcarts = Object.keys(currentStats.itemEcartsMap).map(id => {
       let label = id;
-      Object.keys(POINTS).forEach(zk => {
-        const found = POINTS[zk].find(pt => pt.id === id);
+      Object.keys(DEFAULT_POINTS).forEach(zk => {
+        const found = DEFAULT_POINTS[zk].find(pt => pt.id === id);
         if(found) label = found.label;
       });
       return { id, label, count: currentStats.itemEcartsMap[id] };
