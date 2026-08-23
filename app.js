@@ -17,6 +17,9 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+if(typeof emailjs !== 'undefined' && EMAILJS_PUBLIC_KEY!=='À_REMPLACER'){
+  emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+}
 
 /* =========================================================================
    RÉFÉRENTIEL — à terme chargé depuis Firestore, en dur pour le MVP
@@ -56,20 +59,24 @@ const POINTS = {
   ],
 };
 
-/* TODO backend : remplacer par un vrai appel à la Cloud Function `loginWithPin`
-   qui vérifie le PIN contre la collection Firestore `agents` et renvoie un
-   Firebase Custom Token. Cette liste en dur ne sert qu'au développement local. */
-const AGENTS_DEMO = [
-  { id:'agent1', nom:'Karim',  pin:'1234' },
-  { id:'agent2', nom:'Fatou',  pin:'5678' },
-];
-const CONTROLEUR_PIN = '0000'; // TODO backend : remplacer par l'auth Google mcdcaen.com
+/* TODO sécurité : ce PIN client-side n'est pas une vraie authentification —
+   n'importe qui inspectant le réseau/la base voit les PIN. Suffisant pour un
+   usage interne à faible enjeu, mais à remplacer par une Cloud Function
+   (loginWithPin + Custom Token) si le besoin de sécurité augmente. */
+
+/* =========================================================================
+   EMAILJS — à configurer (voir instructions fournies)
+   ========================================================================= */
+const EMAILJS_PUBLIC_KEY  = 'À_REMPLACER';
+const EMAILJS_SERVICE_ID  = 'À_REMPLACER';
+const EMAILJS_TEMPLATE_ID = 'À_REMPLACER';
+const RAPPORT_DESTINATAIRE = 'toi@mcdcaen.com'; // adresse qui reçoit les rapports
 
 /* =========================================================================
    STOCKAGE HORS-LIGNE (IndexedDB)
    ========================================================================= */
 const DB_NAME = 'controle-nettoyage';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let dbPromise = null;
 
 function openDB(){
@@ -83,6 +90,9 @@ function openDB(){
       }
       if(!db.objectStoreNames.contains('outbox')){
         db.createObjectStore('outbox', { keyPath:'id' });
+      }
+      if(!db.objectStoreNames.contains('agents')){
+        db.createObjectStore('agents', { keyPath:'id' });
       }
     };
     req.onsuccess = ()=>resolve(req.result);
@@ -282,6 +292,7 @@ function topbarHtml(title, sub){
    ÉCRAN LOGIN
    ========================================================================= */
 function renderLogin(){
+  syncAgentsFromFirestore();
   root.innerHTML = `
     <div id="screen-login">
       <div class="login-card">
@@ -331,20 +342,27 @@ function onPinKey(k){
   if(currentPin.length===4) checkPin();
 }
 
-function checkPin(){
+async function syncAgentsFromFirestore(){
+  if(!navigator.onLine) return;
+  try{
+    const snap = await db.collection('agents').get();
+    const dbi = await openDB();
+    await new Promise((resolve, reject)=>{
+      const tx = dbi.transaction('agents', 'readwrite');
+      const store = tx.objectStore('agents');
+      snap.docs.forEach(d=>store.put(Object.assign({ id:d.id }, d.data())));
+      tx.oncomplete = resolve;
+      tx.onerror = ()=>reject(tx.error);
+    });
+  }catch(err){ /* on retentera plus tard, le cache local reste valable */ }
+}
+
+async function checkPin(){
   const errEl = document.getElementById('pinError');
-  if(pendingRole==='controleur'){
-    if(currentPin===CONTROLEUR_PIN){
-      session = { role:'controleur', nom:'Contrôleur' };
-      currentPin=''; goToZones();
-    } else {
-      errEl.textContent = 'Code incorrect'; currentPin=''; setTimeout(renderPinDots,150);
-    }
-    return;
-  }
-  const agent = AGENTS_DEMO.find(a=>a.pin===currentPin);
-  if(agent){
-    session = { role:'agent', agentId:agent.id, nom:agent.nom };
+  const agents = await idbGetAll('agents');
+  const match = agents.find(a=>a.pin===currentPin && a.role===pendingRole && a.actif!==false);
+  if(match){
+    session = { role:pendingRole, agentId:match.id, nom:match.nom };
     currentPin=''; goToZones();
   } else {
     errEl.textContent = 'Code incorrect'; currentPin=''; setTimeout(renderPinDots,150);
@@ -370,6 +388,7 @@ async function renderZones(){
         <div class="zone-grid" id="zoneGrid"></div>
       </div>
       <button class="btn ghost block" id="dashBtn" style="margin-bottom:10px;">📊 Tableau de bord</button>
+      ${session.role==='controleur' ? '<button class="btn ghost block" id="agentsBtn" style="margin-bottom:10px;">👤 Gestion des utilisateurs</button>' : ''}
       <button class="btn ghost block" id="logoutBtn">Changer d'utilisateur</button>
     </div>
   `;
@@ -399,6 +418,8 @@ async function renderZones(){
   });
   document.getElementById('logoutBtn').addEventListener('click', ()=>{ session=null; currentPin=''; renderLogin(); });
   document.getElementById('dashBtn').addEventListener('click', renderDashboard);
+  const agentsBtn = document.getElementById('agentsBtn');
+  if(agentsBtn) agentsBtn.addEventListener('click', renderAgentsAdmin);
   updateSyncBadge();
 }
 
@@ -435,10 +456,19 @@ async function renderControle(){
         <button class="btn amber block" id="saveBtn" style="margin-top:6px;">
           ${isContreVisite ? 'Enregistrer la contre-visite' : 'Enregistrer le passage'}
         </button>
+        ${branch.statut==='rempli' || branch.statut==='faite' ? `
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button class="btn ghost small" id="pdfBtn" style="flex:1;">📄 PDF</button>
+          ${session.role==='controleur' ? '<button class="btn ghost small" id="mailBtn" style="flex:1;">✉️ Envoyer par mail</button>' : ''}
+        </div>` : ''}
       </div>
     </div>
   `;
   document.getElementById('backBtn').addEventListener('click', goToZones);
+  const pdfBtn = document.getElementById('pdfBtn');
+  if(pdfBtn) pdfBtn.addEventListener('click', ()=>generateControlePDF(c));
+  const mailBtn = document.getElementById('mailBtn');
+  if(mailBtn) mailBtn.addEventListener('click', ()=>sendReportEmail(c));
 
   const listEl = document.getElementById('pointsList');
   listEl.innerHTML = points.map(p=>{
@@ -678,6 +708,183 @@ function renderDashboardControleur(docs){
     });
   } else if(canvas){
     canvas.replaceWith(Object.assign(document.createElement('div'),{className:'section-note',textContent:'Pas encore assez de données pour la courbe.'}));
+  }
+}
+
+/* =========================================================================
+   ÉCRAN GESTION DES UTILISATEURS (contrôleur uniquement)
+   ========================================================================= */
+async function renderAgentsAdmin(){
+  root.innerHTML = `
+    <div class="wrap">
+      ${topbarHtml('Utilisateurs', 'Gestion des accès')}
+      <div class="back-link" id="backBtn">← Retour aux zones</div>
+      <div class="section">
+        <div id="agentsList"><div class="section-note">Chargement…</div></div>
+        <button class="btn amber block" id="addAgentBtn" style="margin-top:12px;">+ Ajouter un utilisateur</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('backBtn').addEventListener('click', goToZones);
+  document.getElementById('addAgentBtn').addEventListener('click', ()=>openAgentModal());
+  await refreshAgentsList();
+}
+
+async function refreshAgentsList(){
+  const el = document.getElementById('agentsList');
+  if(!navigator.onLine){
+    el.innerHTML = '<div class="section-note">Connexion requise pour gérer les utilisateurs.</div>';
+    return;
+  }
+  let snap;
+  try{ snap = await db.collection('agents').get(); }
+  catch(err){ el.innerHTML = '<div class="section-note">Erreur de chargement.</div>'; return; }
+  const agents = snap.docs.map(d=>Object.assign({ id:d.id }, d.data()));
+  if(!agents.length){ el.innerHTML = '<div class="section-note">Aucun utilisateur. Ajoute le premier contrôleur (toi) pour commencer.</div>'; return; }
+  el.innerHTML = agents.map(a=>`
+    <div class="agent-row" data-id="${a.id}">
+      <div>
+        <div class="agent-name">${a.nom}${a.role==='controleur'?'<span class="badge-role">Contrôleur</span>':''}${a.actif===false?'<span class="badge-inactif">Inactif</span>':''}</div>
+        <div class="agent-meta">PIN : ${a.pin}</div>
+      </div>
+      <div class="agent-actions">
+        <button class="btn ghost small" data-edit="${a.id}">Modifier</button>
+        <button class="btn danger small" data-del="${a.id}">Suppr.</button>
+      </div>
+    </div>
+  `).join('');
+  el.querySelectorAll('[data-edit]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const a = agents.find(x=>x.id===btn.dataset.edit);
+      openAgentModal(a);
+    });
+  });
+  el.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('Supprimer cet utilisateur ?')) return;
+      await db.collection('agents').doc(btn.dataset.del).delete();
+      await syncAgentsFromFirestore();
+      refreshAgentsList();
+      toast('Utilisateur supprimé');
+    });
+  });
+}
+
+function openAgentModal(existing){
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal">
+      <h3>${existing?'Modifier':'Nouvel'} utilisateur</h3>
+      <div class="field"><label>Nom</label><input id="am_nom" value="${existing?existing.nom:''}" placeholder="ex: Karim"></div>
+      <div class="field"><label>Code PIN (4 chiffres)</label><input id="am_pin" value="${existing?existing.pin:''}" maxlength="4" inputmode="numeric" placeholder="ex: 1234"></div>
+      <div class="field"><label>Rôle</label>
+        <select id="am_role">
+          <option value="agent" ${existing && existing.role==='agent'?'selected':''}>Équipe nettoyage</option>
+          <option value="controleur" ${existing && existing.role==='controleur'?'selected':''}>Contrôleur</option>
+        </select>
+      </div>
+      <div class="field"><label>Statut</label>
+        <select id="am_actif">
+          <option value="true" ${!existing || existing.actif!==false?'selected':''}>Actif</option>
+          <option value="false" ${existing && existing.actif===false?'selected':''}>Inactif</option>
+        </select>
+      </div>
+      <div class="form-actions" style="display:flex;gap:10px;">
+        <button class="btn amber" id="am_save">Enregistrer</button>
+        <button class="btn ghost" id="am_cancel">Annuler</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener('click', (e)=>{ if(e.target===backdrop) backdrop.remove(); });
+  document.getElementById('am_cancel').addEventListener('click', ()=>backdrop.remove());
+  document.getElementById('am_save').addEventListener('click', async ()=>{
+    const nom = document.getElementById('am_nom').value.trim();
+    const pin = document.getElementById('am_pin').value.trim();
+    const role = document.getElementById('am_role').value;
+    const actif = document.getElementById('am_actif').value==='true';
+    if(!nom || !/^\d{4}$/.test(pin)){ toast('Nom requis et PIN à 4 chiffres'); return; }
+    const id = existing ? existing.id : uid('agent');
+    try{
+      await db.collection('agents').doc(id).set({ nom, pin, role, actif }, { merge:true });
+      await syncAgentsFromFirestore();
+      backdrop.remove();
+      toast('Utilisateur enregistré');
+      refreshAgentsList();
+    }catch(err){ toast('Erreur d\'enregistrement (connexion ?)'); }
+  });
+}
+
+/* =========================================================================
+   GÉNÉRATION PDF
+   ========================================================================= */
+function generateControlePDF(c){
+  if(typeof window.jspdf === 'undefined'){ toast('Génération PDF indisponible (bibliothèque non chargée)'); return; }
+  const { jsPDF } = window.jspdf;
+  const zone = ZONES.find(z=>z.id===c.zoneId);
+  const points = POINTS[c.zoneId] || [];
+  const docPdf = new jsPDF();
+  let y = 20;
+
+  docPdf.setFont('helvetica','bold'); docPdf.setFontSize(16);
+  docPdf.text('McDo Caen Centre Ville — Contrôle Nettoyage', 14, y); y+=8;
+  docPdf.setFontSize(12);
+  docPdf.text(`${zone?zone.nom:c.zoneId} — ${fmtDate(c.date)}`, 14, y); y+=10;
+
+  const addBranch = (label, branch)=>{
+    docPdf.setFont('helvetica','bold'); docPdf.setFontSize(12);
+    docPdf.text(label + (branch.heure?` (${branch.heure})`:''), 14, y); y+=7;
+    docPdf.setFont('helvetica','normal'); docPdf.setFontSize(10);
+    points.forEach(p=>{
+      const r = branch.reponses ? branch.reponses[p.id] : null;
+      if(y>270){ docPdf.addPage(); y=20; }
+      const verdict = r && r.conforme===true ? 'Conforme' : (r && r.conforme===false ? 'NON CONFORME' : '—');
+      docPdf.text(`• ${p.label} : ${verdict}`, 16, y); y+=6;
+      if(r && r.commentaire){ docPdf.setFontSize(9); docPdf.text(`   "${r.commentaire}"`, 18, y); docPdf.setFontSize(10); y+=6; }
+      if(r && r.photo){
+        if(y>230){ docPdf.addPage(); y=20; }
+        try{ docPdf.addImage(r.photo, 'JPEG', 16, y, 50, 38); y+=42; }catch(e){ /* image illisible, on ignore */ }
+      }
+    });
+    y+=6;
+  };
+
+  addBranch('Passage équipe', c.passageEquipe || {});
+  if(c.contreVisite && c.contreVisite.statut==='faite'){ addBranch('Contre-visite', c.contreVisite); }
+
+  docPdf.save(`controle-${c.zoneId}-${c.date}.pdf`);
+}
+
+/* =========================================================================
+   ENVOI DE MAIL (via EmailJS — voir instructions de configuration)
+   ========================================================================= */
+async function sendReportEmail(c){
+  if(EMAILJS_PUBLIC_KEY==='À_REMPLACER'){
+    toast('EmailJS non configuré — voir les instructions');
+    return;
+  }
+  const zone = ZONES.find(z=>z.id===c.zoneId);
+  const points = POINTS[c.zoneId] || [];
+  const reponses = (c.passageEquipe && c.passageEquipe.reponses) || {};
+  const nonConformes = points.filter(p=>reponses[p.id] && reponses[p.id].conforme===false);
+  const summary = points.map(p=>{
+    const r = reponses[p.id];
+    const v = r && r.conforme===true ? 'Conforme' : (r && r.conforme===false ? 'NON CONFORME' : '—');
+    return `- ${p.label} : ${v}${r && r.commentaire ? ' ('+r.commentaire+')' : ''}`;
+  }).join('\n');
+
+  try{
+    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+      to_email: RAPPORT_DESTINATAIRE,
+      zone: zone ? zone.nom : c.zoneId,
+      date: fmtDate(c.date),
+      nb_non_conformes: nonConformes.length,
+      resume: summary,
+    });
+    toast('Rapport envoyé par mail');
+  }catch(err){
+    toast('Échec de l\'envoi — vérifie la config EmailJS');
   }
 }
 
