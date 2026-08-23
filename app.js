@@ -280,16 +280,13 @@ async function getPointsForToday(zoneId, dateIso){
   }
 
   return allPoints.filter(p=>{
-    if(p.freq === 'J') return true;
     const custom = schedMap[p.id];
-    if(p.freq === 'H'){
-      const targetDay = custom ? Number(custom.targetValue) : 1;
-      return currentDay === targetDay;
-    }
-    if(p.freq === 'M'){
-      const targetDate = custom ? Number(custom.targetValue) : 1;
-      return currentDate === targetDate;
-    }
+    const activeFreq = custom ? custom.freq : p.freq;
+    const targetVal = custom ? Number(custom.targetValue) : 1;
+
+    if(activeFreq === 'J') return true;
+    if(activeFreq === 'H') return currentDay === targetVal;
+    if(activeFreq === 'M') return currentDate === targetVal;
     return false;
   });
 }
@@ -391,7 +388,7 @@ async function checkPin(){
 async function goToZones(){ activeZoneId=null; await renderZones(); }
 
 /* =========================================================================
-   MENU PRINCIPAL (COMPTEUR DYNAMIQUE D'ITEMS RESTANTS)
+   MENU PRINCIPAL
    ========================================================================= */
 async function renderZones(){
   const date = todayISO();
@@ -435,7 +432,6 @@ async function renderZones(){
       } catch(e){}
     }
 
-    // Calcul dynamique du nombre d'items restants
     let remaining = 0;
     const isAgent = session.role === 'agent';
 
@@ -443,7 +439,6 @@ async function renderZones(){
       const eqReponses = (c && c.passageEquipe && c.passageEquipe.reponses) || {};
       activePoints.forEach(p => {
         const r = eqReponses[p.id];
-        // Pour l'équipe, un item reste "à faire" s'il n'a pas au moins 1 photo déposée
         if(!r || !r.photos || r.photos.length === 0){
           remaining++;
         }
@@ -452,7 +447,6 @@ async function renderZones(){
       const cvReponses = (c && c.contreVisite && c.contreVisite.reponses) || {};
       activePoints.forEach(p => {
         const r = cvReponses[p.id];
-        // Pour le contrôleur, un item reste à faire s'il n'a pas encore été traité dans sa branche
         if(!r || r.conforme === undefined){
           remaining++;
         }
@@ -992,7 +986,7 @@ async function renderStats(){
 
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
         <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:12px;">📊 Analyse Comparative de Conformité</div>
-        <div style="display:flex;align-items:flex-end;justify-style:space-around;height:120px;border-bottom:2px solid #E7E1D6;padding-bottom:5px;">
+        <div style="display:flex;align-items:flex-end;justify-content:space-around;height:120px;border-bottom:2px solid #E7E1D6;padding-bottom:5px;">
           <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
             <span style="font-size:11px;font-weight:700;color:#2B6E68;margin-bottom:4px;">${currentStats.rate}%</span>
             <div style="width:100%;max-width:50px;background:#2B6E68;height:${Math.max(10, currentStats.rate)}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
@@ -1276,28 +1270,48 @@ async function generateGlobalPDF(){
 }
 
 /* =========================================================================
-   ADMINISTRATION DU PLANNING
+   ADMINISTRATION DU PLANNING (TOUTES LES TÂCHES ET RÉCURRENCES ÉDITABLES)
    ========================================================================= */
 async function renderTaskAdmin(){
   let schedMap = {};
   const localSched = await idbGetAll('task_schedule');
   localSched.forEach(s => { schedMap[s.taskId] = s; });
 
+  if(navigator.onLine){
+    try {
+      const snap = await db.collection('task_schedule').get();
+      snap.docs.forEach(doc => { schedMap[doc.id] = doc.data(); });
+    } catch(e){}
+  }
+
   let tasksHtml = '';
   ZONES.forEach(z => {
-    const periodicPoints = (POINTS[z.id] || []).filter(p => p.freq === 'H' || p.freq === 'M');
-    if(periodicPoints.length){
-      tasksHtml += `<div class="section-title" style="margin-top:15px;font-size:16px;color:#C7791B;">${z.nom}</div>`;
-      periodicPoints.forEach(p => {
+    const zonePoints = POINTS[z.id] || [];
+    if(zonePoints.length){
+      tasksHtml += `<div class="section-title" style="margin-top:20px;font-size:16px;color:#C7791B;border-bottom:2px solid #C7791B;padding-bottom:4px;">${z.nom.toUpperCase()}</div>`;
+      
+      zonePoints.forEach(p => {
         const custom = schedMap[p.id];
+        const currentFreq = custom ? custom.freq : p.freq;
         const currentVal = custom ? custom.targetValue : 1;
+
         tasksHtml += `
-          <div class="agent-row" style="flex-direction:column;align-items:flex-start;gap:6px;padding:10px 0;border-bottom:1px solid #E7E1D6;">
-            <div style="font-weight:600;">${p.label} <span class="badge-role">${p.freq==='H'?'Hebdo':'Mensuel'}</span></div>
-            <div style="display:flex;align-items:center;gap:10px;width:100%;">
-              <label style="font-size:12px;color:#6B655C;">Jour d'exécution :</label>
-              ${p.freq==='H' ? `
-                <select class="task-sched-select" data-task="${p.id}" data-freq="H" style="flex:1;padding:6px;border-radius:6px;border:1px solid #E7E1D6;">
+          <div class="task-admin-card" data-task-id="${p.id}" style="background:#fff;border:1px solid #E7E1D6;padding:12px;border-radius:8px;margin-top:10px;">
+            <div style="font-weight:600;font-size:13px;color:#211E1A;margin-bottom:8px;">${p.label}</div>
+            
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <div style="flex:1;min-width:130px;">
+                <label style="font-size:11px;color:#6B655C;display:block;margin-bottom:2px;">Fréquence :</label>
+                <select class="freq-select" data-task="${p.id}" style="width:100%;padding:6px;border-radius:6px;border:1px solid #E7E1D6;font-size:12px;">
+                  <option value="J" ${currentFreq==='J'?'selected':''}>Quotidien (Tous les jours)</option>
+                  <option value="H" ${currentFreq==='H'?'selected':''}>Hebdomadaire (Un jour/semaine)</option>
+                  <option value="M" ${currentFreq==='M'?'selected':''}>Mensuel (Un jour/mois)</option>
+                </select>
+              </div>
+
+              <div class="target-val-box" id="target_box_${p.id}" style="flex:1;min-width:140px;display:${currentFreq==='J'?'none':'block'};">
+                <label style="font-size:11px;color:#6B655C;display:block;margin-bottom:2px;">Jour d'exécution :</label>
+                <select class="val-select-hebdo" data-task="${p.id}" style="width:100%;padding:6px;border-radius:6px;border:1px solid #E7E1D6;font-size:12px;display:${currentFreq==='H'?'block':'none'};">
                   <option value="1" ${currentVal==1?'selected':''}>Lundi</option>
                   <option value="2" ${currentVal==2?'selected':''}>Mardi</option>
                   <option value="3" ${currentVal==3?'selected':''}>Mercredi</option>
@@ -1306,10 +1320,12 @@ async function renderTaskAdmin(){
                   <option value="6" ${currentVal==6?'selected':''}>Samedi</option>
                   <option value="0" ${currentVal==0?'selected':''}>Dimanche</option>
                 </select>
-              ` : `
-                <input type="number" class="task-sched-input" data-task="${p.id}" data-freq="M" min="1" max="28" value="${currentVal}" style="width:80px;padding:6px;border-radius:6px;border:1px solid #E7E1D6;">
-                <span style="font-size:12px;color:#6B655C;">du mois</span>
-              `}
+
+                <div class="val-input-mensuel-wrap" style="display:${currentFreq==='M'?'flex':'none'};align-items:center;gap:6px;">
+                  <input type="number" class="val-input-mensuel" data-task="${p.id}" min="1" max="28" value="${currentVal}" style="width:70px;padding:6px;border-radius:6px;border:1px solid #E7E1D6;font-size:12px;">
+                  <span style="font-size:11px;color:#6B655C;">du mois</span>
+                </div>
+              </div>
             </div>
           </div>
         `;
@@ -1319,29 +1335,58 @@ async function renderTaskAdmin(){
 
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Planning des Tâches', 'Administration Hybrid')}
+      ${topbarHtml('Planning des Tâches', 'Administration Complète')}
       <div class="back-link" id="backBtn">← Retour aux zones</div>
-      <div class="section">
-        <div class="section-note">Définissez précisément le jour de réalisation de chaque tâche.</div>
+      <div class="section" style="padding:16px;">
+        <div class="section-note">Gérez la récurrence et le jour d'exécution de TOUTES les tâches de la SASU SOAN.</div>
         ${tasksHtml}
-        <button class="btn amber block" id="saveTasksBtn" style="margin-top:20px;">Enregistrer le planning</button>
+        <button class="btn amber block" id="saveTasksBtn" style="margin-top:20px;margin-bottom:20px;">Enregistrer le planning global</button>
       </div>
     </div>
   `;
 
   document.getElementById('backBtn').onclick = goToZones;
+
+  // Gestion dynamique du basculement des options
+  document.querySelectorAll('.freq-select').forEach(sel => {
+    sel.onchange = () => {
+      const taskId = sel.dataset.task;
+      const val = sel.value;
+      const targetBox = document.getElementById(`target_box_${taskId}`);
+      const selectHebdo = targetBox.querySelector('.val-select-hebdo');
+      const wrapMensuel = targetBox.querySelector('.val-input-mensuel-wrap');
+
+      if(val === 'J'){
+        targetBox.style.display = 'none';
+      } else if(val === 'H'){
+        targetBox.style.display = 'block';
+        selectHebdo.style.display = 'block';
+        wrapMensuel.style.display = 'none';
+      } else if(val === 'M'){
+        targetBox.style.display = 'block';
+        selectHebdo.style.display = 'none';
+        wrapMensuel.style.display = 'flex';
+      }
+    };
+  });
+
   document.getElementById('saveTasksBtn').onclick = async ()=>{
-    const selects = document.querySelectorAll('.task-sched-select');
-    for(const sel of selects){
-      const data = { taskId: sel.dataset.task, freq: sel.dataset.freq, targetValue: parseInt(sel.value) };
-      await pushToCloud('task_schedule', sel.dataset.task, data);
+    const cards = document.querySelectorAll('.task-admin-card');
+    for(const card of cards){
+      const taskId = card.dataset.taskId;
+      const freq = card.querySelector('.freq-select').value;
+      let targetValue = 1;
+
+      if(freq === 'H'){
+        targetValue = parseInt(card.querySelector('.val-select-hebdo').value);
+      } else if(freq === 'M'){
+        targetValue = parseInt(card.querySelector('.val-input-mensuel').value) || 1;
+      }
+
+      const data = { taskId, freq, targetValue };
+      await pushToCloud('task_schedule', taskId, data);
     }
-    const inputs = document.querySelectorAll('.task-sched-input');
-    for(const inp of inputs){
-      const data = { taskId: inp.dataset.task, freq: inp.dataset.freq, targetValue: parseInt(inp.value)||1 };
-      await pushToCloud('task_schedule', inp.dataset.task, data);
-    }
-    toast('Planning sauvegardé !');
+    toast('Planning global sauvegardé et synchronisé !');
     goToZones();
   };
 }
