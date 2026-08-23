@@ -19,7 +19,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 /* =========================================================================
-   RÉFÉRENTIEL CONTRAT SASU SOAN
+   RÉFÉRENTIEL TÂCHES SASU SOAN
    ========================================================================= */
 const ZONES = [
   { id:'lobby',           nom:'Lobby' },
@@ -111,7 +111,7 @@ const POINTS = {
 };
 
 const DB_NAME = 'controle-nettoyage';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 let dbPromise = null;
 
 function openDB(){
@@ -123,7 +123,7 @@ function openDB(){
       if(!db.objectStoreNames.contains('controles')) db.createObjectStore('controles', { keyPath:'id' });
       if(!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', { keyPath:'id' });
       if(!db.objectStoreNames.contains('agents')) db.createObjectStore('agents', { keyPath:'id' });
-      if(!db.objectStoreNames.contains('config')) db.createObjectStore('config', { keyPath:'id' });
+      if(!db.objectStoreNames.contains('task_schedule')) db.createObjectStore('task_schedule', { keyPath:'taskId' });
     };
     req.onsuccess = ()=>resolve(req.result);
     req.onerror = ()=>reject(req.error);
@@ -158,6 +158,15 @@ async function idbGetAll(store){
     req.onerror = ()=>reject(req.error);
   });
 }
+async function idbDelete(store, id){
+  const db = await openDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).delete(id);
+    tx.oncomplete = ()=>resolve();
+    tx.onerror = ()=>reject(tx.error);
+  });
+}
 
 let session = null;
 let currentPin = '';
@@ -170,6 +179,7 @@ const root = document.getElementById('app-root');
 
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 function fmtDate(iso){ return iso.split('-').reverse().join('/'); }
+function uid(prefix){ return (prefix||'id')+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,8); }
 
 function toast(msg){
   let t = document.getElementById('toastEl');
@@ -214,26 +224,26 @@ function fileToResizedBase64(file, maxWidth){
   });
 }
 
-async function getConfigSchedule(){
-  let cfg = await idbGet('config', 'schedule');
-  if(!cfg){
-    cfg = { id:'schedule', hebdoDay:1, mensuelDate:1 }; // Par défaut : Lundi et 1er du mois
-    await idbPut('config', cfg);
-  }
-  return cfg;
-}
-
 async function getPointsForToday(zoneId, dateIso){
-  const cfg = await getConfigSchedule();
   const d = new Date(dateIso);
   const currentDay = d.getDay(); // 0=Dim, 1=Lun...
   const currentDate = d.getDate();
-
   const allPoints = POINTS[zoneId] || [];
+  const schedules = await idbGetAll('task_schedule');
+  const schedMap = {};
+  schedules.forEach(s => { schedMap[s.taskId] = s; });
+
   return allPoints.filter(p=>{
-    if(p.freq==='J') return true;
-    if(p.freq==='H' && currentDay === Number(cfg.hebdoDay)) return true;
-    if(p.freq==='M' && currentDate === Number(cfg.mensuelDate)) return true;
+    if(p.freq === 'J') return true;
+    const custom = schedMap[p.id];
+    if(p.freq === 'H'){
+      const targetDay = custom ? Number(custom.targetValue) : 1; // Lundi par défaut
+      return currentDay === targetDay;
+    }
+    if(p.freq === 'M'){
+      const targetDate = custom ? Number(custom.targetValue) : 1; // 1er du mois par défaut
+      return currentDate === targetDate;
+    }
     return false;
   });
 }
@@ -335,7 +345,10 @@ async function renderZones(){
         <div class="section-title">Zones de Prestation</div>
         <div class="zone-grid" id="zoneGrid"></div>
       </div>
-      ${session.role==='controleur' ? '<button class="btn ghost block" id="configBtn" style="margin-bottom:10px;">⚙️ Planning Tâches Hebdo/Mensuel</button>' : ''}
+      ${session.role==='controleur' ? `
+        <button class="btn ghost block" id="adminTasksBtn" style="margin-bottom:10px;">📅 Planning & Fréquence des Tâches</button>
+        <button class="btn ghost block" id="adminUsersBtn" style="margin-bottom:10px;">👤 Gestion des Utilisateurs / Accès</button>
+      ` : ''}
       <button class="btn ghost block" id="logoutBtn">Déconnexion</button>
     </div>
   `;
@@ -366,8 +379,10 @@ async function renderZones(){
   });
 
   document.getElementById('logoutBtn').addEventListener('click', ()=>{ session=null; currentPin=''; renderLogin(); });
-  const cfgBtn = document.getElementById('configBtn');
-  if(cfgBtn) cfgBtn.addEventListener('click', renderScheduleConfig);
+  const tasksBtn = document.getElementById('adminTasksBtn');
+  if(tasksBtn) tasksBtn.addEventListener('click', renderTaskAdmin);
+  const usersBtn = document.getElementById('adminUsersBtn');
+  if(usersBtn) usersBtn.addEventListener('click', renderAgentsAdmin);
 }
 
 async function renderControle(){
@@ -414,7 +429,7 @@ async function renderControle(){
         <div class="point-photo-row" id="photos_${p.id}">
           ${photos.map(pSrc=>`<img class="photo-thumb" src="${pSrc}">`).join('')}
           <label class="photo-btn">
-            📷 + Ajouter une photo
+            📷 + Ajouter photo
             <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
           </label>
         </div>
@@ -465,41 +480,163 @@ async function renderControle(){
   });
 }
 
-async function renderScheduleConfig(){
-  const cfg = await getConfigSchedule();
+/* =========================================================================
+   GESTION DU PLANNING TÂCHE PAR TÂCHE (ADMIN CONTRÔLEUR)
+   ========================================================================= */
+async function renderTaskAdmin(){
+  const schedules = await idbGetAll('task_schedule');
+  const schedMap = {};
+  schedules.forEach(s => { schedMap[s.taskId] = s; });
+
+  let tasksHtml = '';
+  ZONES.forEach(z => {
+    const periodicPoints = (POINTS[z.id] || []).filter(p => p.freq === 'H' || p.freq === 'M');
+    if(periodicPoints.length){
+      tasksHtml += `<div class="section-title" style="margin-top:15px;font-size:16px;color:var(--amber);">${z.nom}</div>`;
+      periodicPoints.forEach(p => {
+        const custom = schedMap[p.id];
+        const currentVal = custom ? custom.targetValue : 1;
+        tasksHtml += `
+          <div class="agent-row" style="flex-direction:column;align-items:flex-start;gap:6px;">
+            <div style="font-weight:600;">${p.label} <span class="badge-role">${p.freq==='H'?'Hebdo':'Mensuel'}</span></div>
+            <div style="display:flex;align-items:center;gap:10px;width:100%;">
+              <label style="font-size:12px;color:var(--ink-soft);">Jour d'exécution :</label>
+              ${p.freq==='H' ? `
+                <select class="task-sched-select" data-task="${p.id}" data-freq="H" style="flex:1;padding:6px;border-radius:6px;border:1px solid var(--line);">
+                  <option value="1" ${currentVal==1?'selected':''}>Lundi</option>
+                  <option value="2" ${currentVal==2?'selected':''}>Mardi</option>
+                  <option value="3" ${currentVal==3?'selected':''}>Mercredi</option>
+                  <option value="4" ${currentVal==4?'selected':''}>Jeudi</option>
+                  <option value="5" ${currentVal==5?'selected':''}>Vendredi</option>
+                  <option value="6" ${currentVal==6?'selected':''}>Samedi</option>
+                  <option value="0" ${currentVal==0?'selected':''}>Dimanche</option>
+                </select>
+              ` : `
+                <input type="number" class="task-sched-input" data-task="${p.id}" data-freq="M" min="1" max="28" value="${currentVal}" style="width:80px;padding:6px;border-radius:6px;border:1px solid var(--line);">
+                <span style="font-size:12px;color:var(--ink-soft);">du mois</span>
+              `}
+            </div>
+          </div>
+        `;
+      });
+    }
+  });
+
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Planning Tâches', 'Configuration')}
+      ${topbarHtml('Planning des Tâches', 'Administration')}
       <div class="back-link" id="backBtn">← Retour aux zones</div>
       <div class="section">
-        <div class="field">
-          <label>Jour d'exécution des tâches HEBDOMADAIRES</label>
-          <select id="cfg_hebdo">
-            <option value="1" ${cfg.hebdoDay==1?'selected':''}>Lundi</option>
-            <option value="2" ${cfg.hebdoDay==2?'selected':''}>Mardi</option>
-            <option value="3" ${cfg.hebdoDay==3?'selected':''}>Mercredi</option>
-            <option value="4" ${cfg.hebdoDay==4?'selected':''}>Jeudi</option>
-            <option value="5" ${cfg.hebdoDay==5?'selected':''}>Vendredi</option>
-            <option value="6" ${cfg.hebdoDay==6?'selected':''}>Samedi</option>
-            <option value="0" ${cfg.hebdoDay==0?'selected':''}>Dimanche</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Jour du mois des tâches MENSUELLES (1 à 28)</label>
-          <input type="number" id="cfg_mensuel" min="1" max="28" value="${cfg.mensuelDate}">
-        </div>
-        <button class="btn amber block" id="saveCfgBtn" style="margin-top:15px;">Enregistrer la planification</button>
+        <div class="section-note">Définissez précisément le jour de réalisation de chaque tâche périodique.</div>
+        ${tasksHtml}
+        <button class="btn amber block" id="saveTasksBtn" style="margin-top:20px;">Enregistrer le planning</button>
       </div>
     </div>
   `;
 
   document.getElementById('backBtn').addEventListener('click', goToZones);
-  document.getElementById('saveCfgBtn').addEventListener('click', async ()=>{
-    const hebdoDay = parseInt(document.getElementById('cfg_hebdo').value);
-    const mensuelDate = parseInt(document.getElementById('cfg_mensuel').value);
-    await idbPut('config', { id:'schedule', hebdoDay, mensuelDate });
-    toast('Planning mis à jour');
+  document.getElementById('saveTasksBtn').addEventListener('click', async ()=>{
+    const selects = document.querySelectorAll('.task-sched-select');
+    for(const sel of selects){
+      await idbPut('task_schedule', { taskId: sel.dataset.task, freq: sel.dataset.freq, targetValue: parseInt(sel.value) });
+    }
+    const inputs = document.querySelectorAll('.task-sched-input');
+    for(const inp of inputs){
+      await idbPut('task_schedule', { taskId: inp.dataset.task, freq: inp.dataset.freq, targetValue: parseInt(inp.value) || 1 });
+    }
+    toast('Planning des tâches sauvegardé');
     goToZones();
+  });
+}
+
+/* =========================================================================
+   GESTION DES UTILISATEURS / ACCÈS (ADMIN CONTRÔLEUR)
+   ========================================================================= */
+async function renderAgentsAdmin(){
+  root.innerHTML = `
+    <div class="wrap">
+      ${topbarHtml('Gestion Utilisateurs', 'Administration')}
+      <div class="back-link" id="backBtn">← Retour aux zones</div>
+      <div class="section">
+        <div id="agentsList"><div class="section-note">Chargement…</div></div>
+        <button class="btn amber block" id="addAgentBtn" style="margin-top:15px;">+ Ajouter un profil</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('backBtn').addEventListener('click', goToZones);
+  document.getElementById('addAgentBtn').addEventListener('click', ()=>openAgentModal());
+  await refreshAgentsList();
+}
+
+async function refreshAgentsList(){
+  const el = document.getElementById('agentsList');
+  const agents = await idbGetAll('agents');
+  if(!agents.length){
+    el.innerHTML = '<div class="section-note">Aucun utilisateur enregistré localement. Créez votre premier profil ci-dessous.</div>';
+    return;
+  }
+  el.innerHTML = agents.map(a=>`
+    <div class="agent-row">
+      <div>
+        <div class="agent-name">${a.nom} ${a.role==='controleur'?'<span class="badge-role">Contrôleur</span>':''}</div>
+        <div class="agent-meta">Code PIN : <strong>${a.pin}</strong></div>
+      </div>
+      <div class="agent-actions">
+        <button class="btn ghost small" data-edit="${a.id}">Modifier</button>
+        <button class="btn danger small" data-del="${a.id}">Suppr.</button>
+      </div>
+    </div>
+  `).join('');
+
+  el.querySelectorAll('[data-edit]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const a = await idbGet('agents', btn.dataset.edit);
+      openAgentModal(a);
+    });
+  });
+  el.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('Supprimer ce profil utilisateur ?')) return;
+      await idbDelete('agents', btn.dataset.del);
+      toast('Profil supprimé');
+      refreshAgentsList();
+    });
+  });
+}
+
+function openAgentModal(existing){
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal">
+      <h3>${existing?'Modifier':'Nouveau'} profil</h3>
+      <div class="field"><label>Nom / Prénom</label><input id="am_nom" value="${existing?existing.nom:''}" placeholder="ex: Karim"></div>
+      <div class="field"><label>Code PIN (4 chiffres)</label><input id="am_pin" value="${existing?existing.pin:''}" maxlength="4" inputmode="numeric" placeholder="ex: 1234"></div>
+      <div class="field"><label>Rôle</label>
+        <select id="am_role">
+          <option value="agent" ${existing && existing.role==='agent'?'selected':''}>Équipe Nettoyage</option>
+          <option value="controleur" ${existing && existing.role==='controleur'?'selected':''}>Contrôleur</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:15px;">
+        <button class="btn amber" id="am_save" style="flex:1;">Enregistrer</button>
+        <button class="btn ghost" id="am_cancel" style="flex:1;">Annuler</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener('click', (e)=>{ if(e.target===backdrop) backdrop.remove(); });
+  document.getElementById('am_cancel').addEventListener('click', ()=>backdrop.remove());
+  document.getElementById('am_save').addEventListener('click', async ()=>{
+    const nom = document.getElementById('am_nom').value.trim();
+    const pin = document.getElementById('am_pin').value.trim();
+    const role = document.getElementById('am_role').value;
+    if(!nom || !/^\d{4}$/.test(pin)){ toast('Saisissez un nom et un PIN à 4 chiffres'); return; }
+    const id = existing ? existing.id : uid('agent');
+    await idbPut('agents', { id, nom, pin, role, actif:true });
+    backdrop.remove();
+    toast('Profil sauvegardé');
+    refreshAgentsList();
   });
 }
 
