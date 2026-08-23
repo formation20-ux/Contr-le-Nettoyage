@@ -70,9 +70,9 @@ window.addEventListener('keydown', (e) => {
 });
 
 /* =========================================================================
-   MOTEUR DE TRADUCTION MULTILINGUE (i18n)
+   TRADUCTION EN LIGNE AUTO (INTERFACE + TÂCHES DYNAMIQUES VIA API MYMEMORY)
    ========================================================================= */
-const TRANSLATIONS = {
+const STATIC_TRANSLATIONS = {
   en: {
     'Zones de Prestation': 'Service Areas',
     '📜 Historique': '📜 History',
@@ -97,7 +97,17 @@ const TRANSLATIONS = {
     'Non réalisé avant 10h': 'Not completed before 10 AM',
     'Équipe': 'Team',
     'Contrôleur': 'Inspector',
-    'Session expirée suite à 3 min d’inactivité': 'Session expired due to 3 min inactivity'
+    'Session expirée suite à 3 min d’inactivité': 'Session expired due to 3 min inactivity',
+    'Contre-visite Contrôleur': 'Inspector Review',
+    'Réalisation Prestation': 'Service Execution',
+    '📸 Photos transmises par l\'Équipe :': '📸 Photos sent by Team:',
+    '💬 Obs. Équipe': '💬 Team Notes',
+    'Remarques Contrôleur (optionnel)': 'Inspector comments (optional)',
+    'Remarques Équipe (optionnel)': 'Team comments (optional)',
+    '📷 + Photo': '📷 + Photo',
+    'Jour': 'Daily',
+    'Hebdo': 'Weekly',
+    'Mensuel': 'Monthly'
   },
   es: {
     'Zones de Prestation': 'Áreas de Servicio',
@@ -123,7 +133,17 @@ const TRANSLATIONS = {
     'Non réalisé avant 10h': 'No realizado antes de las 10h',
     'Équipe': 'Equipo',
     'Contrôleur': 'Inspector',
-    'Session expirée suite à 3 min d’inactivité': 'Sesión expirada por 3 min de inactividad'
+    'Session expirée suite à 3 min d’inactivité': 'Sesión expirada por 3 min de inactividad',
+    'Contre-visite Contrôleur': 'Revisión del Inspector',
+    'Réalisation Prestation': 'Ejecución del Servicio',
+    '📸 Photos transmises par l\'Équipe :': '📸 Fotos enviadas por el Equipo:',
+    '💬 Obs. Équipe': '💬 Obs. Equipo',
+    'Remarques Contrôleur (optionnel)': 'Comentarios del Inspector (opcional)',
+    'Remarques Équipe (optionnel)': 'Comentarios del Equipo (opcional)',
+    '📷 + Photo': '📷 + Foto',
+    'Jour': 'Diario',
+    'Hebdo': 'Semanal',
+    'Mensuel': 'Mensual'
   },
   ar: {
     'Zones de Prestation': 'مناطق الخدمة',
@@ -149,14 +169,48 @@ const TRANSLATIONS = {
     'Non réalisé avant 10h': 'لم يتم قبل 10 صباحًا',
     'Équipe': 'الفريق',
     'Contrôleur': 'المراقب',
-    'Session expirée suite à 3 min d’inactivité': 'انتهت الجلسة لعدم النشاط'
+    'Session expirée suite à 3 min d’inactivité': 'انتهت الجلسة لعدم النشاط',
+    'Contre-visite Contrôleur': 'مراجعة المراقب',
+    'Réalisation Prestation': 'تنفيذ الخدمة',
+    '📸 Photos transmises par l\'Équipe :': '📸 الصور المرسلة من الفريق:',
+    '💬 Obs. Équipe': '💬 ملاحظات الفريق',
+    'Remarques Contrôleur (optionnel)': 'ملاحظات المراقب (اختياري)',
+    'Remarques Équipe (optionnel)': 'ملاحظات الفريق (اختياري)',
+    '📷 + Photo': '📷 + صورة',
+    'Jour': 'يومي',
+    'Hebdo': 'أسبوعي',
+    'Mensuel': 'شهري'
   }
 };
 
+const translationCache = {};
+
 function t(text){
   const lang = (session && session.lang) ? session.lang : 'fr';
-  if(lang === 'fr' || !TRANSLATIONS[lang]) return text;
-  return TRANSLATIONS[lang][text] || text;
+  if(lang === 'fr' || !text) return text;
+  if(STATIC_TRANSLATIONS[lang] && STATIC_TRANSLATIONS[lang][text]) {
+    return STATIC_TRANSLATIONS[lang][text];
+  }
+  return translationCache[`${lang}_${text}`] || text;
+}
+
+// Fonction asynchrone qui traduit n'importe quel texte personnalisé via l'API en ligne MyMemory
+async function translateDynamicText(text, targetLang){
+  if(!text || targetLang === 'fr') return text;
+  const cacheKey = `${targetLang}_${text}`;
+  if(translationCache[cacheKey]) return translationCache[cacheKey];
+
+  try {
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=fr|${targetLang}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if(data && data.responseData && data.responseData.translatedText){
+      const translated = data.responseData.translatedText;
+      translationCache[cacheKey] = translated;
+      return translated;
+    }
+  } catch(e){}
+  return text;
 }
 
 /* =========================================================================
@@ -998,12 +1052,13 @@ async function renderMailScheduleAdmin(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE
+   SAISIE CONTRÔLE / PRESTATION ZONE (AVEC TRADUCTION DYNAMIQUE EN TEMPS RÉEL)
    ========================================================================= */
 async function renderControle(){
   resetInactivityTimer();
   const date = todayISO();
   const currentHour = new Date().getHours();
+  const userLang = (session && session.lang) ? session.lang : 'fr';
   
   let c = await idbGet('controles', activeControleId) || {
     id: activeControleId, zoneId: activeZoneId, date,
@@ -1047,9 +1102,11 @@ async function renderControle(){
     }
   });
 
+  const viewSubtitle = isContreVisite ? t('Contre-visite Contrôleur') : t('Réalisation Prestation');
+
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml(zone.nom, isContreVisite ? 'Contre-visite Contrôleur' : 'Réalisation Prestation')}
+      ${topbarHtml(zone.nom, viewSubtitle)}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section">
         <div id="pointsList"></div>
@@ -1081,8 +1138,10 @@ async function renderControle(){
 
   const listEl = document.getElementById('pointsList');
   
-  const refreshPointsListUI = () => {
-    listEl.innerHTML = activePoints.map(p=>{
+  const refreshPointsListUI = async () => {
+    let pointsHtml = '';
+
+    for(const p of activePoints){
       const r = currentBranch.reponses[p.id] || { conforme: null, photos:[], commentaire:'' };
 
       const myPhotos = r.photos || [];
@@ -1095,12 +1154,17 @@ async function renderControle(){
       const isEquipeLocked = !isContreVisite && myPhotos.length === 0;
       const isCtrlNokLocked = isContreVisite && eqWasOk && myPhotos.length === 0;
 
-      return `
+      const freqLabel = p.freq==='J' ? t('Jour') : (p.freq==='H' ? t('Hebdo') : t('Mensuel'));
+      
+      // Traduction automatique du libellé de la tâche
+      const displayLabel = await translateDynamicText(p.label, userLang);
+
+      pointsHtml += `
         <div class="point-item" data-point="${p.id}" style="border:1px solid ${isEquipeNok?'#B23A34':'#E7E1D6'};padding:12px;border-radius:10px;margin-bottom:12px;background:${isEquipeNok?'#F6DEDC':'#fff'};">
           <div class="point-head">
             <div class="point-label" style="font-weight:600;">
-              ${p.label} <small>(${p.freq==='J'?'Jour':(p.freq==='H'?'Hebdo':'Mensuel')})</small>
-              ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">⚠️ ÉQUIPE : NOK</span>` : ''}
+              ${displayLabel} <small>(${freqLabel})</small>
+              ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">⚠️ ${t('Équipe').toUpperCase()} : NOK</span>` : ''}
             </div>
             <div class="point-toggle" style="margin-top:6px;">
               <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" ${isEquipeLocked ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✓ OK</button>
@@ -1109,14 +1173,14 @@ async function renderControle(){
           </div>
 
           ${isContreVisite && eqPhotos.length ? `
-            <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:8px;">📸 Photos transmises par l'Équipe :</div>
+            <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:8px;">${t('📸 Photos transmises par l\'Équipe :')}</div>
             <div class="point-photo-row" style="display:flex;gap:6px;overflow-x:auto;padding:6px;background:#DCEEEC;border-radius:8px;margin-top:4px;">
               ${eqPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe - ${p.label}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
             </div>
           ` : ''}
 
           ${isContreVisite && eqR.commentaire ? `
-            <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">💬 Obs. Équipe (${c.passageEquipe.agentNom||'Équipe'}) : "${eqR.commentaire}"</div>
+            <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">${t('💬 Obs. Équipe')} (${c.passageEquipe.agentNom||t('Équipe')}) : "${eqR.commentaire}"</div>
           ` : ''}
 
           <div style="font-size:11px;color:#6B655C;margin-top:8px;">
@@ -1125,15 +1189,17 @@ async function renderControle(){
           <div class="point-photo-row" id="photos_${p.id}" style="display:flex;align-items:center;overflow-x:auto;margin-top:4px;">
             ${renderPhotosHtml(myPhotos, true, p.id)}
             <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
-              📷 + Photo
+              ${t('📷 + Photo')}
               <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
             </label>
           </div>
           
-          <textarea class="point-comment" placeholder="${isContreVisite ? 'Remarques Contrôleur (optionnel)' : 'Remarques Équipe (optionnel)'}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6;">${r.commentaire||''}</textarea>
+          <textarea class="point-comment" placeholder="${isContreVisite ? t('Remarques Contrôleur (optionnel)') : t('Remarques Équipe (optionnel)')}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6;">${r.commentaire||''}</textarea>
         </div>
       `;
-    }).join('');
+    }
+
+    listEl.innerHTML = pointsHtml;
 
     listEl.querySelectorAll('.click-zoom').forEach(img => {
       img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
@@ -1148,7 +1214,7 @@ async function renderControle(){
           currentBranch.reponses[pId].photos.splice(idx, 1);
           await triggerAutoSave();
           toast(t('Photo supprimée'));
-          refreshPointsListUI();
+          await refreshPointsListUI();
         }
       };
     });
@@ -1189,7 +1255,7 @@ async function renderControle(){
 
         await triggerAutoSave();
         toast(t('Photo ajoutée'));
-        refreshPointsListUI();
+        await refreshPointsListUI();
       };
 
       item.querySelector('.point-comment').oninput = (e)=>{
@@ -1202,7 +1268,7 @@ async function renderControle(){
     });
   };
 
-  refreshPointsListUI();
+  await refreshPointsListUI();
 
   document.getElementById('saveBtn').onclick = async ()=>{
     await triggerAutoSave();
@@ -1968,7 +2034,7 @@ async function renderTaskAdmin(){
 }
 
 /* =========================================================================
-   ADMINISTRATION UTILISATEURS (AVEC CHOIX DE LA LANGUE D'INTERFACE)
+   ADMINISTRATION UTILISATEURS
    ========================================================================= */
 async function renderAgentsAdmin(){
   resetInactivityTimer();
