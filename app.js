@@ -391,7 +391,7 @@ async function checkPin(){
 async function goToZones(){ activeZoneId=null; await renderZones(); }
 
 /* =========================================================================
-   MENU PRINCIPAL
+   MENU PRINCIPAL (COMPTEUR DYNAMIQUE D'ITEMS RESTANTS)
    ========================================================================= */
 async function renderZones(){
   const date = todayISO();
@@ -422,18 +422,58 @@ async function renderZones(){
 
   const grid = document.getElementById('zoneGrid');
   let html = '';
+
   for(const z of ZONES){
     const activePoints = await getPointsForToday(z.id, date);
+    const controleId = `${date}__${z.id}`;
+    
+    let c = await idbGet('controles', controleId);
+    if(navigator.onLine && !c){
+      try {
+        const doc = await db.collection('controles').doc(controleId).get();
+        if(doc.exists) c = doc.data();
+      } catch(e){}
+    }
+
+    // Calcul dynamique du nombre d'items restants
+    let remaining = 0;
+    const isAgent = session.role === 'agent';
+
+    if(isAgent){
+      const eqReponses = (c && c.passageEquipe && c.passageEquipe.reponses) || {};
+      activePoints.forEach(p => {
+        const r = eqReponses[p.id];
+        // Pour l'équipe, un item reste "à faire" s'il n'a pas au moins 1 photo déposée
+        if(!r || !r.photos || r.photos.length === 0){
+          remaining++;
+        }
+      });
+    } else {
+      const cvReponses = (c && c.contreVisite && c.contreVisite.reponses) || {};
+      activePoints.forEach(p => {
+        const r = cvReponses[p.id];
+        // Pour le contrôleur, un item reste à faire s'il n'a pas encore été traité dans sa branche
+        if(!r || r.conforme === undefined){
+          remaining++;
+        }
+      });
+    }
+
+    const badgeClass = remaining === 0 ? 'conforme' : 'a-faire';
+    const badgeText = remaining === 0 ? '✓ Complété' : `${remaining} restant(s)`;
+    const badgeBg = remaining === 0 ? '#2B6E68' : '#C7791B';
+
     html += `
-      <div class="zone-card" data-zone="${z.id}">
+      <div class="zone-card" data-zone="${z.id}" style="cursor:pointer;">
         <div>
           <div class="zone-name">${z.nom}</div>
-          <div class="zone-meta">${activePoints.length} tâche(s) programmée(s) aujourd'hui</div>
+          <div class="zone-meta">${activePoints.length} tâche(s) au planning</div>
         </div>
-        <span class="zone-badge a-faire">À réaliser</span>
+        <span class="zone-badge ${badgeClass}" style="background:${badgeBg};color:#fff;font-weight:700;padding:4px 8px;border-radius:6px;font-size:11px;">${badgeText}</span>
       </div>
     `;
   }
+
   grid.innerHTML = html;
 
   grid.querySelectorAll('.zone-card').forEach(card=>{
@@ -669,7 +709,7 @@ async function renderControle(){
 }
 
 /* =========================================================================
-   ÉCRAN HISTORIQUE (AVEC SOMMAIRE DE NAVIGATION PAR ZONE ET HARMONISATION PDF)
+   ÉCRAN HISTORIQUE
    ========================================================================= */
 async function renderHistory(){
   root.innerHTML = `
@@ -734,7 +774,6 @@ async function renderHistory(){
 
       if(c) hasDataForDate = true;
 
-      // Bouton du sommaire
       summaryHtml += `
         <a href="#hist_zone_${z.id}" style="text-decoration:none;display:flex;justify-content:space-between;align-items:center;background:#fff;padding:8px 10px;border-radius:6px;border:1px solid #E7E1D6;color:#211E1A;font-size:12px;font-weight:600;">
           <span>• ${z.nom}</span>
@@ -839,7 +878,7 @@ async function renderHistory(){
 }
 
 /* =========================================================================
-   ÉCRAN STATISTIQUES AVANCÉES & COMPARAISONS INTERACTIVES
+   ÉCRAN STATISTIQUES AVANCÉES
    ========================================================================= */
 async function renderStats(){
   root.innerHTML = `
@@ -925,7 +964,6 @@ async function renderStats(){
 
     const deltaRate = currentStats.rate - refRate;
 
-    // Top 3 tâches problématiques
     let topEcarts = Object.keys(currentStats.itemEcartsMap).map(id => {
       let label = id;
       Object.keys(POINTS).forEach(zk => {
@@ -936,7 +974,6 @@ async function renderStats(){
     }).sort((a,b) => b.count - a.count).slice(0,3);
 
     let html = `
-      <!-- KPIS PRINCIPAUX -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:15px;">
         <div style="background:#FAF8F3;padding:14px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
           <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">Taux Conformité (7j)</div>
@@ -953,10 +990,9 @@ async function renderStats(){
         </div>
       </div>
 
-      <!-- COMPARAISON GRAPHIQUE BARRES SVG -->
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
         <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:12px;">📊 Analyse Comparative de Conformité</div>
-        <div style="display:flex;align-items:flex-end;justify-content:space-around;height:120px;border-bottom:2px solid #E7E1D6;padding-bottom:5px;">
+        <div style="display:flex;align-items:flex-end;justify-style:space-around;height:120px;border-bottom:2px solid #E7E1D6;padding-bottom:5px;">
           <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
             <span style="font-size:11px;font-weight:700;color:#2B6E68;margin-bottom:4px;">${currentStats.rate}%</span>
             <div style="width:100%;max-width:50px;background:#2B6E68;height:${Math.max(10, currentStats.rate)}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
@@ -971,7 +1007,6 @@ async function renderStats(){
         </div>
       </div>
 
-      <!-- PERFORMANCE PAR ZONE -->
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
         <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">Répartition par Zone (7 derniers jours)</div>
     `;
@@ -995,7 +1030,6 @@ async function renderStats(){
     html += `
       </div>
 
-      <!-- TOP ÉCARTS & POINTS NOIRS -->
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;">
         <div style="font-weight:700;font-size:13px;color:#B23A34;margin-bottom:10px;">⚠️ Top Points de Vigilance (Écarts récurrents)</div>
         ${topEcarts.length > 0 ? topEcarts.map(te => `
