@@ -494,17 +494,6 @@ async function checkPin(){
 async function goToZones(){ activeZoneId=null; await renderZones(); }
 
 /* =========================================================================
-   DÉLÉGATION GLOBALE DES ÉVÉNEMENTS BOUTONS
-   ========================================================================= */
-document.addEventListener('click', (e) => {
-  const target = e.target.closest('#mailScheduleBtn');
-  if(target){
-    e.preventDefault();
-    renderMailScheduleAdmin();
-  }
-});
-
-/* =========================================================================
    MENU PRINCIPAL
    ========================================================================= */
 async function renderZones(){
@@ -604,6 +593,14 @@ async function renderZones(){
   document.getElementById('historyBtn').onclick = () => renderHistory();
   document.getElementById('statsBtn').onclick = () => renderStats();
   document.getElementById('globalPdfBtn').onclick = () => generateGlobalPDF();
+
+  const mailBtn = document.getElementById('mailScheduleBtn');
+  if(mailBtn){
+    mailBtn.onclick = (evt) => {
+      evt.preventDefault();
+      renderMailScheduleAdmin();
+    };
+  }
 
   document.getElementById('logoutBtn').onclick = ()=>{ session=null; clearTimeout(inactivityTimer); currentPin=''; renderLogin(); };
   
