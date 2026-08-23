@@ -105,6 +105,104 @@ const POINTS = {
   ]
 };
 
+/* =========================================================================
+   MOTEUR DE STOCKAGE HYBRIDE (PROVISOIRE LOCAL -> CLOUD)
+   ========================================================================= */
+const DB_NAME = 'soan-hybrid-db';
+const DB_VERSION = 1;
+let dbPromise = null;
+
+function openDB(){
+  if(dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject)=>{
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e)=>{
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains('controles')) db.createObjectStore('controles', { keyPath:'id' });
+      if(!db.objectStoreNames.contains('agents')) db.createObjectStore('agents', { keyPath:'id' });
+      if(!db.objectStoreNames.contains('task_schedule')) db.createObjectStore('task_schedule', { keyPath:'taskId' });
+      if(!db.objectStoreNames.contains('sync_queue')) db.createObjectStore('sync_queue', { keyPath:'id' });
+    };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+  return dbPromise;
+}
+
+async function idbPut(store, value){
+  const db = await openDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).put(value);
+    tx.oncomplete = ()=>resolve(value);
+    tx.onerror = ()=>reject(tx.error);
+  });
+}
+
+async function idbGet(store, id){
+  const db = await openDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).get(id);
+    req.onsuccess = ()=>resolve(req.result || null);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+
+async function idbGetAll(store){
+  const db = await openDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = ()=>resolve(req.result || []);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+
+async function idbDelete(store, id){
+  const db = await openDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).delete(id);
+    tx.oncomplete = ()=>resolve();
+    tx.onerror = ()=>reject(tx.error);
+  });
+}
+
+/* Sync Engine : envoie le cache local vers Firestore dès qu'une connexion est disponible */
+async function pushToCloud(collection, id, data){
+  await idbPut(collection, data); // 1. Provisoire immédiat
+  if(navigator.onLine){
+    try {
+      await db.collection(collection).doc(id).set(data, { merge: true });
+      await idbDelete('sync_queue', `${collection}_${id}`);
+      return true;
+    } catch(e) {
+      await idbPut('sync_queue', { id: `${collection}_${id}`, collection, docId: id, data });
+      return false;
+    }
+  } else {
+    await idbPut('sync_queue', { id: `${collection}_${id}`, collection, docId: id, data });
+    return false;
+  }
+}
+
+async function syncPendingQueue(){
+  if(!navigator.onLine) return;
+  const queue = await idbGetAll('sync_queue');
+  for(const item of queue){
+    try {
+      await db.collection(item.collection).doc(item.docId).set(item.data, { merge: true });
+      await idbDelete('sync_queue', item.id);
+    } catch(e){}
+  }
+}
+
+window.addEventListener('online', syncPendingQueue);
+
+/* =========================================================================
+   APPLICATION LOGIC
+   ========================================================================= */
 let session = null;
 let currentPin = '';
 let pendingRole = 'agent';
@@ -127,7 +225,6 @@ function toast(msg){
   window.__toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
 }
 
-// Redimensionnement optimisé des images (évite le rejet par Firestore)
 function fileToResizedBase64(file, maxWidth){
   return new Promise((resolve, reject)=>{
     const img = new Image();
@@ -157,10 +254,18 @@ async function getPointsForToday(zoneId, dateIso){
   const allPoints = POINTS[zoneId] || [];
   
   let schedMap = {};
-  try {
-    const snap = await db.collection('task_schedule').get();
-    snap.docs.forEach(doc => { schedMap[doc.id] = doc.data(); });
-  } catch(e) {}
+  const localSched = await idbGetAll('task_schedule');
+  localSched.forEach(s => { schedMap[s.taskId] = s; });
+
+  if(navigator.onLine){
+    try {
+      const snap = await db.collection('task_schedule').get();
+      snap.docs.forEach(doc => { 
+        schedMap[doc.id] = doc.data(); 
+        idbPut('task_schedule', doc.data());
+      });
+    } catch(e) {}
+  }
 
   return allPoints.filter(p=>{
     if(p.freq === 'J') return true;
@@ -193,6 +298,7 @@ function topbarHtml(title, sub){
 }
 
 function renderLogin(){
+  syncPendingQueue();
   root.innerHTML = `
     <div id="screen-login">
       <div class="login-card">
@@ -250,18 +356,23 @@ function onPinKey(k){
 }
 
 async function checkPin(){
-  try {
-    const snap = await db.collection('agents').where('pin', '==', currentPin).get();
-    const match = snap.docs.map(d=>d.data()).find(a=>a.role===pendingRole && a.actif!==false);
-    if(match){
-      session = { role:pendingRole, agentId:match.id, nom:match.nom };
-      currentPin=''; goToZones();
-    } else {
-      const errEl = document.getElementById('pinError');
-      if(errEl) errEl.textContent = 'Code incorrect'; currentPin=''; setTimeout(renderPinDots,150);
-    }
-  } catch(e) {
-    toast('Erreur de connexion cloud');
+  const localAgents = await idbGetAll('agents');
+  let match = localAgents.find(a=>a.pin===currentPin && a.role===pendingRole && a.actif!==false);
+
+  if(!match && navigator.onLine){
+    try {
+      const snap = await db.collection('agents').where('pin', '==', currentPin).get();
+      match = snap.docs.map(d=>d.data()).find(a=>a.role===pendingRole && a.actif!==false);
+      if(match) await idbPut('agents', match);
+    } catch(e){}
+  }
+
+  if(match){
+    session = { role:pendingRole, agentId:match.id, nom:match.nom };
+    currentPin=''; goToZones();
+  } else {
+    const errEl = document.getElementById('pinError');
+    if(errEl) errEl.textContent = 'Code incorrect'; currentPin=''; setTimeout(renderPinDots,150);
   }
 }
 
@@ -322,29 +433,32 @@ async function renderZones(){
 
 async function renderControle(){
   const date = todayISO();
-  let c = {
+  
+  // 1. Charger depuis IndexedDB local provisoire
+  let c = await idbGet('controles', activeControleId) || {
     id: activeControleId, zoneId: activeZoneId, date,
     passageEquipe: { agentNom:null, heure:null, reponses:{} },
     contreVisite:  { controleurNom:null, heure:null, reponses:{} }
   };
 
-  try {
-    const doc = await db.collection('controles').doc(activeControleId).get();
-    if(doc.exists) {
-      c = doc.data();
-      if(!c.passageEquipe) c.passageEquipe = { agentNom:null, heure:null, reponses:{} };
-      if(!c.contreVisite) c.contreVisite = { controleurNom:null, heure:null, reponses:{} };
-    }
-  } catch(e) {}
+  // 2. Tenter d'enrichir depuis le Cloud sans effacer le local
+  if(navigator.onLine){
+    try {
+      const doc = await db.collection('controles').doc(activeControleId).get();
+      if(doc.exists) {
+        const cloudData = doc.data();
+        c.passageEquipe = cloudData.passageEquipe || c.passageEquipe;
+        c.contreVisite = cloudData.contreVisite || c.contreVisite;
+        await idbPut('controles', c);
+      }
+    } catch(e){}
+  }
 
   const zone = ZONES.find(z=>z.id===activeZoneId);
   const activePoints = await getPointsForToday(activeZoneId, date);
   const isContreVisite = activeMode==='contreVisite';
   
-  // Branche d'écriture en cours (Équipe ou Contrôleur)
   const currentBranch = isContreVisite ? c.contreVisite : c.passageEquipe;
-  
-  // Branche de lecture complémentaire (pour afficher les photos saisies par l'Équipe)
   const equipeReponses = (c.passageEquipe && c.passageEquipe.reponses) || {};
 
   root.innerHTML = `
@@ -353,7 +467,7 @@ async function renderControle(){
       <div class="back-link" id="backBtn">← Retour aux zones</div>
       <div class="section">
         <div id="pointsList"></div>
-        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">Enregistrer le rapport en ligne</button>
+        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">Enregistrer le rapport</button>
         <button class="btn ghost block" id="pdfBtn" style="margin-top:8px;">📄 Générer Rapport de Prestation PDF</button>
       </div>
     </div>
@@ -367,7 +481,7 @@ async function renderControle(){
     const r = currentBranch.reponses[p.id] || { conforme:null, photos:[], commentaire:'' };
     const myPhotos = r.photos || [];
     
-    // Si on est contrôleur, on va chercher aussi les photos prises par l'équipe
+    // Extraction des photos faites par l'Équipe pour le Contrôleur
     const eqR = equipeReponses[p.id] || {};
     const eqPhotos = isContreVisite ? (eqR.photos || []) : [];
 
@@ -382,13 +496,13 @@ async function renderControle(){
         </div>
 
         ${isContreVisite && eqPhotos.length ? `
-          <div style="font-size:11px;color:#6B655C;margin-top:4px;">Photos saisies par l'Équipe :</div>
-          <div class="point-photo-row" style="margin-bottom:8px;">
+          <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:6px;">📸 Photos transmises par l'Équipe :</div>
+          <div class="point-photo-row" style="margin-bottom:8px;background:#DCEEEC;padding:6px;border-radius:8px;">
             ${eqPhotos.map(pSrc=>`<img class="photo-thumb" src="${pSrc}" style="border:2px solid #2B6E68;">`).join('')}
           </div>
         ` : ''}
 
-        <div style="font-size:11px;color:#6B655C;">${isContreVisite?'Tes photos :':'Photos :'}</div>
+        <div style="font-size:11px;color:#6B655C;">${isContreVisite?'Tes photos contrôleur :':'Photos de prestation :'}</div>
         <div class="point-photo-row" id="photos_${p.id}">
           ${myPhotos.map(pSrc=>`<img class="photo-thumb" src="${pSrc}">`).join('')}
           <label class="photo-btn">
@@ -437,25 +551,19 @@ async function renderControle(){
     if(isContreVisite) currentBranch.controleurNom = session.nom;
     else currentBranch.agentNom = session.nom;
 
-    try {
-      await db.collection('controles').doc(c.id).set(c, { merge: true });
-      toast('Rapport et photos synchronisés !');
-    } catch(e) {
-      toast('Erreur d\'envoi cloud');
-    }
+    const synced = await pushToCloud('controles', c.id, c);
+    toast(synced ? 'Rapport synchronisé au cloud !' : 'Enregistré localement (hors-ligne)');
     goToZones();
   };
 }
 
 /* =========================================================================
-   PLANNING TÂCHES EN TEMPS RÉEL (FIRESTORE)
+   ADMINISTRATION DU PLANNING
    ========================================================================= */
 async function renderTaskAdmin(){
   let schedMap = {};
-  try {
-    const snap = await db.collection('task_schedule').get();
-    snap.docs.forEach(doc => { schedMap[doc.id] = doc.data(); });
-  } catch(e) {}
+  const localSched = await idbGetAll('task_schedule');
+  localSched.forEach(s => { schedMap[s.taskId] = s; });
 
   let tasksHtml = '';
   ZONES.forEach(z => {
@@ -493,70 +601,71 @@ async function renderTaskAdmin(){
 
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Planning des Tâches', 'Administration Cloud')}
+      ${topbarHtml('Planning des Tâches', 'Administration Hybrid')}
       <div class="back-link" id="backBtn">← Retour aux zones</div>
       <div class="section">
-        <div class="section-note">Les modifications s'appliqueront instantanément sur tous les téléphones.</div>
+        <div class="section-note">Définissez précisément le jour de réalisation de chaque tâche.</div>
         ${tasksHtml}
-        <button class="btn amber block" id="saveTasksBtn" style="margin-top:20px;">Sauvegarder et Synchroniser</button>
+        <button class="btn amber block" id="saveTasksBtn" style="margin-top:20px;">Enregistrer le planning</button>
       </div>
     </div>
   `;
 
   document.getElementById('backBtn').onclick = goToZones;
   document.getElementById('saveTasksBtn').onclick = async ()=>{
-    const batch = db.batch();
-    
-    document.querySelectorAll('.task-sched-select').forEach(sel => {
-      const ref = db.collection('task_schedule').doc(sel.dataset.task);
-      batch.set(ref, { taskId: sel.dataset.task, freq: sel.dataset.freq, targetValue: parseInt(sel.value) }, { merge: true });
-    });
-
-    document.querySelectorAll('.task-sched-input').forEach(inp => {
-      const ref = db.collection('task_schedule').doc(inp.dataset.task);
-      batch.set(ref, { taskId: inp.dataset.task, freq: inp.dataset.freq, targetValue: parseInt(inp.value)||1 }, { merge: true });
-    });
-
-    await batch.commit();
-    toast('Planning global mis à jour !');
+    const selects = document.querySelectorAll('.task-sched-select');
+    for(const sel of selects){
+      const data = { taskId: sel.dataset.task, freq: sel.dataset.freq, targetValue: parseInt(sel.value) };
+      await pushToCloud('task_schedule', sel.dataset.task, data);
+    }
+    const inputs = document.querySelectorAll('.task-sched-input');
+    for(const inp of inputs){
+      const data = { taskId: inp.dataset.task, freq: inp.dataset.freq, targetValue: parseInt(inp.value)||1 };
+      await pushToCloud('task_schedule', inp.dataset.task, data);
+    }
+    toast('Planning sauvegardé !');
     goToZones();
   };
 }
 
 /* =========================================================================
-   GESTION DES UTILISATEURS EN TEMPS RÉEL (FIRESTORE)
+   ADMINISTRATION UTILISATEURS (SUPPRESSION HYBRIDE CLOUD + LOCAL)
    ========================================================================= */
-let unsubscribeAgents = null;
-
 async function renderAgentsAdmin(){
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Gestion Utilisateurs', 'Cloud Multi-appareils')}
+      ${topbarHtml('Gestion Utilisateurs', 'Cloud & Local')}
       <div class="back-link" id="backBtn">← Retour aux zones</div>
       <div class="section">
-        <div id="agentsList"><div class="section-note">Chargement des comptes en ligne…</div></div>
+        <div id="agentsList"><div class="section-note">Chargement…</div></div>
         <button class="btn amber block" id="addAgentBtn" style="margin-top:15px;">+ Ajouter un profil</button>
       </div>
     </div>
   `;
-  document.getElementById('backBtn').onclick = ()=>{
-    if(unsubscribeAgents) unsubscribeAgents();
-    goToZones();
-  };
+  document.getElementById('backBtn').onclick = goToZones;
   document.getElementById('addAgentBtn').onclick = ()=>openAgentModal();
   
-  if(unsubscribeAgents) unsubscribeAgents();
-  unsubscribeAgents = db.collection('agents').onSnapshot(snap => {
-    const agents = snap.docs.map(d=>Object.assign({ id: d.id }, d.data()));
-    refreshAgentsList(agents);
-  });
+  await syncAgentsList();
+}
+
+async function syncAgentsList(){
+  let agents = await idbGetAll('agents');
+  
+  if(navigator.onLine){
+    try {
+      const snap = await db.collection('agents').get();
+      agents = snap.docs.map(d=>Object.assign({ id: d.id }, d.data()));
+      for(const a of agents) await idbPut('agents', a);
+    } catch(e){}
+  }
+  refreshAgentsList(agents);
 }
 
 function refreshAgentsList(agents){
   const el = document.getElementById('agentsList');
   if(!el) return;
   if(!agents.length){
-    el.innerHTML = '<div class="section-note">Aucun profil enregistré dans le cloud. Créez votre premier compte ci-dessous.</div>';
+    el.innerHTML = '<div class="section-note">Aucun profil enregistré. Créez votre premier compte ci-dessous.</div>';
     return;
   }
   el.innerHTML = agents.map(a=>`
@@ -574,15 +683,22 @@ function refreshAgentsList(agents){
 
   el.querySelectorAll('[data-edit]').forEach(btn=>{
     btn.onclick = async ()=>{
-      const doc = await db.collection('agents').doc(btn.dataset.edit).get();
-      if(doc.exists) openAgentModal(Object.assign({ id: doc.id }, doc.data()));
+      const a = await idbGet('agents', btn.dataset.edit);
+      if(a) openAgentModal(a);
     };
   });
   el.querySelectorAll('[data-del]').forEach(btn=>{
     btn.onclick = async ()=>{
       if(!confirm('Supprimer définitivement ce profil ?')) return;
-      await db.collection('agents').doc(btn.dataset.del).delete();
-      toast('Profil supprimé !');
+      const id = btn.dataset.del;
+      
+      // Suppression combinée Local + Cloud
+      await idbDelete('agents', id);
+      if(navigator.onLine){
+        try { await db.collection('agents').doc(id).delete(); } catch(e){}
+      }
+      toast('Profil définitivement supprimé !');
+      await syncAgentsList();
     };
   });
 }
@@ -616,10 +732,12 @@ function openAgentModal(existing){
     if(!nom || !/^\d{4}$/.test(pin)){ toast('Saisissez un nom et un PIN à 4 chiffres'); return; }
     
     const id = existing ? existing.id : uid('agent');
-    await db.collection('agents').doc(id).set({ nom, pin, role, actif:true }, { merge: true });
+    const agentData = { id, nom, pin, role, actif:true };
     
+    await pushToCloud('agents', id, agentData);
     backdrop.remove();
-    toast('Profil synchronisé en ligne !');
+    toast('Profil sauvegardé !');
+    await syncAgentsList();
   };
 }
 
