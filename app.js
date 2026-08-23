@@ -820,7 +820,6 @@ async function renderHistory(){
         const cvOk = (rCv.conforme !== false);
 
         if(rEq.conforme !== undefined || rCv.conforme !== undefined) zoneChecked++;
-        // Un point est en NOK s'il présente un défaut équipe, contrôleur ou un écart
         if(!cvOk || !eqOk) zoneNokCount++;
       });
 
@@ -930,7 +929,7 @@ async function renderHistory(){
 }
 
 /* =========================================================================
-   ÉCRAN STATISTIQUES & SUIVI CENTRÉ SUR LES NOK
+   ÉCRAN STATISTIQUES & SUIVI CENTRÉ SUR LES NOK (XXX NOK dont XX écarts)
    ========================================================================= */
 async function renderStats(){
   root.innerHTML = `
@@ -982,7 +981,6 @@ async function renderStats(){
 
           if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].total++;
 
-          // Un point est un NOK global si le contrôleur a invalidé ou si l'équipe est NOK
           if(!cvOk || !eqOk){
             nokCount++;
             if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].nok++;
@@ -997,9 +995,8 @@ async function renderStats(){
     });
 
     const nokRate = totalChecked ? Math.round((nokCount / totalChecked) * 100) : 0;
-    const okRate = 100 - nokRate;
 
-    return { totalChecked, nokCount, ecartsCount, nokRate, okRate, zoneBreakdown, itemNokMap };
+    return { totalChecked, nokCount, ecartsCount, nokRate, zoneBreakdown, itemNokMap };
   };
 
   const updateStatsUI = () => {
@@ -1012,7 +1009,7 @@ async function renderStats(){
 
     const mode = contextSelect.value;
     const refNokRate = mode === 'target' ? 5 : prevStats.nokRate;
-    const refLabel = mode === 'target' ? 'vs Cible Maxi (5%)' : 'vs Semaine précédente';
+    const refLabel = mode === 'target' ? 'vs Cible Max (5%)' : 'vs Semaine précédente';
 
     const deltaNok = currentStats.nokRate - refNokRate;
 
@@ -1036,9 +1033,9 @@ async function renderStats(){
         </div>
 
         <div style="background:#FAF8F3;padding:14px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
-          <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">Total NOK / Écarts</div>
-          <div style="font-size:26px;font-weight:800;color:#B23A34;margin-top:2px;">${currentStats.nokCount}</div>
-          <div style="font-size:11px;color:#6B655C;margin-top:2px;">dont ${currentStats.ecartsCount} écart(s) direct(s)</div>
+          <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">Anomalies Relevées</div>
+          <div style="font-size:20px;font-weight:800;color:#B23A34;margin-top:4px;">${currentStats.nokCount} NOK</div>
+          <div style="font-size:12px;color:#6B655C;margin-top:2px;font-weight:600;">dont ${currentStats.ecartsCount} écart(s)</div>
         </div>
       </div>
 
@@ -1101,7 +1098,7 @@ async function renderStats(){
 }
 
 /* =========================================================================
-   GÉNÉRATION DU RAPPORT PDF GLOBAL (CENTRÉ SUR LES NOK)
+   GÉNÉRATION DU RAPPORT PDF GLOBAL (XXX NOK dont XX écarts)
    ========================================================================= */
 async function generateGlobalPDF(){
   if(typeof window.jspdf === 'undefined'){ toast('Bibliothèque PDF indisponible'); return; }
@@ -1119,6 +1116,7 @@ async function generateGlobalPDF(){
   const C_LINE = [231, 225, 214];
 
   let totalNok = 0;
+  let totalEcarts = 0;
   const zonePageMap = {};
 
   // --- PAGE 1 : EN-TÊTE ET SOMMAIRE ---
@@ -1217,6 +1215,7 @@ async function generateGlobalPDF(){
       const isRealEcart = (eqConformeCalculated === true && cvConformeCalculated === false);
 
       if(!isFinalOk || !eqConformeCalculated) totalNok++;
+      if(isRealEcart) totalEcarts++;
 
       if(y > 250){ docPdf.addPage(); y = 20; }
 
@@ -1308,7 +1307,7 @@ async function generateGlobalPDF(){
     }
   }
 
-  // --- RETOUR PAGE 1 : LIENS CLIQUABLES ---
+  // --- RETOUR PAGE 1 : LIENS CLIQUABLES & BILAN EN FORMULE DE MANIÈRE EXACTE ---
   docPdf.setPage(1);
   for(const z of ZONES){
     const info = zonePageMap[z.id];
@@ -1322,7 +1321,12 @@ async function generateGlobalPDF(){
   docPdf.setTextColor(255, 255, 255);
   docPdf.setFont('helvetica', 'bold');
   docPdf.setFontSize(10);
-  docPdf.text(`BILAN CONTRÔLE : ${totalNok === 0 ? 'PRESTATION CONFORME — AUCUNE ANOMALIE (0 NOK)' : totalNok + ' ANOMALIE(S) / NOK CONSTATÉ(S)'}`, 18, 149);
+  
+  const statusMsg = totalNok === 0 
+    ? 'BILAN CONTRÔLE : PRESTATION CONFORME — 0 NOK' 
+    : `BILAN CONTRÔLE : ${totalNok} NOK dont ${totalEcarts} écart(s)`;
+  
+  docPdf.text(statusMsg, 18, 149);
 
   docPdf.save(`Rapport_SOAN_Global_${date}.pdf`);
 }
