@@ -106,7 +106,7 @@ const POINTS = {
 };
 
 /* =========================================================================
-   GESTION STOCKAGE HYBRIDE
+   STOCKAGE HYBRIDE (LOCAL + CLOUD)
    ========================================================================= */
 const DB_NAME = 'soan-hybrid-db';
 const DB_VERSION = 1;
@@ -200,7 +200,7 @@ async function syncPendingQueue(){
 window.addEventListener('online', syncPendingQueue);
 
 /* =========================================================================
-   APPLICATION LOGIC
+   APPLICATION LOGIC & STATE
    ========================================================================= */
 let session = null;
 let currentPin = '';
@@ -224,15 +224,14 @@ function toast(msg){
   window.__toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
 }
 
-// Lightbox pour agrandir n'importe quelle photo
 function openPhotoViewer(src, title){
   const backdrop = document.createElement('div');
   backdrop.className = 'pv-backdrop';
-  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;padding:20px;';
+  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;padding:20px;';
   backdrop.innerHTML = `
-    <div style="color:#fff;margin-bottom:10px;font-weight:600;font-size:14px;">${title||'Visualisation Photo'}</div>
-    <img src="${src}" style="max-width:100%;max-height:80vh;border-radius:8px;box-shadow:0 5px 25px rgba(0,0,0,0.5);">
-    <button class="btn amber" style="margin-top:15px;padding:8px 20px;">Fermer</button>
+    <div style="color:#fff;margin-bottom:12px;font-weight:600;font-size:14px;text-align:center;">${title||'Visualisation Photo'}</div>
+    <img src="${src}" style="max-width:100%;max-height:78vh;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.6);">
+    <button class="btn amber" style="margin-top:16px;padding:8px 24px;">Fermer</button>
   `;
   document.body.appendChild(backdrop);
   backdrop.onclick = () => backdrop.remove();
@@ -310,6 +309,9 @@ function topbarHtml(title, sub){
   `;
 }
 
+/* =========================================================================
+   ÉCRAN DE LOGIN
+   ========================================================================= */
 function renderLogin(){
   syncPendingQueue();
   root.innerHTML = `
@@ -391,6 +393,9 @@ async function checkPin(){
 
 async function goToZones(){ activeZoneId=null; await renderZones(); }
 
+/* =========================================================================
+   MENU PRINCIPAL - ZONES & NAVIGATION
+   ========================================================================= */
 async function renderZones(){
   const date = todayISO();
   const roleLabel = session.role==='agent' ? `Équipe · ${session.nom}` : `Contrôleur · ${session.nom}`;
@@ -402,7 +407,14 @@ async function renderZones(){
         <div class="section-title">Zones de Prestation</div>
         <div class="zone-grid" id="zoneGrid"></div>
       </div>
+      
+      <div style="display:flex;gap:10px;margin-bottom:12px;">
+        <button class="btn ghost block" id="historyBtn" style="flex:1;">📜 Historique</button>
+        <button class="btn ghost block" id="statsBtn" style="flex:1;">📊 Stats</button>
+      </div>
+
       <button class="btn ghost block" id="globalPdfBtn" style="margin-bottom:15px;border-color:#C7791B;color:#C7791B;">📄 Générer Rapport Global PDF de la Journée</button>
+
       ${session.role==='controleur' ? `
         <button class="btn amber block" id="adminTasksBtn" style="margin-bottom:10px;">📅 Planning & Fréquence des Tâches</button>
         <button class="btn amber block" id="adminUsersBtn" style="margin-bottom:10px;">👤 Gestion des Utilisateurs / Accès</button>
@@ -436,6 +448,8 @@ async function renderZones(){
     };
   });
 
+  document.getElementById('historyBtn').onclick = () => renderHistory();
+  document.getElementById('statsBtn').onclick = () => renderStats();
   document.getElementById('globalPdfBtn').onclick = () => generateGlobalPDF();
   document.getElementById('logoutBtn').onclick = ()=>{ session=null; currentPin=''; renderLogin(); };
   
@@ -446,6 +460,9 @@ async function renderZones(){
   if(usersBtn) usersBtn.onclick = () => renderAgentsAdmin();
 }
 
+/* =========================================================================
+   SAISIE CONTRÔLE / PRESTATION ZONE
+   ========================================================================= */
 async function renderControle(){
   const date = todayISO();
   
@@ -525,7 +542,6 @@ async function renderControle(){
     `;
   }).join('');
 
-  // Gestion de la visionneuse photo
   listEl.querySelectorAll('.click-zoom').forEach(img => {
     img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
   });
@@ -575,10 +591,174 @@ async function renderControle(){
 }
 
 /* =========================================================================
-   GÉNÉRATION DU RAPPORT PDF GLOBAL (TOUTES ZONES + ÉCARTS + PHOTOS)
+   ÉCRAN HISTORIQUE & CONSULTATION DES ANCIENS RAPPORTS
    ========================================================================= */
+async function renderHistory(){
+  root.innerHTML = `
+    <div class="wrap">
+      ${topbarHtml('Historique des Prestations', 'Consultation Archives')}
+      <div class="back-link" id="backBtn">← Retour aux zones</div>
+      <div class="section">
+        <div class="field">
+          <label>Sélectionner une date d'archive :</label>
+          <input type="date" id="histDateSelect" value="${todayISO()}">
+        </div>
+        <div id="histContent" style="margin-top:15px;">Chargement…</div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = goToZones;
+  const dateInput = document.getElementById('histDateSelect');
+  
+  const loadHistoryDate = async (selectedDate) => {
+    const content = document.getElementById('histContent');
+    content.innerHTML = '<div class="section-note">Chargement des données...</div>';
+    
+    let html = '';
+    for(const z of ZONES){
+      const controleId = `${selectedDate}__${z.id}`;
+      let c = await idbGet('controles', controleId);
+      if(navigator.onLine && !c){
+        try {
+          const doc = await db.collection('controles').doc(controleId).get();
+          if(doc.exists) c = doc.data();
+        } catch(e){}
+      }
+
+      if(c){
+        const eq = c.passageEquipe || {};
+        const cv = c.contreVisite || {};
+        html += `
+          <div style="border:1px solid #E7E1D6;padding:12px;border-radius:10px;margin-bottom:12px;background:#fff;">
+            <div style="font-weight:600;color:#C7791B;font-size:15px;">ZONE : ${z.nom}</div>
+            <div style="font-size:11px;color:#6B655C;margin-bottom:8px;">
+              Équipe : ${eq.agentNom||'N/A'} (${eq.heure||'--:--'}) | Contrôleur : ${cv.controleurNom||'N/A'} (${cv.heure||'--:--'})
+            </div>
+        `;
+
+        const activePoints = await getPointsForToday(z.id, selectedDate);
+        activePoints.forEach(p => {
+          const rEq = (eq.reponses && eq.reponses[p.id]) || {};
+          const rCv = (cv.reponses && cv.reponses[p.id]) || {};
+          const allPhotos = [...(rEq.photos||[]), ...(rCv.photos||[])];
+
+          html += `
+            <div style="padding:6px 0;border-top:1px dashed #E7E1D6;font-size:12px;">
+              <div><strong>${p.label}</strong> -> Équipe: [${rEq.conforme===true?'OK':(rEq.conforme===false?'NOK':'—')}] | Ctrl: [${rCv.conforme===true?'OK':(rCv.conforme===false?'NOK':'—')}]</div>
+              ${allPhotos.length ? `
+                <div style="display:flex;gap:6px;margin-top:4px;overflow-x:auto;">
+                  ${allPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="${p.label}" style="width:45px;height:45px;object-fit:cover;border-radius:4px;cursor:pointer;">`).join('')}
+                </div>
+              ` : ''}
+            </div>
+          `;
+        });
+        html += `</div>`;
+      }
+    }
+
+    content.innerHTML = html || '<div class="section-note">Aucun rapport enregistré pour cette date.</div>';
+    
+    content.querySelectorAll('.click-zoom').forEach(img => {
+      img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
+    });
+  };
+
+  dateInput.onchange = (e) => loadHistoryDate(e.target.value);
+  loadHistoryDate(todayISO());
+}
+
 /* =========================================================================
-   GÉNÉRATION DU RAPPORT PDF GLOBAL (DA WEB, SOMMAIRE CLIQUABLE, GRANDES PHOTOS)
+   ÉCRAN STATISTIQUES & SUIVI DE CONFORMITÉ
+   ========================================================================= */
+async function renderStats(){
+  root.innerHTML = `
+    <div class="wrap">
+      ${topbarHtml('Statistiques & Conformité', 'Suivi de Prestation')}
+      <div class="back-link" id="backBtn">← Retour aux zones</div>
+      <div class="section">
+        <div id="statsContent">Chargement des données statistiques…</div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = goToZones;
+
+  let allControles = await idbGetAll('controles');
+  if(navigator.onLine){
+    try {
+      const snap = await db.collection('controles').get();
+      allControles = snap.docs.map(d=>d.data());
+    } catch(e){}
+  }
+
+  let totalPointsChecked = 0;
+  let totalConformes = 0;
+  let totalEcarts = 0;
+  let zoneStats = {};
+
+  ZONES.forEach(z => { zoneStats[z.id] = { total:0, ok:0, nom:z.nom }; });
+
+  allControles.forEach(c => {
+    const eq = (c.passageEquipe && c.passageEquipe.reponses) || {};
+    const cv = (c.contreVisite && c.contreVisite.reponses) || {};
+
+    Object.keys(eq).forEach(pId => {
+      const rEq = eq[pId];
+      if(rEq && rEq.conforme !== null){
+        totalPointsChecked++;
+        if(rEq.conforme === true) {
+          totalConformes++;
+          if(zoneStats[c.zoneId]) zoneStats[c.zoneId].ok++;
+        }
+        if(zoneStats[c.zoneId]) zoneStats[c.zoneId].total++;
+      }
+      const rCv = cv[pId];
+      if(rEq && rCv && rEq.conforme !== null && rCv.conforme !== null && rEq.conforme !== rCv.conforme){
+        totalEcarts++;
+      }
+    });
+  });
+
+  const tauxGlobal = totalPointsChecked ? Math.round((totalConformes / totalPointsChecked) * 100) : 0;
+
+  let html = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:15px;">
+      <div style="background:#FAF8F3;padding:12px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
+        <div style="font-size:11px;color:#6B655C;text-transform:uppercase;">Conformité Globale</div>
+        <div style="font-size:24px;font-weight:700;color:#2B6E68;margin-top:4px;">${tauxGlobal}%</div>
+      </div>
+      <div style="background:#FAF8F3;padding:12px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
+        <div style="font-size:11px;color:#6B655C;text-transform:uppercase;">Écarts Détectés</div>
+        <div style="font-size:24px;font-weight:700;color:#B23A34;margin-top:4px;">${totalEcarts}</div>
+      </div>
+    </div>
+
+    <div style="font-weight:600;margin-bottom:10px;font-size:14px;">Taux de Conformité par Zone :</div>
+  `;
+
+  ZONES.forEach(z => {
+    const zs = zoneStats[z.id];
+    const pct = zs.total ? Math.round((zs.ok / zs.total) * 100) : 0;
+    html += `
+      <div style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+          <span>${z.nom}</span>
+          <strong>${pct}% (${zs.ok}/${zs.total})</strong>
+        </div>
+        <div style="background:#E7E1D6;height:8px;border-radius:4px;overflow:hidden;">
+          <div style="background:#2B6E68;width:${pct}%;height:100%;"></div>
+        </div>
+      </div>
+    `;
+  });
+
+  document.getElementById('statsContent').innerHTML = html;
+}
+
+/* =========================================================================
+   GÉNÉRATION DU RAPPORT PDF GLOBAL (CORRIGÉ SANS DÉPASSEMENT)
    ========================================================================= */
 async function generateGlobalPDF(){
   if(typeof window.jspdf === 'undefined'){ toast('Bibliothèque PDF indisponible'); return; }
@@ -586,7 +766,6 @@ async function generateGlobalPDF(){
   const docPdf = new jsPDF({ unit: 'mm', format: 'a4' });
   const date = todayISO();
   
-  // Couleurs DA Web
   const C_INK = [33, 30, 26];
   const C_AMBER = [199, 121, 27];
   const C_TEAL = [43, 110, 104];
@@ -598,21 +777,19 @@ async function generateGlobalPDF(){
   const zonePageMap = {};
 
   // --- PAGE 1 : EN-TÊTE ET SOMMAIRE ---
-  // Bandeau supérieur
   docPdf.setFillColor(...C_INK);
   docPdf.rect(0, 0, 210, 28, 'F');
   
   docPdf.setTextColor(255, 255, 255);
   docPdf.setFont('helvetica', 'bold');
-  docPdf.setFontSize(16);
+  docPdf.setFontSize(15);
   docPdf.text('SASU SOAN — RAPPORT DE PRESTATION', 14, 15);
   
   docPdf.setFont('helvetica', 'normal');
   docPdf.setFontSize(9);
   docPdf.setTextColor(220, 220, 220);
-  docPdf.text(`Date : ${fmtDate(date)}  |  Généré à : ${new Date().toLocaleTimeString('fr-FR')}`, 14, 22);
+  docPdf.text(`Date : ${fmtDate(date)}  |  Généré le : ${new Date().toLocaleTimeString('fr-FR')}`, 14, 22);
 
-  // Cartouche de Garde
   docPdf.setFillColor(...C_BG);
   docPdf.roundedRect(14, 34, 182, 22, 3, 3, 'F');
   docPdf.setDrawColor(...C_LINE);
@@ -621,13 +798,12 @@ async function generateGlobalPDF(){
   docPdf.setTextColor(...C_INK);
   docPdf.setFont('helvetica', 'bold');
   docPdf.setFontSize(10);
-  docPdf.text('SOMMAIRE & NAVIGABILITÉ', 18, 42);
+  docPdf.text('SOMMAIRE DE PRESTATION', 18, 42);
   docPdf.setFont('helvetica', 'normal');
   docPdf.setFontSize(8.5);
   docPdf.setTextColor(100, 100, 100);
-  docPdf.text('Cliquez sur une zone ci-dessous pour accéder directement aux détails et photos.', 18, 48);
+  docPdf.text('Cliquez sur une zone ci-dessous pour accéder directement au rapport détaillé.', 18, 48);
 
-  // --- PRÉ-CHARGEMENT ET CALCUL DU SOMMAIRE ---
   let currentY = 64;
   
   for(const z of ZONES){
@@ -644,9 +820,9 @@ async function generateGlobalPDF(){
     docPdf.setFont('helvetica', 'normal');
     docPdf.setFontSize(8.5);
     docPdf.setTextColor(...C_INK);
-    docPdf.text('Accéder au détail →', 160, currentY + 8);
+    // Alignement X ajusté à 140 mm pour supprimer le dépassement
+    docPdf.text('Accéder au détail ->', 140, currentY + 8);
 
-    // Stockage de la position pour le lien interne
     zonePageMap[z.id] = { ySommaire: currentY, pageTarget: 0 };
     currentY += 16;
   }
@@ -659,7 +835,6 @@ async function generateGlobalPDF(){
 
     let y = 20;
 
-    // Entête de zone
     docPdf.setFillColor(...C_AMBER);
     docPdf.rect(14, y, 182, 8, 'F');
     docPdf.setTextColor(255, 255, 255);
@@ -681,7 +856,6 @@ async function generateGlobalPDF(){
     const eq = (c && c.passageEquipe) || {};
     const cv = (c && c.contreVisite) || {};
 
-    // Sous-titre Intervenants
     docPdf.setFont('helvetica', 'normal');
     docPdf.setFontSize(8.5);
     docPdf.setTextColor(...C_INK);
@@ -698,37 +872,33 @@ async function generateGlobalPDF(){
       const isEcart = (rEq.conforme !== null && rCv.conforme !== null && rEq.conforme !== rCv.conforme);
       if(isEcart) totalEcarts++;
 
-      // Saut de page si nécessaire
       if(y > 250){ docPdf.addPage(); y = 20; }
 
-      // Encadré de Tâche
       docPdf.setFillColor(isEcart ? 254 : 255, isEcart ? 242 : 255, isEcart ? 242 : 255);
       docPdf.setDrawColor(...(isEcart ? C_RED : C_LINE));
       docPdf.roundedRect(14, y, 182, 14, 2, 2, 'FD');
 
       docPdf.setFont('helvetica', 'bold');
-      docPdf.setFontSize(9);
+      docPdf.setFontSize(8.5);
       docPdf.setTextColor(...C_INK);
       docPdf.text(p.label, 18, y + 6);
 
-      // Statuts
       docPdf.setFont('helvetica', 'normal');
       docPdf.setFontSize(8);
-      docPdf.text(`Équipe: ${eqStat}`, 130, y + 6);
-      docPdf.text(`Contrôleur: ${cvStat}`, 155, y + 6);
+      docPdf.text(`Équipe: ${eqStat}`, 125, y + 6);
+      docPdf.text(`Contrôleur: ${cvStat}`, 150, y + 6);
 
       if(isEcart){
         docPdf.setFillColor(...C_RED);
-        docPdf.rect(180, y + 2, 12, 10, 'F');
+        docPdf.rect(175, y + 2, 16, 10, 'F');
         docPdf.setTextColor(255, 255, 255);
         docPdf.setFont('helvetica', 'bold');
         docPdf.setFontSize(7);
-        docPdf.text('ÉCART', 181.5, y + 8);
+        docPdf.text('ÉCART', 177, y + 8);
       }
 
       y += 18;
 
-      // Commentaires
       if(rEq.commentaire || rCv.commentaire){
         docPdf.setFontSize(8);
         docPdf.setTextColor(100, 100, 100);
@@ -736,7 +906,6 @@ async function generateGlobalPDF(){
         if(rCv.commentaire){ docPdf.text(`• Obs. Contrôleur : ${rCv.commentaire}`, 18, y); y += 5; }
       }
 
-      // --- GALERIE PHOTO AGRANDIE (55 x 40 mm) ---
       const allEqPhotos = rEq.photos || [];
       const allCvPhotos = rCv.photos || [];
 
@@ -745,7 +914,6 @@ async function generateGlobalPDF(){
 
         let xPos = 18;
         
-        // Affichage Grandes Photos Équipe
         for(const imgBase64 of allEqPhotos){
           try {
             docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 40);
@@ -758,7 +926,6 @@ async function generateGlobalPDF(){
           } catch(e){}
         }
 
-        // Affichage Grandes Photos Contrôleur
         for(const imgBase64 of allCvPhotos){
           try {
             docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 40);
@@ -776,17 +943,15 @@ async function generateGlobalPDF(){
     }
   }
 
-  // --- RETOUR PAGE 1 : AJOUT DES LIENS DYNAMIQUES DU SOMMAIRE ---
+  // --- RETOUR PAGE 1 : LIENS CLIQUABLES ---
   docPdf.setPage(1);
   for(const z of ZONES){
     const info = zonePageMap[z.id];
     if(info && info.pageTarget > 0){
-      // Ajout de la zone cliquable sur le sommaire
       docPdf.link(14, info.ySommaire, 182, 12, { pageNumber: info.pageTarget });
     }
   }
 
-  // Bilan final sur le sommaire
   docPdf.setFillColor(...(totalEcarts === 0 ? C_TEAL : C_RED));
   docPdf.roundedRect(14, 140, 182, 14, 3, 3, 'F');
   docPdf.setTextColor(255, 255, 255);
@@ -796,6 +961,7 @@ async function generateGlobalPDF(){
 
   docPdf.save(`Rapport_SOAN_Global_${date}.pdf`);
 }
+
 /* =========================================================================
    ADMINISTRATION DU PLANNING
    ========================================================================= */
