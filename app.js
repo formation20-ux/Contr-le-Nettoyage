@@ -1,22 +1,34 @@
 (function(){
 'use strict';
-document.addEventListener('touchstart', function(event) {
-  if (event.touches.length > 1) {
-    event.preventDefault(); // Empêche le pinch-to-zoom à deux doigts
-  }
-}, { passive: false });
 
-let lastTouchEnd = 0;
-document.addEventListener('touchend', function(event) {
-  const now = (new Date()).getTime();
-  if (now - lastTouchEnd <= 300) {
-    // Si deux clics surviennent en moins de 300ms sur un bouton ou une touche
-    if (event.target.classList.contains('pin-key') || event.target.tagName === 'BUTTON') {
-      event.preventDefault();
-    }
+/* =========================================================================
+   CORRECTIFS MOBILE : ANTI-ZOOM DOUBLE-TAP & ANTI-CHIFFRES BLEUS (iOS/Android)
+   ========================================================================= */
+// 1. Injection de la balise meta pour empêcher la détection des numéros de téléphone par Safari/Chrome
+if(!document.querySelector('meta[name="format-detection"]')){
+  const metaTel = document.createElement('meta');
+  metaTel.name = 'format-detection';
+  metaTel.content = 'telephone=no';
+  document.head.appendChild(metaTel);
+}
+
+// 2. Injection du CSS de correctif tactile et couleur des touches
+const styleFix = document.createElement('style');
+styleFix.innerHTML = `
+  button, .pin-key, .role-btn {
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: transparent !important;
   }
-  lastTouchEnd = now;
-}, false);
+  .pin-key, .pin-key * {
+    color: #211E1A !important;
+    text-decoration: none !important;
+  }
+`;
+document.head.appendChild(styleFix);
+
+/* =========================================================================
+   CONFIGURATION FIREBASE
+   ========================================================================= */
 const firebaseConfig = {
   apiKey: "AIzaSyA4pQGdFIgDtt1GxfohxexgHauc4wXM4sk",
   authDomain: "controle-nettoyage.firebaseapp.com",
@@ -945,7 +957,7 @@ async function renderHistory(){
 }
 
 /* =========================================================================
-   ÉCRAN STATISTIQUES & SUIVI CENTRÉ SUR LES NOK (XXX NOK dont XX écarts)
+   ÉCRAN STATISTIQUES & SUIVI CENTRÉ SUR LES NOK
    ========================================================================= */
 async function renderStats(){
   root.innerHTML = `
@@ -1323,7 +1335,7 @@ async function generateGlobalPDF(){
     }
   }
 
-  // --- RETOUR PAGE 1 : LIENS CLIQUABLES & BILAN EN FORMULE DE MANIÈRE EXACTE ---
+  // --- RETOUR PAGE 1 : LIENS CLIQUABLES ---
   docPdf.setPage(1);
   for(const z of ZONES){
     const info = zonePageMap[z.id];
