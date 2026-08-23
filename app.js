@@ -162,6 +162,7 @@ function openDB(){
       if(!db.objectStoreNames.contains('task_schedule')) db.createObjectStore('task_schedule', { keyPath:'taskId' });
       if(!db.objectStoreNames.contains('sync_queue')) db.createObjectStore('sync_queue', { keyPath:'id' });
       if(!db.objectStoreNames.contains('mail_schedule')) db.createObjectStore('mail_schedule', { keyPath:'id' });
+      if(!db.objectStoreNames.contains('pdf_reports')) db.createObjectStore('pdf_reports', { keyPath:'id' });
     };
     req.onsuccess = ()=>resolve(req.result);
     req.onerror = ()=>reject(req.error);
@@ -294,7 +295,7 @@ async function getPointsForToday(zoneId, dateIso){
 }
 
 /* =========================================================================
-   DÉCONNEXION AUTOMATIQUE & ENVOI MAIL IN-APP (EMAILJS)
+   DÉCONNEXION AUTOMATIQUE & ENVOI MAIL IN-APP
    ========================================================================= */
 let session = null;
 let currentPin = '';
@@ -626,9 +627,9 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   PROGRAMMATION & ENVOI DIRECT IN-APP DU MAIL (EMAILJS AVEC DEBUG)
+   PROGRAMMATION & ENVOI DIRECT IN-APP DU MAIL (SANS DEPASSEMENT EMAILJS 50KB)
    ========================================================================= */
-async function generatePDFBase64(){
+async function generateAndStorePDFData(){
   const { jsPDF } = window.jspdf;
   const docPdf = new jsPDF({ unit: 'mm', format: 'a4' });
   const date = todayISO();
@@ -712,9 +713,31 @@ async function generatePDFBase64(){
   docPdf.setFillColor(...(totalNok === 0 ? C_TEAL : C_RED));
   docPdf.roundedRect(14, 140, 182, 14, 3, 3, 'F');
   docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold'); docPdf.setFontSize(10);
-  docPdf.text(`BILAN CONTRÔLE : ${totalNok === 0 ? 'PRESTATION CONFORME — 0 NOK' : totalNok + ' NOK dont ' + totalEcarts + ' écart(s)'}`, 18, 149);
+  
+  const statusSummary = totalNok === 0 
+    ? 'PRESTATION CONFORME — 0 NOK' 
+    : `${totalNok} NOK dont ${totalEcarts} écart(s)`;
 
-  return docPdf.output('datauristring');
+  docPdf.text(`BILAN CONTRÔLE : ${statusSummary}`, 18, 149);
+
+  // Sauvegarde du rapport Cloud pour génération du lien
+  const reportDocId = `report_${date}`;
+  const reportData = {
+    id: reportDocId,
+    dateIso: date,
+    formattedDate: fmtDate(date),
+    nokCount: totalNok,
+    ecartsCount: totalEcarts,
+    statusSummary: statusSummary
+  };
+
+  await pushToCloud('pdf_reports', reportDocId, reportData);
+
+  // Lien direct de consultation
+  const appUrl = window.location.href.split('#')[0];
+  const downloadLink = `${appUrl}#histDateSelect`;
+
+  return { totalNok, totalEcarts, statusSummary, downloadLink };
 }
 
 async function triggerInAppMailSending(emails){
@@ -729,8 +752,8 @@ async function triggerInAppMailSending(emails){
   }
 
   try {
-    toast("Génération & envoi du rapport en cours...");
-    const pdfDataUri = await generatePDFBase64();
+    toast("Génération & envoi du rapport par mail...");
+    const pdfMeta = await generateAndStorePDFData();
 
     for(const recipient of emails){
       const templateParams = {
@@ -738,8 +761,9 @@ async function triggerInAppMailSending(emails){
         email: recipient,
         reply_to: recipient,
         date: fmtDate(todayISO()),
-        message: `Veuillez trouver ci-joint le rapport de prestation du ${fmtDate(todayISO())}.`,
-        content_pdf: pdfDataUri
+        bilan: pdfMeta.statusSummary,
+        pdf_link: pdfMeta.downloadLink,
+        message: `Bilan du jour : ${pdfMeta.statusSummary}.\nConsultez le rapport complet et les photos ici : ${pdfMeta.downloadLink}`
       };
 
       await emailjs.send(
@@ -749,7 +773,7 @@ async function triggerInAppMailSending(emails){
         EMAILJS_CONFIG.publicKey
       );
     }
-    toast(`✉️ Rapport transmis avec succès à ${emails.length} destinataire(s) !`);
+    toast(`✉️ Mail transmis avec succès à ${emails.length} destinataire(s) !`);
   } catch(err) {
     console.error("Erreur EmailJS détaillée :", err);
     const detail = (err && err.text) ? err.text : (err.message || JSON.stringify(err));
