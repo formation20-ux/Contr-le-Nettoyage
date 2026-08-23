@@ -122,7 +122,8 @@ const STATIC_TRANSLATIONS = {
     'Anomalies Relevées': 'Reported Anomalies', 'dont': 'including', 'écart(s)': 'gap(s)', 'Analyse Comparative des Défauts (NOK)': 'Defect Comparative Analysis (NOK)',
     '7j Actuels': 'Current 7 days', 'vs Semaine précédente': 'vs Previous week', 'vs Cible Max (5%)': 'vs Target Max (5%)',
     'Seuil Cible': 'Target Threshold', '7j Précédents': 'Previous 7 days', 'Répartition des NOK par Zone (7 derniers jours)': 'NOK Breakdown by Area (Last 7 days)',
-    'Classement des Tâches les plus souvent NOK': 'Top NOK Tasks Ranking', 'fois NOK': 'times NOK', 'Aucune anomalie NOK relevée sur cette période ! 🎉': 'No NOK anomalies recorded during this period! 🎉'
+    'Classement des Tâches les plus souvent NOK': 'Top NOK Tasks Ranking', 'fois NOK': 'times NOK', 'Aucune anomalie NOK relevée sur cette période ! 🎉': 'No NOK anomalies recorded during this period! 🎉',
+    'Chargement…': 'Loading…', 'Chargement des données...': 'Loading data…', 'Sommaire': 'Summary'
   },
   es: {
     'En ligne': 'En línea', 'Hors-ligne': 'Desconectado', 'SASU SOAN — Prestation Nettoyage': 'SASU SOAN — Servicio de Limpieza',
@@ -146,7 +147,8 @@ const STATIC_TRANSLATIONS = {
     'Anomalies Relevées': 'Anomalías Registradas', 'dont': 'incluyendo', 'écart(s)': 'desviación(es)', 'Analyse Comparative des Défauts (NOK)': 'Análisis Comparativo de Defectos (NOK)',
     '7j Actuels': '7 días actuales', 'vs Semaine précédente': 'vs Semana anterior', 'vs Cible Max (5%)': 'vs Objetivo Máx (5%)',
     'Seuil Cible': 'Umbral Cible', '7j Précédents': '7 días anteriores', 'Répartition des NOK par Zone (7 derniers jours)': 'Distribución de NOK por Área (Últimos 7 días)',
-    'Classement des Tâches les plus souvent NOK': 'Clasificación de Tareas más Frecuentes en NOK', 'fois NOK': 'veces NOK', 'Aucune anomalie NOK relevée sur cette période ! 🎉': '¡Sin anomalías NOK en este período! 🎉'
+    'Classement des Tâches les plus souvent NOK': 'Clasificación de Tareas más Frecuentes en NOK', 'fois NOK': 'veces NOK', 'Aucune anomalie NOK relevée sur cette période ! 🎉': '¡Sin anomalías NOK en este período! 🎉',
+    'Chargement…': 'Cargando…', 'Chargement des données...': 'Cargando datos…', 'Sommaire': 'Resumen'
   },
   ar: {
     'En ligne': 'متصل', 'Hors-ligne': 'غير متصل', 'SASU SOAN — Prestation Nettoyage': 'SASU SOAN — خدمة التنظيف',
@@ -170,7 +172,8 @@ const STATIC_TRANSLATIONS = {
     'Anomalies Relevées': 'الأخطاء المسجلة', 'dont': 'منها', 'écart(s)': 'تفاوت', 'Analyse Comparative des Défauts (NOK)': 'تحليل مقارن للأخطاء (NOK)',
     '7j Actuels': 'آخر 7 أيام', 'vs Semaine précédente': 'مقارنة بالأسبوع السابق', 'vs Cible Max (5%)': 'مقارنة بالهدف (5%)',
     'Seuil Cible': 'الحد المستهدف', '7j Précédents': '7 أيام سابقة', 'Répartition des NOK par Zone (7 derniers jours)': 'توزيع الأخطاء حسب المنطقة (آخر 7 أيام)',
-    'Classement des Tâches les plus souvent NOK': 'ترتيب المهام الأكثر خطأ', 'fois NOK': 'مرات خطأ', 'Aucune anomalie NOK relevée sur cette période ! 🎉': 'لم يتم تسجيل أي أخطاء خلال هذه الفترة! 🎉'
+    'Classement des Tâches les plus souvent NOK': 'ترتيب المهام الأكثر خطأ', 'fois NOK': 'مرات خطأ', 'Aucune anomalie NOK relevée sur cette période ! 🎉': 'لم يتم تسجيل أي أخطاء خلال هذه الفترة! 🎉',
+    'Chargement…': 'جاري التحميل…', 'Chargement des données...': 'جاري تحميل البيانات…', 'Sommaire': 'الفهرس'
   }
 };
 
@@ -752,7 +755,7 @@ async function renderZones(){
   grid.innerHTML = `
     <div style="text-align:center;padding:30px;grid-column:1/-1;">
       <div class="loading-spinner"></div>
-      <div style="font-size:12px;color:#6B655C;margin-top:10px;">Chargement…</div>
+      <div style="font-size:12px;color:#6B655C;margin-top:10px;">${t('Chargement…')}</div>
     </div>
   `;
 
@@ -1114,7 +1117,7 @@ async function renderControle(){
         <div id="pointsList">
           <div style="text-align:center;padding:30px;">
             <div class="loading-spinner"></div>
-            <div style="font-size:12px;color:#6B655C;margin-top:10px;">Chargement…</div>
+            <div style="font-size:12px;color:#6B655C;margin-top:10px;">${t('Chargement…')}</div>
           </div>
         </div>
         <button class="btn amber block" id="saveBtn" style="margin-top:12px;">${t('Terminer et Retourner aux Zones')}</button>
@@ -1286,6 +1289,8 @@ async function renderControle(){
    ========================================================================= */
 async function renderHistory(){
   resetInactivityTimer();
+  const userLang = (session && session.lang) ? session.lang : 'fr';
+
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml(t('Historique des Prestations'), t('Consultation Archives'))}
@@ -1296,7 +1301,7 @@ async function renderHistory(){
           <input type="date" id="histDateSelect" value="${todayISO()}" style="width:100%;padding:10px;border-radius:8px;border:1px solid #E7E1D6;font-size:14px;background:#fff;">
         </div>
         <div id="histSummary" style="margin-bottom:20px;"></div>
-        <div id="histContent">Chargement…</div>
+        <div id="histContent">${t('Chargement des données...')}</div>
       </div>
     </div>
   `;
@@ -1307,7 +1312,7 @@ async function renderHistory(){
   const loadHistoryDate = async (selectedDate) => {
     const summaryEl = document.getElementById('histSummary');
     const content = document.getElementById('histContent');
-    content.innerHTML = '<div class="section-note">Chargement des données...</div>';
+    content.innerHTML = `<div class="section-note">${t('Chargement des données...')}</div>`;
     summaryEl.innerHTML = '';
     
     let htmlContent = '';
@@ -1348,9 +1353,11 @@ async function renderHistory(){
 
       if(c) hasDataForDate = true;
 
+      const translatedZoneName = await translateDynamicText(z.nom, userLang);
+
       summaryHtml += `
         <a href="#hist_zone_${z.id}" style="text-decoration:none;display:flex;justify-content:space-between;align-items:center;background:#fff;padding:8px 10px;border-radius:6px;border:1px solid #E7E1D6;color:#211E1A;font-size:12px;font-weight:600;">
-          <span>• ${z.nom}</span>
+          <span>• ${translatedZoneName}</span>
           <span style="font-size:10px;padding:2px 6px;border-radius:4px;color:#fff;background:${zoneNokCount > 0 ? '#B23A34' : (zoneChecked > 0 ? '#2B6E68' : '#6B655C')};">
             ${zoneNokCount > 0 ? `${zoneNokCount} NOK` : (zoneChecked > 0 ? t('Conforme') : t('Non saisi'))}
           </span>
@@ -1361,14 +1368,14 @@ async function renderHistory(){
         htmlContent += `
           <div id="hist_zone_${z.id}" style="border:1px solid #E7E1D6;border-radius:12px;margin-bottom:20px;background:#fff;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
             <div style="background:#211E1A;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
-              <div style="font-weight:700;font-size:14px;color:#F3E2C6;">ZONE : ${z.nom.toUpperCase()}</div>
-              <a href="#histSummary" style="color:#C7791B;font-size:11px;text-decoration:none;">↑ Sommaire</a>
+              <div style="font-weight:700;font-size:14px;color:#F3E2C6;">${t('ZONE').toUpperCase()} : ${translatedZoneName.toUpperCase()}</div>
+              <a href="#histSummary" style="color:#C7791B;font-size:11px;text-decoration:none;">↑ ${t('Sommaire')}</a>
             </div>
 
             <div style="padding:12px;">
         `;
 
-        activePoints.forEach(p => {
+        for(const p of activePoints){
           const rEq = (eq.reponses && eq.reponses[p.id]) || {};
           const rCv = (cv.reponses && cv.reponses[p.id]) || {};
           
@@ -1381,15 +1388,17 @@ async function renderHistory(){
           const isFinalOk = (cvOk === true);
           const isRealEcart = (eqOk === true && cvOk === false);
 
-          const eqAgent = rEq.agentNom || eq.agentNom || 'Agent';
+          const eqAgent = rEq.agentNom || eq.agentNom || t('Équipe');
           const eqTime = rEq.heure || eq.heure || '--:--';
-          const cvCtrl = rCv.controleurNom || cv.controleurNom || 'Contrôleur';
+          const cvCtrl = rCv.controleurNom || cv.controleurNom || t('Contrôleur');
           const cvTime = rCv.heure || cv.heure || '--:--';
+
+          const translatedLabel = await translateDynamicText(p.label, userLang);
 
           htmlContent += `
             <div style="border:1px solid ${isFinalOk ? '#2B6E68' : '#B23A34'};background:${isFinalOk ? '#DCEEEC' : '#FEF2F2'};padding:12px;border-radius:8px;margin-bottom:10px;">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
-                <div style="font-weight:600;font-size:13.5px;color:#211E1A;flex:1;">${p.label}</div>
+                <div style="font-weight:600;font-size:13.5px;color:#211E1A;flex:1;">${translatedLabel}</div>
                 ${isRealEcart ? `<span style="background:#B23A34;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap;">ÉCART / NOK</span>` : ''}
               </div>
 
@@ -1405,21 +1414,21 @@ async function renderHistory(){
                 </div>
               </div>
 
-              ${rEq.commentaire ? `<div style="font-size:11px;color:#4A453E;margin-top:4px;">💬 <em>Obs. Équipe [${eqAgent} à ${eqTime}] :</em> "${rEq.commentaire}"</div>` : ''}
-              ${rCv.commentaire ? `<div style="font-size:11px;color:#C7791B;margin-top:4px;">💬 <em>Obs. Contrôleur [${cvCtrl} à ${cvTime}] :</em> "${rCv.commentaire}"</div>` : ''}
+              ${rEq.commentaire ? `<div style="font-size:11px;color:#4A453E;margin-top:4px;">💬 <em>Obs. ${t('Équipe')} [${eqAgent} à ${eqTime}] :</em> "${rEq.commentaire}"</div>` : ''}
+              ${rCv.commentaire ? `<div style="font-size:11px;color:#C7791B;margin-top:4px;">💬 <em>Obs. ${t('Contrôleur')} [${cvCtrl} à ${cvTime}] :</em> "${rCv.commentaire}"</div>` : ''}
 
               ${(eqPhotos.length || cvPhotos.length) ? `
                 <div style="display:flex;gap:8px;margin-top:10px;overflow-x:auto;padding-bottom:4px;">
                   ${eqPhotos.map(pSrc => `
                     <div style="position:relative;flex-shrink:0;">
-                      <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe (${eqAgent} ${eqTime}) - ${p.label}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
+                      <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe (${eqAgent} ${eqTime}) - ${translatedLabel}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
                       <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${eqAgent} (${eqTime})</span>
                     </div>
                   `).join('')}
 
                   ${cvPhotos.map(pSrc => `
                     <div style="position:relative;flex-shrink:0;">
-                      <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Contrôleur (${cvCtrl} ${cvTime}) - ${p.label}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
+                      <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Contrôleur (${cvCtrl} ${cvTime}) - ${translatedLabel}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
                       <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">CTRL: ${cvCtrl} (${cvTime})</span>
                     </div>
                   `).join('')}
@@ -1427,7 +1436,7 @@ async function renderHistory(){
               ` : ''}
             </div>
           `;
-        });
+        }
         htmlContent += `</div></div>`;
       }
     }
@@ -1456,6 +1465,8 @@ async function renderHistory(){
    ========================================================================= */
 async function renderStats(){
   resetInactivityTimer();
+  const userLang = (session && session.lang) ? session.lang : 'fr';
+
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml(t('Suivi des Anomalies (NOK)'), t('Tableau de Bord'))}
@@ -1525,7 +1536,7 @@ async function renderStats(){
     return { totalChecked, nokCount, ecartsCount, nokRate, zoneBreakdown, itemNokMap };
   };
 
-  const updateStatsUI = () => {
+  const updateStatsUI = async () => {
     const today = new Date();
     const d7 = new Date(today); d7.setDate(d7.getDate() - 6);
     const d14 = new Date(today); d14.setDate(d14.getDate() - 13);
@@ -1539,7 +1550,7 @@ async function renderStats(){
 
     const deltaNok = currentStats.nokRate - refNokRate;
 
-    let topNokItems = Object.keys(currentStats.itemNokMap).map(id => {
+    let rawTopItems = Object.keys(currentStats.itemNokMap).map(id => {
       let label = id;
       
       if(LEGACY_TASKS_MAP[id]){
@@ -1556,6 +1567,12 @@ async function renderStats(){
 
       return { id, label, count: currentStats.itemNokMap[id] };
     }).sort((a,b) => b.count - a.count).slice(0,5);
+
+    let topNokItems = [];
+    for(const item of rawTopItems){
+      const transLabel = await translateDynamicText(item.label, userLang);
+      topNokItems.push({ id: item.id, label: transLabel, count: item.count });
+    }
 
     let html = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:15px;">
@@ -1595,13 +1612,15 @@ async function renderStats(){
         <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">${t('Répartition des NOK par Zone (7 derniers jours)')}</div>
     `;
 
-    ZONES.forEach(z => {
+    for(const z of ZONES){
       const zb = currentStats.zoneBreakdown[z.id];
       const zNokRate = zb.total ? Math.round((zb.nok / zb.total) * 100) : 0;
+      const translatedZoneName = await translateDynamicText(z.nom, userLang);
+
       html += `
         <div style="margin-bottom:10px;">
           <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
-            <span style="font-weight:600;color:#211E1A;">${z.nom}</span>
+            <span style="font-weight:600;color:#211E1A;">${translatedZoneName}</span>
             <strong style="color:${zNokRate===0?'#2B6E68':'#B23A34'};">${zNokRate}% NOK (${zb.nok}/${zb.total})</strong>
           </div>
           <div style="background:#E7E1D6;height:8px;border-radius:4px;overflow:hidden;">
@@ -1609,7 +1628,7 @@ async function renderStats(){
           </div>
         </div>
       `;
-    });
+    }
 
     html += `
       </div>
@@ -1629,7 +1648,7 @@ async function renderStats(){
   };
 
   contextSelect.onchange = updateStatsUI;
-  updateStatsUI();
+  await updateStatsUI();
 }
 
 /* =========================================================================
@@ -2048,7 +2067,7 @@ async function renderAgentsAdmin(){
       ${topbarHtml('Gestion Utilisateurs', 'Cloud & Local')}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section">
-        <div id="agentsList"><div class="section-note">Chargement…</div></div>
+        <div id="agentsList"><div class="section-note">${t('Chargement…')}</div></div>
         <button class="btn amber block" id="addAgentBtn" style="margin-top:15px;">+ Ajouter un profil</button>
       </div>
     </div>
