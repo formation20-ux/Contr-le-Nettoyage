@@ -457,7 +457,7 @@ async function renderZones(){
       
       <div style="display:flex;gap:10px;margin-bottom:12px;">
         <button class="btn ghost block" id="historyBtn" style="flex:1;">📜 Historique</button>
-        <button class="btn ghost block" id="statsBtn" style="flex:1;">📊 Stats</button>
+        <button class="btn ghost block" id="statsBtn" style="flex:1;">📊 Suivi NOK & Stats</button>
       </div>
 
       <button class="btn ghost block" id="globalPdfBtn" style="margin-bottom:15px;border-color:#C7791B;color:#C7791B;">📄 Générer Rapport Global PDF de la Journée</button>
@@ -545,11 +545,11 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE (RÈGLES D'HEURES LIMITES & SAUVEGARDE)
+   SAISIE CONTRÔLE / PRESTATION ZONE
    ========================================================================= */
 async function renderControle(){
   const date = todayISO();
-  const currentHour = new Date().getHours(); // Heure actuelle pour appliquer les limites
+  const currentHour = new Date().getHours();
   
   let c = await idbGet('controles', activeControleId) || {
     id: activeControleId, zoneId: activeZoneId, date,
@@ -576,10 +576,8 @@ async function renderControle(){
   const currentBranch = isContreVisite ? c.contreVisite : c.passageEquipe;
   const equipeReponses = (c.passageEquipe && c.passageEquipe.reponses) || {};
 
-  // Application des limites d'heures lors du chargement
   activePoints.forEach(p => {
     if(!isContreVisite){
-      // ÉQUIPE : Après 10h -> si non validé avec photo = bascule automatique en NOK
       if(currentHour >= 10){
         if(!currentBranch.reponses[p.id]){
           currentBranch.reponses[p.id] = { conforme: false, photos:[], commentaire:'Non réalisé avant 10h' };
@@ -588,7 +586,6 @@ async function renderControle(){
         }
       }
     } else {
-      // CONTRÔLEUR : Après 18h -> si non renseigné = validation automatique en OK
       if(currentHour >= 18){
         if(!currentBranch.reponses[p.id] || currentBranch.reponses[p.id].conforme === null || currentBranch.reponses[p.id].conforme === undefined){
           currentBranch.reponses[p.id] = currentBranch.reponses[p.id] || { photos:[], commentaire:'' };
@@ -813,7 +810,7 @@ async function renderHistory(){
       const eq = (c && c.passageEquipe) || {};
       const cv = (c && c.contreVisite) || {};
 
-      let zoneEcarts = 0;
+      let zoneNokCount = 0;
       let zoneChecked = 0;
 
       activePoints.forEach(p => {
@@ -823,7 +820,8 @@ async function renderHistory(){
         const cvOk = (rCv.conforme !== false);
 
         if(rEq.conforme !== undefined || rCv.conforme !== undefined) zoneChecked++;
-        if(eqOk === true && cvOk === false) zoneEcarts++;
+        // Un point est en NOK s'il présente un défaut équipe, contrôleur ou un écart
+        if(!cvOk || !eqOk) zoneNokCount++;
       });
 
       if(c) hasDataForDate = true;
@@ -831,8 +829,8 @@ async function renderHistory(){
       summaryHtml += `
         <a href="#hist_zone_${z.id}" style="text-decoration:none;display:flex;justify-content:space-between;align-items:center;background:#fff;padding:8px 10px;border-radius:6px;border:1px solid #E7E1D6;color:#211E1A;font-size:12px;font-weight:600;">
           <span>• ${z.nom}</span>
-          <span style="font-size:10px;padding:2px 6px;border-radius:4px;color:#fff;background:${zoneEcarts > 0 ? '#B23A34' : (zoneChecked > 0 ? '#2B6E68' : '#6B655C')};">
-            ${zoneEcarts > 0 ? `${zoneEcarts} Écart(s)` : (zoneChecked > 0 ? 'Conforme' : 'Non saisi')}
+          <span style="font-size:10px;padding:2px 6px;border-radius:4px;color:#fff;background:${zoneNokCount > 0 ? '#B23A34' : (zoneChecked > 0 ? '#2B6E68' : '#6B655C')};">
+            ${zoneNokCount > 0 ? `${zoneNokCount} NOK` : (zoneChecked > 0 ? 'Conforme' : 'Non saisi')}
           </span>
         </a>
       `;
@@ -870,7 +868,7 @@ async function renderHistory(){
             <div style="border:1px solid ${isFinalOk ? '#2B6E68' : '#B23A34'};background:${isFinalOk ? '#DCEEEC' : '#FEF2F2'};padding:12px;border-radius:8px;margin-bottom:10px;">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
                 <div style="font-weight:600;font-size:13.5px;color:#211E1A;flex:1;">${p.label}</div>
-                ${isRealEcart ? `<span style="background:#B23A34;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap;">ÉCART</span>` : ''}
+                ${isRealEcart ? `<span style="background:#B23A34;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap;">ÉCART / NOK</span>` : ''}
               </div>
 
               <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
@@ -932,19 +930,19 @@ async function renderHistory(){
 }
 
 /* =========================================================================
-   ÉCRAN STATISTIQUES AVANCÉES
+   ÉCRAN STATISTIQUES & SUIVI CENTRÉ SUR LES NOK
    ========================================================================= */
 async function renderStats(){
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Statistiques & Analytics', 'Tableau de Bord')}
+      ${topbarHtml('Suivi des Anomalies (NOK)', 'Tableau de Bord')}
       <div class="back-link" id="backBtn">← Retour aux zones</div>
       <div class="section" style="padding:16px;">
         <div class="field" style="margin-bottom:15px;">
           <label style="font-weight:600;font-size:13px;color:#211E1A;display:block;margin-bottom:6px;">Contexte de comparaison :</label>
           <select id="statsContextSelect" style="width:100%;padding:10px;border-radius:8px;border:1px solid #E7E1D6;font-size:14px;background:#fff;">
             <option value="prev_week">7 derniers jours vs 7 jours précédents</option>
-            <option value="target">7 derniers jours vs Objectif Qualité (95%)</option>
+            <option value="target">7 derniers jours vs Seuil Cible (Max 5% NOK)</option>
           </select>
         </div>
         <div id="statsDashboard">Chargement du dashboard…</div>
@@ -964,11 +962,11 @@ async function renderStats(){
   }
 
   const computePeriodStats = (startDateIso, endDateIso) => {
-    let checked = 0, conformes = 0, ecarts = 0, photosCount = 0;
+    let totalChecked = 0, nokCount = 0, ecartsCount = 0;
     let zoneBreakdown = {};
-    let itemEcartsMap = {};
+    let itemNokMap = {};
 
-    ZONES.forEach(z => { zoneBreakdown[z.id] = { total:0, ok:0, nom:z.nom }; });
+    ZONES.forEach(z => { zoneBreakdown[z.id] = { total:0, nok:0, nom:z.nom }; });
 
     allControles.filter(c => c.date >= startDateIso && c.date <= endDateIso).forEach(c => {
       const eq = (c.passageEquipe && c.passageEquipe.reponses) || {};
@@ -978,30 +976,30 @@ async function renderStats(){
         const rEq = eq[pId];
         const rCv = cv[pId];
         if(rEq){
-          checked++;
+          totalChecked++;
           const eqOk = (rEq.photos && rEq.photos.length > 0 && rEq.conforme !== false);
           const cvOk = (rCv ? rCv.conforme !== false : true);
 
-          if(rEq.photos && rEq.photos.length > 0) photosCount++;
-
-          if(cvOk) {
-            conformes++;
-            if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].ok++;
-          }
           if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].total++;
 
+          // Un point est un NOK global si le contrôleur a invalidé ou si l'équipe est NOK
+          if(!cvOk || !eqOk){
+            nokCount++;
+            if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].nok++;
+            itemNokMap[pId] = (itemNokMap[pId] || 0) + 1;
+          }
+
           if(eqOk === true && cvOk === false){
-            ecarts++;
-            itemEcartsMap[pId] = (itemEcartsMap[pId] || 0) + 1;
+            ecartsCount++;
           }
         }
       });
     });
 
-    const rate = checked ? Math.round((conformes / checked) * 100) : 0;
-    const photoRate = checked ? Math.round((photosCount / checked) * 100) : 0;
+    const nokRate = totalChecked ? Math.round((nokCount / totalChecked) * 100) : 0;
+    const okRate = 100 - nokRate;
 
-    return { checked, conformes, ecarts, rate, photoRate, zoneBreakdown, itemEcartsMap };
+    return { totalChecked, nokCount, ecartsCount, nokRate, okRate, zoneBreakdown, itemNokMap };
   };
 
   const updateStatsUI = () => {
@@ -1013,69 +1011,69 @@ async function renderStats(){
     const prevStats = computePeriodStats(d14.toISOString().slice(0,10), d7.toISOString().slice(0,10));
 
     const mode = contextSelect.value;
-    const refRate = mode === 'target' ? 95 : prevStats.rate;
-    const refLabel = mode === 'target' ? 'vs Cible (95%)' : 'vs Semaine précédente';
+    const refNokRate = mode === 'target' ? 5 : prevStats.nokRate;
+    const refLabel = mode === 'target' ? 'vs Cible Maxi (5%)' : 'vs Semaine précédente';
 
-    const deltaRate = currentStats.rate - refRate;
+    const deltaNok = currentStats.nokRate - refNokRate;
 
-    let topEcarts = Object.keys(currentStats.itemEcartsMap).map(id => {
+    let topNokItems = Object.keys(currentStats.itemNokMap).map(id => {
       let label = id;
       Object.keys(DEFAULT_POINTS).forEach(zk => {
         const found = DEFAULT_POINTS[zk].find(pt => pt.id === id);
         if(found) label = found.label;
       });
-      return { id, label, count: currentStats.itemEcartsMap[id] };
-    }).sort((a,b) => b.count - a.count).slice(0,3);
+      return { id, label, count: currentStats.itemNokMap[id] };
+    }).sort((a,b) => b.count - a.count).slice(0,5);
 
     let html = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:15px;">
         <div style="background:#FAF8F3;padding:14px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
-          <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">Taux Conformité (7j)</div>
-          <div style="font-size:26px;font-weight:800;color:#2B6E68;margin-top:2px;">${currentStats.rate}%</div>
-          <div style="font-size:11px;font-weight:600;margin-top:2px;color:${deltaRate>=0?'#2B6E68':'#B23A34'};">
-            ${deltaRate>=0?'▲ +':'▼ '}${deltaRate}% ${refLabel}
+          <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">Taux d'Anomalies (NOK)</div>
+          <div style="font-size:26px;font-weight:800;color:#B23A34;margin-top:2px;">${currentStats.nokRate}%</div>
+          <div style="font-size:11px;font-weight:600;margin-top:2px;color:${deltaNok<=0?'#2B6E68':'#B23A34'};">
+            ${deltaNok<=0?'▼ ':'▲ +'}${deltaNok}% ${refLabel}
           </div>
         </div>
 
         <div style="background:#FAF8F3;padding:14px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
-          <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">Écarts Pénalisants</div>
-          <div style="font-size:26px;font-weight:800;color:#B23A34;margin-top:2px;">${currentStats.ecarts}</div>
-          <div style="font-size:11px;color:#6B655C;margin-top:2px;">sur ${currentStats.checked} contrôles</div>
+          <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">Total NOK / Écarts</div>
+          <div style="font-size:26px;font-weight:800;color:#B23A34;margin-top:2px;">${currentStats.nokCount}</div>
+          <div style="font-size:11px;color:#6B655C;margin-top:2px;">dont ${currentStats.ecartsCount} écart(s) direct(s)</div>
         </div>
       </div>
 
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
-        <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:12px;">📊 Analyse Comparative de Conformité</div>
+        <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:12px;">📊 Analyse Comparative des Défauts (NOK)</div>
         <div style="display:flex;align-items:flex-end;justify-style:space-around;height:120px;border-bottom:2px solid #E7E1D6;padding-bottom:5px;">
           <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
-            <span style="font-size:11px;font-weight:700;color:#2B6E68;margin-bottom:4px;">${currentStats.rate}%</span>
-            <div style="width:100%;max-width:50px;background:#2B6E68;height:${Math.max(10, currentStats.rate)}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
+            <span style="font-size:11px;font-weight:700;color:#B23A34;margin-bottom:4px;">${currentStats.nokRate}% NOK</span>
+            <div style="width:100%;max-width:50px;background:#B23A34;height:${Math.max(10, currentStats.nokRate * 1.2)}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
             <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">7j Actuels</span>
           </div>
 
           <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
-            <span style="font-size:11px;font-weight:700;color:#C7791B;margin-bottom:4px;">${refRate}%</span>
-            <div style="width:100%;max-width:50px;background:#C7791B;height:${Math.max(10, refRate)}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
-            <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">${mode==='target'?'Objectif':'7j Précédents'}</span>
+            <span style="font-size:11px;font-weight:700;color:#C7791B;margin-bottom:4px;">${refNokRate}% NOK</span>
+            <div style="width:100%;max-width:50px;background:#C7791B;height:${Math.max(10, refNokRate * 1.2)}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
+            <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">${mode==='target'?'Seuil Cible':'7j Précédents'}</span>
           </div>
         </div>
       </div>
 
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
-        <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">Répartition par Zone (7 derniers jours)</div>
+        <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">Répartition des NOK par Zone (7 derniers jours)</div>
     `;
 
     ZONES.forEach(z => {
       const zb = currentStats.zoneBreakdown[z.id];
-      const zRate = zb.total ? Math.round((zb.ok / zb.total) * 100) : 0;
+      const zNokRate = zb.total ? Math.round((zb.nok / zb.total) * 100) : 0;
       html += `
         <div style="margin-bottom:10px;">
           <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
             <span style="font-weight:600;color:#211E1A;">${z.nom}</span>
-            <strong style="color:${zRate>=90?'#2B6E68':'#B23A34'};">${zRate}% (${zb.ok}/${zb.total})</strong>
+            <strong style="color:${zNokRate===0?'#2B6E68':'#B23A34'};">${zNokRate}% NOK (${zb.nok}/${zb.total})</strong>
           </div>
           <div style="background:#E7E1D6;height:8px;border-radius:4px;overflow:hidden;">
-            <div style="background:${zRate>=90?'#2B6E68':'#B23A34'};width:${zRate}%;height:100%;"></div>
+            <div style="background:${zNokRate===0?'#2B6E68':'#B23A34'};width:${zNokRate}%;height:100%;"></div>
           </div>
         </div>
       `;
@@ -1085,13 +1083,13 @@ async function renderStats(){
       </div>
 
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;">
-        <div style="font-weight:700;font-size:13px;color:#B23A34;margin-bottom:10px;">⚠️ Top Points de Vigilance (Écarts récurrents)</div>
-        ${topEcarts.length > 0 ? topEcarts.map(te => `
+        <div style="font-weight:700;font-size:13px;color:#B23A34;margin-bottom:10px;">⚠️ Classement des Tâches les plus souvent NOK</div>
+        ${topNokItems.length > 0 ? topNokItems.map(te => `
           <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #E7E1D6;font-size:12px;">
             <span style="color:#211E1A;font-weight:500;">${te.label}</span>
-            <span style="background:#FEF2F2;color:#B23A34;font-weight:700;padding:2px 8px;border-radius:4px;font-size:11px;border:1px solid #B23A34;">${te.count} écart(s)</span>
+            <span style="background:#FEF2F2;color:#B23A34;font-weight:700;padding:2px 8px;border-radius:4px;font-size:11px;border:1px solid #B23A34;">${te.count} fois NOK</span>
           </div>
-        `).join('') : '<div style="font-size:12px;color:#2B6E68;font-weight:600;">Aucun écart récurrent sur cette période ! 🎉</div>'}
+        `).join('') : '<div style="font-size:12px;color:#2B6E68;font-weight:600;">Aucune anomalie NOK relevée sur cette période ! 🎉</div>'}
       </div>
     `;
 
@@ -1103,7 +1101,7 @@ async function renderStats(){
 }
 
 /* =========================================================================
-   GÉNÉRATION DU RAPPORT PDF GLOBAL
+   GÉNÉRATION DU RAPPORT PDF GLOBAL (CENTRÉ SUR LES NOK)
    ========================================================================= */
 async function generateGlobalPDF(){
   if(typeof window.jspdf === 'undefined'){ toast('Bibliothèque PDF indisponible'); return; }
@@ -1120,7 +1118,7 @@ async function generateGlobalPDF(){
   const C_BG = [250, 248, 243];
   const C_LINE = [231, 225, 214];
 
-  let totalEcarts = 0;
+  let totalNok = 0;
   const zonePageMap = {};
 
   // --- PAGE 1 : EN-TÊTE ET SOMMAIRE ---
@@ -1218,7 +1216,7 @@ async function generateGlobalPDF(){
       const isFinalOk = (cvConformeCalculated === true);
       const isRealEcart = (eqConformeCalculated === true && cvConformeCalculated === false);
 
-      if(isRealEcart) totalEcarts++;
+      if(!isFinalOk || !eqConformeCalculated) totalNok++;
 
       if(y > 250){ docPdf.addPage(); y = 20; }
 
@@ -1319,12 +1317,12 @@ async function generateGlobalPDF(){
     }
   }
 
-  docPdf.setFillColor(...(totalEcarts === 0 ? C_TEAL : C_RED));
+  docPdf.setFillColor(...(totalNok === 0 ? C_TEAL : C_RED));
   docPdf.roundedRect(14, 140, 182, 14, 3, 3, 'F');
   docPdf.setTextColor(255, 255, 255);
   docPdf.setFont('helvetica', 'bold');
   docPdf.setFontSize(10);
-  docPdf.text(`BILAN CONTRÔLE : ${totalEcarts === 0 ? 'PRESTATION CONFORME — AUCUN ÉCART' : totalEcarts + ' ÉCART(S) CONSTATÉ(S)'}`, 18, 149);
+  docPdf.text(`BILAN CONTRÔLE : ${totalNok === 0 ? 'PRESTATION CONFORME — AUCUNE ANOMALIE (0 NOK)' : totalNok + ' ANOMALIE(S) / NOK CONSTATÉ(S)'}`, 18, 149);
 
   docPdf.save(`Rapport_SOAN_Global_${date}.pdf`);
 }
