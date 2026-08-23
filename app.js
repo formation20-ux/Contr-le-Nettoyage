@@ -69,7 +69,6 @@ styleFix.innerHTML = `
 `;
 document.head.appendChild(styleFix);
 
-/* Écouteur global pour la saisie clavier physique (PC/Mac) */
 window.addEventListener('keydown', (e) => {
   const loginScreen = document.getElementById('screen-login');
   if(!loginScreen) return;
@@ -871,8 +870,7 @@ async function generateAndStorePDFData(){
       const rCv = (cv.reponses && cv.reponses[p.id]) || {};
       let eqConformeCalculated = (rEq.photos && rEq.photos.length > 0) ? (rEq.conforme !== false) : false;
       
-      // La décision finale du contrôleur (OK ou NOK) fait foi pour le bilan
-      let cvConformeCalculated = (rCv.conforme === false) ? false : (rCv.conforme === true ? true : eqConformeCalculated);
+      let cvConformeCalculated = (rCv.conforme === false) ? false : (rCv.conforme === true ? true : true);
 
       const isFinalOk = (cvConformeCalculated === true);
       const isRealEcart = (eqConformeCalculated === true && cvConformeCalculated === false);
@@ -1287,7 +1285,7 @@ async function renderControle(){
 }
 
 /* =========================================================================
-   ÉCRAN HISTORIQUE (BOUTON DE GÉNÉRATION DE PDF POUR LA DATE SÉLECTIONNÉE)
+   ÉCRAN HISTORIQUE
    ========================================================================= */
 async function generatePDFForDate(targetDateIso){
   resetInactivityTimer();
@@ -1397,7 +1395,9 @@ async function generatePDFForDate(targetDateIso){
       const rCv = (cv.reponses && cv.reponses[p.id]) || { conforme: null, photos:[], commentaire:'', controleurNom: cv.controleurNom, heure: cv.heure };
 
       let eqConformeCalculated = (rEq.photos && rEq.photos.length > 0) ? (rEq.conforme !== false) : false;
-      let cvConformeCalculated = (rCv.conforme === false) ? false : (rCv.conforme === true ? true : eqConformeCalculated);
+      
+      // La décision finale du contrôleur (OK ou NOK) prévaut
+      let cvConformeCalculated = (rCv.conforme === false) ? false : (rCv.conforme === true ? true : true);
 
       const isFinalOk = (cvConformeCalculated === true);
       const isRealEcart = (eqConformeCalculated === true && cvConformeCalculated === false);
@@ -1593,11 +1593,13 @@ async function renderHistory(){
       activePoints.forEach(p => {
         const rEq = (eq.reponses && eq.reponses[p.id]) || {};
         const rCv = (cv.reponses && cv.reponses[p.id]) || {};
-        const eqOk = ((rEq.photos && rEq.photos.length > 0) && rEq.conforme !== false);
-        const cvOk = (rCv.conforme !== false);
+        
+        let eqOk = (rEq.photos && rEq.photos.length > 0 && rEq.conforme !== false);
+        // Décision du contrôleur fait foi (OK par défaut si non renseigné à la fermeture)
+        let cvOk = (rCv.conforme === false) ? false : true;
 
         if(rEq.conforme !== undefined || rCv.conforme !== undefined) zoneChecked++;
-        if(!cvOk || !eqOk) zoneNokCount++;
+        if(!cvOk) zoneNokCount++;
       });
 
       if(c) hasDataForDate = true;
@@ -1632,7 +1634,7 @@ async function renderHistory(){
           const cvPhotos = rCv.photos || [];
 
           const eqOk = (eqPhotos.length > 0 && rEq.conforme !== false);
-          const cvOk = (rCv.conforme !== false);
+          const cvOk = (rCv.conforme === false) ? false : true;
 
           const isFinalOk = (cvOk === true);
           const isRealEcart = (eqOk === true && cvOk === false);
@@ -2018,7 +2020,7 @@ async function generateGlobalPDF(){
       const rCv = (cv.reponses && cv.reponses[p.id]) || { conforme: null, photos:[], commentaire:'', controleurNom: cv.controleurNom, heure: cv.heure };
 
       let eqConformeCalculated = (rEq.photos && rEq.photos.length > 0) ? (rEq.conforme !== false) : false;
-      let cvConformeCalculated = (rCv.conforme === false) ? false : (rCv.conforme === true ? true : eqConformeCalculated);
+      let cvConformeCalculated = (rCv.conforme === false) ? false : true;
 
       const isFinalOk = (cvConformeCalculated === true);
       const isRealEcart = (eqConformeCalculated === true && cvConformeCalculated === false);
