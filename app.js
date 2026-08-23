@@ -1,6 +1,22 @@
 (function(){
 'use strict';
+document.addEventListener('touchstart', function(event) {
+  if (event.touches.length > 1) {
+    event.preventDefault(); // Empêche le pinch-to-zoom à deux doigts
+  }
+}, { passive: false });
 
+let lastTouchEnd = 0;
+document.addEventListener('touchend', function(event) {
+  const now = (new Date()).getTime();
+  if (now - lastTouchEnd <= 300) {
+    // Si deux clics surviennent en moins de 300ms sur un bouton ou une touche
+    if (event.target.classList.contains('pin-key') || event.target.tagName === 'BUTTON') {
+      event.preventDefault();
+    }
+  }
+  lastTouchEnd = now;
+}, false);
 const firebaseConfig = {
   apiKey: "AIzaSyA4pQGdFIgDtt1GxfohxexgHauc4wXM4sk",
   authDomain: "controle-nettoyage.firebaseapp.com",
