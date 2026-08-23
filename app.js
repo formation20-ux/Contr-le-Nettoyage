@@ -354,7 +354,7 @@ function checkPin(){
 /* =========================================================================
    ÉCRAN LISTE DES ZONES
    ========================================================================= */
-async function goToZones(){ activeZoneId=null; await renderZones(); }
+async function goToZones(){ activeZoneId=null; trySync(); await renderZones(); }
 
 async function renderZones(){
   const date = todayISO();
@@ -692,6 +692,7 @@ if('serviceWorker' in navigator){
 
 (function init(){
   renderLogin();
+  trySync();
 })();
 
 })();
