@@ -101,6 +101,7 @@ const SUPPORTED_LANGUAGES = {
 
 const STATIC_TRANSLATIONS = {
   en: {
+    'En ligne': 'Online', 'Hors-ligne': 'Offline', 'SASU SOAN — Prestation Nettoyage': 'SASU SOAN — Cleaning Service',
     'Lobby': 'Lobby', 'Cuisine': 'Kitchen', 'Arrière-cuisine': 'Back Kitchen', 'Comptoir': 'Counter',
     'Zones de Prestation': 'Service Areas', '📜 Historique': '📜 History', '📊 Dashboard': '📊 Dashboard',
     '📄 Rapport PDF': '📄 PDF Report', '✉️ Envois Mails': '✉️ Email Schedule', '📅 Gestion des Tâches': '📅 Task Management',
@@ -113,9 +114,18 @@ const STATIC_TRANSLATIONS = {
     'Session expirée suite à 3 min d’inactivité': 'Session expired due to 3 min inactivity', 'Contre-visite Contrôleur': 'Inspector Review',
     'Réalisation Prestation': 'Service Execution', '📸 Photos transmises par l\'Équipe :': '📸 Photos sent by Team:',
     '💬 Obs. Équipe': '💬 Team Notes', 'Remarques Contrôleur (optionnel)': 'Inspector comments (optional)',
-    'Remarques Équipe (optionnel)': 'Team comments (optional)', '📷 + Photo': '📷 + Photo', 'Jour': 'Daily', 'Hebdo': 'Weekly', 'Mensuel': 'Monthly'
+    'Remarques Équipe (optionnel)': 'Team comments (optional)', '📷 + Photo': '📷 + Photo', 'Jour': 'Daily', 'Hebdo': 'Weekly', 'Mensuel': 'Monthly',
+    'Historique des Prestations': 'Service History', 'Consultation Archives': 'Archive Consultation', 'Sélectionner une date d\'archive :': 'Select an archive date:',
+    'Sommaire par Zone': 'Summary by Area', 'Conforme': 'Conform', 'Non saisi': 'Not entered', 'Suivi des Anomalies (NOK)': 'Anomaly Tracking (NOK)',
+    'Tableau de Bord': 'Dashboard', 'Contexte de comparaison :': 'Comparison context:', '7 derniers jours vs 7 jours précédents': 'Last 7 days vs previous 7 days',
+    '7 derniers jours vs Seuil Cible (Max 5% NOK)': 'Last 7 days vs Target (Max 5% NOK)', 'Taux d\'Anomalies (NOK)': 'Anomaly Rate (NOK)',
+    'Anomalies Relevées': 'Reported Anomalies', 'dont': 'including', 'écart(s)': 'gap(s)', 'Analyse Comparative des Défauts (NOK)': 'Defect Comparative Analysis (NOK)',
+    '7j Actuels': 'Current 7 days', 'vs Semaine précédente': 'vs Previous week', 'vs Cible Max (5%)': 'vs Target Max (5%)',
+    'Seuil Cible': 'Target Threshold', '7j Précédents': 'Previous 7 days', 'Répartition des NOK par Zone (7 derniers jours)': 'NOK Breakdown by Area (Last 7 days)',
+    'Classement des Tâches les plus souvent NOK': 'Top NOK Tasks Ranking', 'fois NOK': 'times NOK', 'Aucune anomalie NOK relevée sur cette période ! 🎉': 'No NOK anomalies recorded during this period! 🎉'
   },
   es: {
+    'En ligne': 'En línea', 'Hors-ligne': 'Desconectado', 'SASU SOAN — Prestation Nettoyage': 'SASU SOAN — Servicio de Limpieza',
     'Lobby': 'Vestíbulo', 'Cuisine': 'Cocina', 'Arrière-cuisine': 'Trascocina', 'Comptoir': 'Mostrador',
     'Zones de Prestation': 'Áreas de Servicio', '📜 Historique': '📜 Historial', '📊 Dashboard': '📊 Panel',
     '📄 Rapport PDF': '📄 Informe PDF', '✉️ Envois Mails': '✉️ Envíos Correo', '📅 Gestion des Tâches': '📅 Gestión de Tareas',
@@ -128,9 +138,18 @@ const STATIC_TRANSLATIONS = {
     'Session expirée suite à 3 min d’inactivité': 'Sesión expirada por 3 min de inactividad', 'Contre-visite Contrôleur': 'Revisión del Inspector',
     'Réalisation Prestation': 'Ejecución del Servicio', '📸 Photos transmises par l\'Équipe :': '📸 Fotos enviadas por el Equipo:',
     '💬 Obs. Équipe': '💬 Obs. Equipo', 'Remarques Contrôleur (optionnel)': 'Comentarios del Inspector (opcional)',
-    'Remarques Équipe (optionnel)': 'Comentarios del Equipo (opcional)', '📷 + Photo': '📷 + Foto', 'Jour': 'Diario', 'Hebdo': 'Semanal', 'Mensuel': 'Mensual'
+    'Remarques Équipe (optionnel)': 'Comentarios del Equipo (opcional)', '📷 + Photo': '📷 + Foto', 'Jour': 'Diario', 'Hebdo': 'Semanal', 'Mensuel': 'Mensual',
+    'Historique des Prestations': 'Historial de Servicios', 'Consultation Archives': 'Consulta de Archivos', 'Sélectionner une date d\'archive :': 'Seleccionar fecha de archivo:',
+    'Sommaire par Zone': 'Resumen por Área', 'Conforme': 'Conforme', 'Non saisi': 'No registrado', 'Suivi des Anomalies (NOK)': 'Seguimiento de Anomalías (NOK)',
+    'Tableau de Bord': 'Panel de Control', 'Contexte de comparaison :': 'Contexto de comparación:', '7 derniers jours vs 7 jours précédents': 'Últimos 7 días vs 7 días anteriores',
+    '7 derniers jours vs Seuil Cible (Max 5% NOK)': 'Últimos 7 días vs Objetivo (Máx 5% NOK)', 'Taux d\'Anomalies (NOK)': 'Tasa de Anomalías (NOK)',
+    'Anomalies Relevées': 'Anomalías Registradas', 'dont': 'incluyendo', 'écart(s)': 'desviación(es)', 'Analyse Comparative des Défauts (NOK)': 'Análisis Comparativo de Defectos (NOK)',
+    '7j Actuels': '7 días actuales', 'vs Semaine précédente': 'vs Semana anterior', 'vs Cible Max (5%)': 'vs Objetivo Máx (5%)',
+    'Seuil Cible': 'Umbral Cible', '7j Précédents': '7 días anteriores', 'Répartition des NOK par Zone (7 derniers jours)': 'Distribución de NOK por Área (Últimos 7 días)',
+    'Classement des Tâches les plus souvent NOK': 'Clasificación de Tareas más Frecuentes en NOK', 'fois NOK': 'veces NOK', 'Aucune anomalie NOK relevée sur cette période ! 🎉': '¡Sin anomalías NOK en este período! 🎉'
   },
   ar: {
+    'En ligne': 'متصل', 'Hors-ligne': 'غير متصل', 'SASU SOAN — Prestation Nettoyage': 'SASU SOAN — خدمة التنظيف',
     'Lobby': 'الردهة', 'Cuisine': 'المطبخ', 'Arrière-cuisine': 'المطبخ الخلفي', 'Comptoir': 'الشباك',
     'Zones de Prestation': 'مناطق الخدمة', '📜 Historique': '📜 السجل', '📊 Dashboard': '📊 لوحة التحكم',
     '📄 Rapport PDF': '📄 تقرير PDF', '✉️ Envois Mails': '✉️ إرسال البريد', '📅 Gestion des Tâches': '📅 إدارة المهام',
@@ -143,7 +162,15 @@ const STATIC_TRANSLATIONS = {
     'Session expirée suite à 3 min d’inactivité': 'انتهت الجلسة لعدم النشاط', 'Contre-visite Contrôleur': 'مراجعة المراقب',
     'Réalisation Prestation': 'تنفيذ الخدمة', '📸 Photos transmises par l\'Équipe :': '📸 الصور المرسلة من الفريق:',
     '💬 Obs. Équipe': '💬 ملاحظات الفريق', 'Remarques Contrôleur (optionnel)': 'ملاحظات المراقب (اختياري)',
-    'Remarques Équipe (optionnel)': 'ملاحظات الفريق (اختياري)', '📷 + Photo': '📷 + صورة', 'Jour': 'يومي', 'Hebdo': 'أسبوعي', 'Mensuel': 'شهري'
+    'Remarques Équipe (optionnel)': 'ملاحظات الفريق (اختياري)', '📷 + Photo': '📷 + صورة', 'Jour': 'يومي', 'Hebdo': 'أسبوعي', 'Mensuel': 'شهري',
+    'Historique des Prestations': 'سجل الخدمات', 'Consultation Archives': 'تصفح الأرشيف', 'Sélectionner une date d\'archive :': 'اختر تاريخ الأرشيف:',
+    'Sommaire par Zone': 'ملخص حسب المنطقة', 'Conforme': 'مطابق', 'Non saisi': 'غير مدخل', 'Suivi des Anomalies (NOK)': 'متابعة الأخطاء (NOK)',
+    'Tableau de Bord': 'لوحة القيادة', 'Contexte de comparaison :': 'سياق المقارنة:', '7 derniers jours vs 7 jours précédents': 'آخر 7 أيام مقابل 7 أيام سابقة',
+    '7 derniers jours vs Seuil Cible (Max 5% NOK)': 'آخر 7 أيام مقابل الهدف (أقصى 5%)', 'Taux d\'Anomalies (NOK)': 'نسبة الأخطاء (NOK)',
+    'Anomalies Relevées': 'الأخطاء المسجلة', 'dont': 'منها', 'écart(s)': 'تفاوت', 'Analyse Comparative des Défauts (NOK)': 'تحليل مقارن للأخطاء (NOK)',
+    '7j Actuels': 'آخر 7 أيام', 'vs Semaine précédente': 'مقارنة بالأسبوع السابق', 'vs Cible Max (5%)': 'مقارنة بالهدف (5%)',
+    'Seuil Cible': 'الحد المستهدف', '7j Précédents': '7 أيام سابقة', 'Répartition des NOK par Zone (7 derniers jours)': 'توزيع الأخطاء حسب المنطقة (آخر 7 أيام)',
+    'Classement des Tâches les plus souvent NOK': 'ترتيب المهام الأكثر خطأ', 'fois NOK': 'مرات خطأ', 'Aucune anomalie NOK relevée sur cette période ! 🎉': 'لم يتم تسجيل أي أخطاء خلال هذه الفترة! 🎉'
   }
 };
 
@@ -571,11 +598,11 @@ function topbarHtml(title, sub){
   return `
     <div class="topbar">
       <div>
-        <div class="brand-eyebrow">${sub||'SASU SOAN — Prestation Nettoyage'}</div>
+        <div class="brand-eyebrow">${t(sub||'SASU SOAN — Prestation Nettoyage')}</div>
         <div class="brand-title">${title}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-        <div class="net-status ${online?'online':'offline'}"><span class="net-dot"></span>${online?'En ligne':'Hors-ligne'}</div>
+        <div class="net-status ${online?'online':'offline'}"><span class="net-dot"></span>${t(online?'En ligne':'Hors-ligne')}</div>
       </div>
     </div>
   `;
@@ -684,7 +711,7 @@ async function checkPin(){
 async function goToZones(){ activeZoneId=null; await renderZones(); }
 
 /* =========================================================================
-   MENU PRINCIPAL (AVEC TRADUCTION DES NOMS DE ZONES)
+   MENU PRINCIPAL
    ========================================================================= */
 async function renderZones(){
   resetInactivityTimer();
@@ -722,11 +749,10 @@ async function renderZones(){
   const grid = document.getElementById('zoneGrid');
   const isAgent = session.role === 'agent';
 
-  // Affichage immédiat de l'indicateur de chargement
   grid.innerHTML = `
     <div style="text-align:center;padding:30px;grid-column:1/-1;">
       <div class="loading-spinner"></div>
-      <div style="font-size:12px;color:#6B655C;margin-top:10px;">Chargement et traduction des zones…</div>
+      <div style="font-size:12px;color:#6B655C;margin-top:10px;">Chargement…</div>
     </div>
   `;
 
@@ -757,8 +783,6 @@ async function renderZones(){
 
       const nbTasks = activePoints.length;
       const taskLabelPlural = nbTasks <= 1 ? t('tâche') : t('tâches');
-
-      // Traduction dynamique du nom de la zone
       const translatedZoneName = await translateDynamicText(z.nom, userLang);
 
       html += `
@@ -938,7 +962,7 @@ async function renderMailScheduleAdmin(){
 
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Programmation Mails', 'Rapports Automatiques')}
+      ${topbarHtml(t('Programmation Mails'), t('Rapports Automatiques'))}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section" style="padding:16px;">
         <div class="section-note">Inscrivez les adresses destinataires et définissez l'heure quotidienne d'envoi du PDF.</div>
@@ -1029,7 +1053,7 @@ async function renderMailScheduleAdmin(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE (TRADUCTION COMPLÈTE)
+   SAISIE CONTRÔLE / PRESTATION ZONE
    ========================================================================= */
 async function renderControle(){
   resetInactivityTimer();
@@ -1090,7 +1114,7 @@ async function renderControle(){
         <div id="pointsList">
           <div style="text-align:center;padding:30px;">
             <div class="loading-spinner"></div>
-            <div style="font-size:12px;color:#6B655C;margin-top:10px;">Traduction des tâches…</div>
+            <div style="font-size:12px;color:#6B655C;margin-top:10px;">Chargement…</div>
           </div>
         </div>
         <button class="btn amber block" id="saveBtn" style="margin-top:12px;">${t('Terminer et Retourner aux Zones')}</button>
@@ -1264,11 +1288,11 @@ async function renderHistory(){
   resetInactivityTimer();
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Historique des Prestations', 'Consultation Archives')}
+      ${topbarHtml(t('Historique des Prestations'), t('Consultation Archives'))}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section" style="padding:16px;">
         <div class="field" style="margin-bottom:15px;">
-          <label style="font-weight:600;font-size:13px;color:#211E1A;display:block;margin-bottom:6px;">Sélectionner une date d'archive :</label>
+          <label style="font-weight:600;font-size:13px;color:#211E1A;display:block;margin-bottom:6px;">${t('Sélectionner une date d\'archive :')}</label>
           <input type="date" id="histDateSelect" value="${todayISO()}" style="width:100%;padding:10px;border-radius:8px;border:1px solid #E7E1D6;font-size:14px;background:#fff;">
         </div>
         <div id="histSummary" style="margin-bottom:20px;"></div>
@@ -1289,7 +1313,7 @@ async function renderHistory(){
     let htmlContent = '';
     let summaryHtml = `
       <div style="background:#FAF8F3;border:1px solid #E7E1D6;border-radius:10px;padding:12px;margin-bottom:15px;">
-        <div style="font-weight:700;font-size:12px;color:#C7791B;text-transform:uppercase;margin-bottom:8px;">Sommaire par Zone (${fmtDate(selectedDate)})</div>
+        <div style="font-weight:700;font-size:12px;color:#C7791B;text-transform:uppercase;margin-bottom:8px;">${t('Sommaire par Zone')} (${fmtDate(selectedDate)})</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
     `;
 
@@ -1328,7 +1352,7 @@ async function renderHistory(){
         <a href="#hist_zone_${z.id}" style="text-decoration:none;display:flex;justify-content:space-between;align-items:center;background:#fff;padding:8px 10px;border-radius:6px;border:1px solid #E7E1D6;color:#211E1A;font-size:12px;font-weight:600;">
           <span>• ${z.nom}</span>
           <span style="font-size:10px;padding:2px 6px;border-radius:4px;color:#fff;background:${zoneNokCount > 0 ? '#B23A34' : (zoneChecked > 0 ? '#2B6E68' : '#6B655C')};">
-            ${zoneNokCount > 0 ? `${zoneNokCount} NOK` : (zoneChecked > 0 ? 'Conforme' : 'Non saisi')}
+            ${zoneNokCount > 0 ? `${zoneNokCount} NOK` : (zoneChecked > 0 ? t('Conforme') : t('Non saisi'))}
           </span>
         </a>
       `;
@@ -1371,12 +1395,12 @@ async function renderHistory(){
 
               <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
                 <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${eqOk?'#2B6E68':'#B23A34'};color:#fff;">
-                  <span>Équipe (${eqAgent} ${eqTime}) :</span>
+                  <span>${t('Équipe')} (${eqAgent} ${eqTime}) :</span>
                   <strong>${eqOk?'✓ OK':'✕ NOK'}</strong>
                 </div>
 
                 <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${cvOk?'#2B6E68':'#B23A34'};color:#fff;">
-                  <span>Contrôleur (${cvCtrl} ${cvTime}) :</span>
+                  <span>${t('Contrôleur')} (${cvCtrl} ${cvTime}) :</span>
                   <strong>${cvOk?'✓ OK':'✕ NOK'}</strong>
                 </div>
               </div>
@@ -1434,14 +1458,14 @@ async function renderStats(){
   resetInactivityTimer();
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Suivi des Anomalies (NOK)', 'Tableau de Bord')}
+      ${topbarHtml(t('Suivi des Anomalies (NOK)'), t('Tableau de Bord'))}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section" style="padding:16px;">
         <div class="field" style="margin-bottom:15px;">
-          <label style="font-weight:600;font-size:13px;color:#211E1A;display:block;margin-bottom:6px;">Contexte de comparaison :</label>
+          <label style="font-weight:600;font-size:13px;color:#211E1A;display:block;margin-bottom:6px;">${t('Contexte de comparaison :')}</label>
           <select id="statsContextSelect" style="width:100%;padding:10px;border-radius:8px;border:1px solid #E7E1D6;font-size:14px;background:#fff;">
-            <option value="prev_week">7 derniers jours vs 7 jours précédents</option>
-            <option value="target">7 derniers jours vs Seuil Cible (Max 5% NOK)</option>
+            <option value="prev_week">${t('7 derniers jours vs 7 jours précédents')}</option>
+            <option value="target">${t('7 derniers jours vs Seuil Cible (Max 5% NOK)')}</option>
           </select>
         </div>
         <div id="statsDashboard">Chargement du dashboard…</div>
@@ -1511,7 +1535,7 @@ async function renderStats(){
 
     const mode = contextSelect.value;
     const refNokRate = mode === 'target' ? 5 : prevStats.nokRate;
-    const refLabel = mode === 'target' ? 'vs Cible Max (5%)' : 'vs Semaine précédente';
+    const refLabel = mode === 'target' ? t('vs Cible Max (5%)') : t('vs Semaine précédente');
 
     const deltaNok = currentStats.nokRate - refNokRate;
 
@@ -1536,7 +1560,7 @@ async function renderStats(){
     let html = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:15px;">
         <div style="background:#FAF8F3;padding:14px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
-          <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">Taux d'Anomalies (NOK)</div>
+          <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">${t('Taux d\'Anomalies (NOK)')}</div>
           <div style="font-size:26px;font-weight:800;color:#B23A34;margin-top:2px;">${currentStats.nokRate}%</div>
           <div style="font-size:11px;font-weight:600;margin-top:2px;color:${deltaNok<=0?'#2B6E68':'#B23A34'};">
             ${deltaNok<=0?'▼ ':'▲ +'}${deltaNok}% ${refLabel}
@@ -1544,31 +1568,31 @@ async function renderStats(){
         </div>
 
         <div style="background:#FAF8F3;padding:14px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
-          <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">Anomalies Relevées</div>
+          <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">${t('Anomalies Relevées')}</div>
           <div style="font-size:20px;font-weight:800;color:#B23A34;margin-top:4px;">${currentStats.nokCount} NOK</div>
-          <div style="font-size:12px;color:#6B655C;margin-top:2px;font-weight:600;">dont ${currentStats.ecartsCount} écart(s)</div>
+          <div style="font-size:12px;color:#6B655C;margin-top:2px;font-weight:600;">${t('dont')} ${currentStats.ecartsCount} ${t('écart(s)')}</div>
         </div>
       </div>
 
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
-        <div class="dash-chart-title" style="font-weight:700;font-size:13px;color:#211E1A;">📊 Analyse Comparative des Défauts (NOK)</div>
+        <div class="dash-chart-title" style="font-weight:700;font-size:13px;color:#211E1A;">📊 ${t('Analyse Comparative des Défauts (NOK)')}</div>
         <div style="display:flex;align-items:flex-end;justify-style:space-around;height:120px;border-bottom:2px solid #E7E1D6;padding-bottom:5px;">
           <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
             <span style="font-size:11px;font-weight:700;color:#B23A34;margin-bottom:4px;">${currentStats.nokRate}% NOK</span>
             <div style="width:100%;max-width:50px;background:#B23A34;height:${Math.min(80, Math.max(10, currentStats.nokRate * 0.8))}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
-            <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">7j Actuels</span>
+            <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">${t('7j Actuels')}</span>
           </div>
 
           <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
             <span style="font-size:11px;font-weight:700;color:#C7791B;margin-bottom:4px;">${refNokRate}% NOK</span>
             <div style="width:100%;max-width:50px;background:#C7791B;height:${Math.min(80, Math.max(10, refNokRate * 0.8))}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
-            <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">${mode==='target'?'Seuil Cible':'7j Précédents'}</span>
+            <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">${mode==='target'?t('Seuil Cible'):t('7j Précédents')}</span>
           </div>
         </div>
       </div>
 
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
-        <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">Répartition des NOK par Zone (7 derniers jours)</div>
+        <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">${t('Répartition des NOK par Zone (7 derniers jours)')}</div>
     `;
 
     ZONES.forEach(z => {
@@ -1591,13 +1615,13 @@ async function renderStats(){
       </div>
 
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;">
-        <div style="font-weight:700;font-size:13px;color:#B23A34;margin-bottom:10px;">⚠️ Classement des Tâches les plus souvent NOK</div>
+        <div style="font-weight:700;font-size:13px;color:#B23A34;margin-bottom:10px;">⚠️ ${t('Classement des Tâches les plus souvent NOK')}</div>
         ${topNokItems.length > 0 ? topNokItems.map(te => `
           <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #E7E1D6;font-size:12px;gap:10px;">
             <span style="color:#211E1A;font-weight:500;flex:1;word-break:break-word;">${te.label}</span>
-            <span style="background:#FEF2F2;color:#B23A34;font-weight:700;padding:4px 8px;border-radius:4px;font-size:11px;border:1px solid #B23A34;white-space:nowrap;">${te.count} fois NOK</span>
+            <span style="background:#FEF2F2;color:#B23A34;font-weight:700;padding:4px 8px;border-radius:4px;font-size:11px;border:1px solid #B23A34;white-space:nowrap;">${te.count} ${t('fois NOK')}</span>
           </div>
-        `).join('') : '<div style="font-size:12px;color:#2B6E68;font-weight:600;">Aucune anomalie NOK relevée sur cette période ! 🎉</div>'}
+        `).join('') : `<div style="font-size:12px;color:#2B6E68;font-weight:600;">${t('Aucune anomalie NOK relevée sur cette période ! 🎉')}</div>`}
       </div>
     `;
 
@@ -1910,7 +1934,7 @@ async function renderTaskAdmin(){
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml('Planning & Référentiel', 'Gestion des Tâches')}
-      <div class="back-link" id="backBtn">← Retour aux zones</div>
+      <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section" style="padding:16px;">
         <div class="section-note">Modifiez les libellés, récurrences, ou ajoutez/supprimez des tâches par zone.</div>
         ${tasksHtml}
@@ -2022,7 +2046,7 @@ async function renderAgentsAdmin(){
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml('Gestion Utilisateurs', 'Cloud & Local')}
-      <div class="back-link" id="backBtn">← Retour aux zones</div>
+      <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section">
         <div id="agentsList"><div class="section-note">Chargement…</div></div>
         <button class="btn amber block" id="addAgentBtn" style="margin-top:15px;">+ Ajouter un profil</button>
