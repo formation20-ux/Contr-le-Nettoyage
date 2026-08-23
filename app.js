@@ -3,7 +3,7 @@
 
 /* =========================================================================
    FIREBASE — projet "Controle Nettoyage"
-   L'  n'est pas un secret : la sécurité vient des règles Firestore,
+   L'apiKey n'est pas un secret : la sécurité vient des règles Firestore,
    pas de cacher cette config (elle est de toute façon visible dans le
    navigateur de n'importe quel visiteur).
    ========================================================================= */
@@ -154,6 +154,20 @@ function toast(msg){
   t.classList.add('show');
   clearTimeout(window.__toastTimer);
   window.__toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+function openPhotoViewer(src, label){
+  const backdrop = document.createElement('div');
+  backdrop.className = 'pv-backdrop';
+  backdrop.innerHTML = `
+    ${label?`<div class="pv-label">${label}</div>`:''}
+    <button class="pv-close" aria-label="Fermer">✕</button>
+    <img class="pv-img" src="${src}">
+  `;
+  document.body.appendChild(backdrop);
+  const close = ()=>backdrop.remove();
+  backdrop.addEventListener('click', (e)=>{ if(e.target===backdrop) close(); });
+  backdrop.querySelector('.pv-close').addEventListener('click', close);
 }
 
 function controleId(zoneId, date){ return `${date}__${zoneId}`; }
@@ -355,6 +369,7 @@ async function renderZones(){
         <div class="section-note" style="margin-bottom:12px;">${session.role==='agent' ? 'Choisis une zone pour saisir ton passage.' : 'Choisis une zone pour faire ta contre-visite.'}</div>
         <div class="zone-grid" id="zoneGrid"></div>
       </div>
+      <button class="btn ghost block" id="dashBtn" style="margin-bottom:10px;">📊 Tableau de bord</button>
       <button class="btn ghost block" id="logoutBtn">Changer d'utilisateur</button>
     </div>
   `;
@@ -383,6 +398,7 @@ async function renderZones(){
     });
   });
   document.getElementById('logoutBtn').addEventListener('click', ()=>{ session=null; currentPin=''; renderLogin(); });
+  document.getElementById('dashBtn').addEventListener('click', renderDashboard);
   updateSyncBadge();
 }
 
@@ -438,17 +454,22 @@ async function renderControle(){
           </div>
         </div>
         <div class="point-photo-row">
-          ${r.photo ? `<img class="photo-thumb" src="${r.photo}">` : ''}
+          ${r.photo ? `<img class="photo-thumb" src="${r.photo}" data-full="${r.photo}" data-label="${isContreVisite?'Contre-visite':'Équipe'}">` : ''}
           <label class="photo-btn">
             📷 ${r.photo?'Reprendre la photo':'Prendre une photo'}
             <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
           </label>
-          ${isContreVisite && equipeReponses[p.id] && equipeReponses[p.id].photo ? `<img class="photo-thumb" src="${equipeReponses[p.id].photo}" title="Photo de l'équipe">` : ''}
+          ${isContreVisite && equipeReponses[p.id] && equipeReponses[p.id].photo ? `<img class="photo-thumb" src="${equipeReponses[p.id].photo}" data-full="${equipeReponses[p.id].photo}" data-label="Photo équipe" title="Photo de l'équipe">` : ''}
         </div>
         <textarea class="point-comment" placeholder="Commentaire (optionnel)">${r.commentaire||''}</textarea>
       </div>
     `;
   }).join('');
+
+  listEl.addEventListener('click', (e)=>{
+    const img = e.target.closest('.photo-thumb[data-full]');
+    if(img) openPhotoViewer(img.dataset.full, img.dataset.label||'');
+  });
 
   listEl.querySelectorAll('.point-item').forEach(item=>{
     const pointId = item.dataset.point;
@@ -469,13 +490,15 @@ async function renderControle(){
       if(!fileInput.files.length) return;
       const dataUrl = await fileToResizedBase64(fileInput.files[0], 1200);
       r.photo = dataUrl;
-      let thumb = item.querySelector('.photo-thumb');
+      let thumb = item.querySelector('.photo-thumb[data-label="'+(isContreVisite?'Contre-visite':'Équipe')+'"]') || item.querySelector('.point-photo-row .photo-thumb:not([title])');
       if(!thumb){
         thumb = document.createElement('img');
         thumb.className = 'photo-thumb';
         item.querySelector('.point-photo-row').prepend(thumb);
       }
       thumb.src = dataUrl;
+      thumb.dataset.full = dataUrl;
+      thumb.dataset.label = isContreVisite ? 'Contre-visite' : 'Équipe';
     });
 
     item.querySelector('.point-comment').addEventListener('input', (e)=>{
@@ -507,6 +530,154 @@ function refreshEcartFlag(item, pointId, equipeReponses, isContreVisite){
     labelEl.insertAdjacentHTML('beforeend', '<span class="ecart-flag">écart</span>');
   } else if(!hasEcart && existingFlag){
     existingFlag.remove();
+  }
+}
+
+/* =========================================================================
+   ÉCRAN DASHBOARD
+   ========================================================================= */
+let dashChart = null;
+
+async function fetchAllControles(){
+  const snap = await db.collection('controles').get();
+  return snap.docs.map(d=>d.data());
+}
+
+function computeStats(docs){
+  // Conformité par zone (basée sur le passage équipe)
+  const zoneStats = {}; // zoneId -> {conforme, total}
+  const byDate = {};    // date -> {conforme, total}
+  const pointFail = {}; // "zone · label" -> count non conforme
+  const ecarts = [];    // liste des écarts équipe vs contre-visite
+
+  docs.forEach(doc=>{
+    const zone = ZONES.find(z=>z.id===doc.zoneId);
+    const zoneNom = zone ? zone.nom : doc.zoneId;
+    const points = POINTS[doc.zoneId] || [];
+    const eqReponses = (doc.passageEquipe && doc.passageEquipe.reponses) || {};
+    const cvReponses = (doc.contreVisite && doc.contreVisite.reponses) || {};
+
+    zoneStats[doc.zoneId] = zoneStats[doc.zoneId] || { nom:zoneNom, conforme:0, total:0 };
+    byDate[doc.date] = byDate[doc.date] || { conforme:0, total:0 };
+
+    points.forEach(p=>{
+      const r = eqReponses[p.id];
+      if(r && r.conforme!==null && r.conforme!==undefined){
+        zoneStats[doc.zoneId].total++;
+        byDate[doc.date].total++;
+        if(r.conforme){ zoneStats[doc.zoneId].conforme++; byDate[doc.date].conforme++; }
+        else{
+          const key = `${zoneNom} · ${p.label}`;
+          pointFail[key] = (pointFail[key]||0)+1;
+        }
+      }
+      const rc = cvReponses[p.id];
+      if(r && rc && r.conforme!==null && rc.conforme!==null && r.conforme!==rc.conforme){
+        ecarts.push({ date:doc.date, zone:zoneNom, point:p.label, equipe:r.conforme, controleur:rc.conforme });
+      }
+    });
+  });
+
+  return { zoneStats, byDate, pointFail, ecarts };
+}
+
+async function renderDashboard(){
+  root.innerHTML = `
+    <div class="wrap">
+      ${topbarHtml('Tableau de bord', session.role==='agent' ? session.nom : 'Contrôleur')}
+      <div class="back-link" id="backBtn">← Retour aux zones</div>
+      <div id="dashContent" class="section"><div class="section-note">Chargement…</div></div>
+    </div>
+  `;
+  document.getElementById('backBtn').addEventListener('click', goToZones);
+
+  let docs = [];
+  try{ docs = await fetchAllControles(); }
+  catch(err){ document.getElementById('dashContent').innerHTML = '<div class="section-note">Impossible de charger les statistiques (hors-ligne ?). Réessaie une fois connecté.</div>'; return; }
+
+  if(session.role==='agent'){ renderDashboardAgent(docs); }
+  else{ renderDashboardControleur(docs); }
+}
+
+function renderDashboardAgent(docs){
+  const mine = docs.filter(d=>d.passageEquipe && d.passageEquipe.agentNom===session.nom)
+    .sort((a,b)=>b.date.localeCompare(a.date)).slice(0,15);
+  const el = document.getElementById('dashContent');
+  if(!mine.length){ el.innerHTML = '<div class="section-note">Aucun passage enregistré pour l\'instant.</div>'; return; }
+  el.innerHTML = `
+    <div class="section-title" style="margin-bottom:10px;">Tes derniers passages</div>
+    ${mine.map(d=>{
+      const zone = ZONES.find(z=>z.id===d.zoneId);
+      const points = POINTS[d.zoneId]||[];
+      const reponses = d.passageEquipe.reponses||{};
+      const nbConforme = points.filter(p=>reponses[p.id] && reponses[p.id].conforme).length;
+      return `<div class="hist-row"><div><div class="hist-main">${zone?zone.nom:d.zoneId}</div><div class="hist-sub">${fmtDate(d.date)} · ${d.passageEquipe.heure||''}</div></div><span class="pill ${nbConforme===points.length?'pos':'neg'}">${nbConforme}/${points.length} conforme</span></div>`;
+    }).join('')}
+  `;
+}
+
+function renderDashboardControleur(docs){
+  const { zoneStats, byDate, pointFail, ecarts } = computeStats(docs);
+  const zoneKeys = Object.keys(zoneStats);
+  const totalConforme = zoneKeys.reduce((s,k)=>s+zoneStats[k].conforme,0);
+  const totalPoints = zoneKeys.reduce((s,k)=>s+zoneStats[k].total,0);
+  const tauxGlobal = totalPoints ? Math.round(totalConforme/totalPoints*100) : null;
+
+  const topFails = Object.entries(pointFail).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const recentEcarts = ecarts.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8);
+
+  const el = document.getElementById('dashContent');
+  el.innerHTML = `
+    <div class="kpis">
+      <div class="kpi ${tauxGlobal!==null && tauxGlobal>=90?'pos':(tauxGlobal!==null && tauxGlobal<70?'neg':'')}">
+        <div class="label">Conformité globale</div>
+        <div class="value">${tauxGlobal===null?'—':tauxGlobal+'%'}</div>
+      </div>
+      <div class="kpi ${ecarts.length?'neg':'pos'}">
+        <div class="label">Écarts équipe / contre-visite</div>
+        <div class="value">${ecarts.length}</div>
+      </div>
+    </div>
+
+    <div class="section-title" style="font-size:16px;margin-bottom:8px;">Conformité par zone</div>
+    ${zoneKeys.map(k=>{
+      const z = zoneStats[k];
+      const pct = z.total ? Math.round(z.conforme/z.total*100) : null;
+      return `<div class="rank-row"><span>${z.nom}</span><span class="pill ${pct===null?'zero':(pct>=90?'pos':(pct<70?'neg':'zero'))}">${pct===null?'—':pct+'%'}</span></div>`;
+    }).join('') || '<div class="section-note">Pas encore de données.</div>'}
+
+    <div class="section-title" style="font-size:16px;margin:18px 0 8px;">Points les plus souvent non conformes</div>
+    ${topFails.length ? topFails.map(([label,count])=>`<div class="rank-row"><span>${label}</span><span class="rank-count">${count}×</span></div>`).join('') : '<div class="section-note">Aucun point en défaut pour l\'instant.</div>'}
+
+    <div class="section-title" style="font-size:16px;margin:18px 0 8px;">Évolution de la conformité</div>
+    <canvas id="dashChartCanvas" height="140"></canvas>
+
+    <div class="section-title" style="font-size:16px;margin:18px 0 8px;">Derniers écarts équipe / contre-visite</div>
+    ${recentEcarts.length ? recentEcarts.map(e=>`
+      <div class="hist-row">
+        <div><div class="hist-main">${e.zone} · ${e.point}</div><div class="hist-sub">${fmtDate(e.date)}</div></div>
+        <span class="ecart-flag">équipe : ${e.equipe?'conforme':'non conforme'} → toi : ${e.controleur?'conforme':'non conforme'}</span>
+      </div>`).join('') : '<div class="section-note">Aucun écart détecté.</div>'}
+  `;
+
+  const dateKeys = Object.keys(byDate).sort();
+  const canvas = document.getElementById('dashChartCanvas');
+  if(canvas && dateKeys.length && typeof Chart !== 'undefined'){
+    if(dashChart) dashChart.destroy();
+    dashChart = new Chart(canvas, {
+      type:'line',
+      data:{
+        labels: dateKeys.map(fmtDate),
+        datasets:[{
+          label:'Conformité (%)',
+          data: dateKeys.map(k=>byDate[k].total ? Math.round(byDate[k].conforme/byDate[k].total*100) : null),
+          borderColor:'#2B6E68', backgroundColor:'#2B6E68', tension:.3, pointRadius:3
+        }]
+      },
+      options:{ responsive:true, scales:{ y:{ min:0, max:100 } }, plugins:{ legend:{ display:false } } }
+    });
+  } else if(canvas){
+    canvas.replaceWith(Object.assign(document.createElement('div'),{className:'section-note',textContent:'Pas encore assez de données pour la courbe.'}));
   }
 }
 
