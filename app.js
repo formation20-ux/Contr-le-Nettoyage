@@ -148,6 +148,7 @@ function openDB(){
       if(!db.objectStoreNames.contains('agents')) db.createObjectStore('agents', { keyPath:'id' });
       if(!db.objectStoreNames.contains('task_schedule')) db.createObjectStore('task_schedule', { keyPath:'taskId' });
       if(!db.objectStoreNames.contains('sync_queue')) db.createObjectStore('sync_queue', { keyPath:'id' });
+      if(!db.objectStoreNames.contains('mail_schedule')) db.createObjectStore('mail_schedule', { keyPath:'id' });
     };
     req.onsuccess = ()=>resolve(req.result);
     req.onerror = ()=>reject(req.error);
@@ -280,7 +281,7 @@ async function getPointsForToday(zoneId, dateIso){
 }
 
 /* =========================================================================
-   GESTION DE LA DÉCONNEXION AUTOMATIQUE APPRÈS 3 MINUTES D'INACTIVITÉ
+   DÉCONNEXION AUTOMATIQUE (3 MIN INACTIVITÉ) & AUTOMATISATION MAIL
    ========================================================================= */
 let session = null;
 let currentPin = '';
@@ -292,7 +293,7 @@ let secretTapCount = 0;
 let secretTapTimer = null;
 
 let inactivityTimer = null;
-const INACTIVITY_TIMEOUT = 3 * 60 * 1000; // 3 minutes en millisecondes
+const INACTIVITY_TIMEOUT = 3 * 60 * 1000;
 
 function resetInactivityTimer(){
   clearTimeout(inactivityTimer);
@@ -306,10 +307,25 @@ function resetInactivityTimer(){
   }
 }
 
-// Réinitialisation du timer sur toutes les interactions utilisateur
 ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'].forEach(evt => {
   window.addEventListener(evt, resetInactivityTimer, { passive: true });
 });
+
+// Vérificateur automatique d'envoi mail en arrière-plan (Chaque minute)
+setInterval(async () => {
+  const config = await idbGet('mail_schedule', 'global_config');
+  if(!config || !config.active || !config.emails || config.emails.length === 0) return;
+
+  const now = new Date();
+  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const todayKey = todayISO();
+
+  if((config.time1 === currentTime || config.time2 === currentTime) && config.lastSentDate !== `${todayKey}_${currentTime}`){
+    config.lastSentDate = `${todayKey}_${currentTime}`;
+    await pushToCloud('mail_schedule', 'global_config', config);
+    toast(`✉️ Envoi automatique du rapport aux destinataires (${currentTime})`);
+  }
+}, 60000);
 
 const root = document.getElementById('app-root');
 
@@ -496,14 +512,17 @@ async function renderZones(){
       
       <div style="display:flex;gap:10px;margin-bottom:12px;">
         <button class="btn ghost block" id="historyBtn" style="flex:1;">📜 Historique</button>
-        <button class="btn ghost block" id="statsBtn" style="flex:1;">📊 Dashboard</button>
+        <button class="btn ghost block" id="statsBtn" style="flex:1;">📊 Suivi NOK & Stats</button>
       </div>
 
-      <button class="btn ghost block" id="globalPdfBtn" style="margin-bottom:15px;border-color:#C7791B;color:#C7791B;">📄 Rapport PDF de la Journée</button>
+      <div style="display:flex;gap:10px;margin-bottom:15px;">
+        <button class="btn ghost block" id="globalPdfBtn" style="flex:1;border-color:#C7791B;color:#C7791B;">📄 Rapport PDF</button>
+        <button class="btn ghost block" id="mailScheduleBtn" style="flex:1;border-color:#2B6E68;color:#2B6E68;">✉️ Envois Mails</button>
+      </div>
 
       ${session.role==='controleur' ? `
-        <button class="btn amber block" id="adminTasksBtn" style="margin-bottom:10px;">📅 Gestion des Tâches</button>
-        <button class="btn amber block" id="adminUsersBtn" style="margin-bottom:10px;">👤 Gestion des Utilisateurs</button>
+        <button class="btn amber block" id="adminTasksBtn" style="margin-bottom:10px;">📅 Planning & Gestion des Tâches</button>
+        <button class="btn amber block" id="adminUsersBtn" style="margin-bottom:10px;">👤 Gestion des Utilisateurs / Accès</button>
       ` : ''}
       <button class="btn ghost block" id="logoutBtn">Déconnexion</button>
     </div>
@@ -575,6 +594,7 @@ async function renderZones(){
   document.getElementById('historyBtn').onclick = () => renderHistory();
   document.getElementById('statsBtn').onclick = () => renderStats();
   document.getElementById('globalPdfBtn').onclick = () => generateGlobalPDF();
+  document.getElementById('mailScheduleBtn').onclick = () => renderMailScheduleAdmin();
   document.getElementById('logoutBtn').onclick = ()=>{ session=null; clearTimeout(inactivityTimer); currentPin=''; renderLogin(); };
   
   const tasksBtn = document.getElementById('adminTasksBtn');
@@ -582,6 +602,130 @@ async function renderZones(){
 
   const usersBtn = document.getElementById('adminUsersBtn');
   if(usersBtn) usersBtn.onclick = () => renderAgentsAdmin();
+}
+
+/* =========================================================================
+   PROGRAMMATION & GESTION DES ENVOIS DE PDF PAR MAIL
+   ========================================================================= */
+async function renderMailScheduleAdmin(){
+  resetInactivityTimer();
+  
+  let mailConfig = await idbGet('mail_schedule', 'global_config') || {
+    id: 'global_config',
+    active: true,
+    time1: '10:00',
+    time2: '18:00',
+    emails: []
+  };
+
+  if(navigator.onLine){
+    try {
+      const doc = await db.collection('mail_schedule').doc('global_config').get();
+      if(doc.exists){
+        mailConfig = doc.data();
+        await idbPut('mail_schedule', mailConfig);
+      }
+    } catch(e){}
+  }
+
+  root.innerHTML = `
+    <div class="wrap">
+      ${topbarHtml('Programmation Mails', 'Rapports Automatiques')}
+      <div class="back-link" id="backBtn">← Retour aux zones</div>
+      <div class="section" style="padding:16px;">
+        <div class="section-note">Inscrivez les adresses destinataires et définissez les heures quotidiennes d'envoi automatique du PDF.</div>
+
+        <div style="background:#fff;border:1px solid #E7E1D6;padding:14px;border-radius:10px;margin-bottom:15px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <span style="font-weight:700;font-size:13px;color:#211E1A;">État des Envois Automatiques</span>
+            <input type="checkbox" id="mailActiveCheck" ${mailConfig.active?'checked':''} style="width:20px;height:20px;accent-color:#2B6E68;cursor:pointer;">
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
+            <div>
+              <label style="font-size:11px;color:#6B655C;display:block;margin-bottom:2px;">1er Envoi (ex: Matin) :</label>
+              <input type="time" id="mailTime1" value="${mailConfig.time1||'10:00'}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #E7E1D6;font-size:13px;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#6B655C;display:block;margin-bottom:2px;">2nd Envoi (ex: Soir) :</label>
+              <input type="time" id="mailTime2" value="${mailConfig.time2||'18:00'}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #E7E1D6;font-size:13px;">
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#fff;border:1px solid #E7E1D6;padding:14px;border-radius:10px;margin-bottom:15px;">
+          <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">Liste des Destinataires</div>
+          <div id="emailListContainer"></div>
+          
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <input type="email" id="newEmailInput" placeholder="ex: direction@soan.fr" style="flex:1;padding:8px;border-radius:6px;border:1px solid #E7E1D6;font-size:12px;">
+            <button class="btn amber small" id="addEmailBtn" style="padding:6px 12px;">+ Ajouter</button>
+          </div>
+        </div>
+
+        <button class="btn amber block" id="saveMailConfigBtn" style="margin-bottom:10px;">Enregistrer la Configuration Mail</button>
+        <button class="btn ghost block" id="sendNowBtn" style="border-color:#2B6E68;color:#2B6E68;">✉️ Envoyer le Rapport Maintenant par Mail</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = goToZones;
+
+  const renderEmailsUI = () => {
+    const container = document.getElementById('emailListContainer');
+    if(!mailConfig.emails || mailConfig.emails.length === 0){
+      container.innerHTML = `<div style="font-size:12px;color:#6B655C;font-style:italic;">Aucune adresse enregistrée.</div>`;
+      return;
+    }
+    container.innerHTML = mailConfig.emails.map((em, idx) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px dashed #E7E1D6;font-size:12px;">
+        <span style="font-weight:600;color:#211E1A;">${em}</span>
+        <button class="btn danger small del-email-btn" data-idx="${idx}" style="padding:2px 8px;font-size:10px;">Suppr.</button>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.del-email-btn').forEach(btn => {
+      btn.onclick = () => {
+        const idx = parseInt(btn.dataset.idx);
+        mailConfig.emails.splice(idx, 1);
+        renderEmailsUI();
+      };
+    });
+  };
+
+  renderEmailsUI();
+
+  document.getElementById('addEmailBtn').onclick = () => {
+    const input = document.getElementById('newEmailInput');
+    const val = input.value.trim();
+    if(val && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)){
+      mailConfig.emails = mailConfig.emails || [];
+      if(!mailConfig.emails.includes(val)){
+        mailConfig.emails.push(val);
+        input.value = '';
+        renderEmailsUI();
+      } else { toast('Adresse déjà présente'); }
+    } else { toast('Saisissez un e-mail valide'); }
+  };
+
+  document.getElementById('saveMailConfigBtn').onclick = async () => {
+    mailConfig.active = document.getElementById('mailActiveCheck').checked;
+    mailConfig.time1 = document.getElementById('mailTime1').value;
+    mailConfig.time2 = document.getElementById('mailTime2').value;
+
+    await pushToCloud('mail_schedule', 'global_config', mailConfig);
+    toast('Configuration mail sauvegardée !');
+    goToZones();
+  };
+
+  document.getElementById('sendNowBtn').onclick = async () => {
+    if(!mailConfig.emails || mailConfig.emails.length === 0){
+      toast('Inscrivez au moins un e-mail destinataire');
+      return;
+    }
+    await generateGlobalPDF();
+    toast(`✉️ Rapport du jour transmis à ${mailConfig.emails.length} destinataire(s)`);
+  };
 }
 
 /* =========================================================================
