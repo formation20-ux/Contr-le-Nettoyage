@@ -25,7 +25,7 @@ styleFix.innerHTML = `
 document.head.appendChild(styleFix);
 
 /* =========================================================================
-   CONFIGURATION EMAILJS (VOS CLÉS DÉFINIES)
+   CONFIGURATION EMAILJS
    ========================================================================= */
 const EMAILJS_CONFIG = {
   serviceId: "service_oxp40jn",
@@ -352,7 +352,7 @@ function toast(msg){
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(window.__toastTimer);
-  window.__toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+  window.__toastTimer = setTimeout(()=>t.classList.remove('show'), 3500);
 }
 
 function openPhotoViewer(src, title){
@@ -626,7 +626,7 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   PROGRAMMATION & ENVOI DIRECT IN-APP DU MAIL (EMAILJS)
+   PROGRAMMATION & ENVOI DIRECT IN-APP DU MAIL (EMAILJS AVEC DEBUG)
    ========================================================================= */
 async function generatePDFBase64(){
   const { jsPDF } = window.jspdf;
@@ -724,25 +724,36 @@ async function triggerInAppMailSending(emails){
   }
 
   if(typeof emailjs === 'undefined'){
-    toast("Erreur : Bibliothèque EmailJS introuvable dans index.html");
+    toast("Erreur : Bibliothèque EmailJS introuvable.");
     return;
   }
 
   try {
     toast("Génération & envoi du rapport en cours...");
-    const pdfBase64 = await generatePDFBase64();
+    const pdfDataUri = await generatePDFBase64();
 
     for(const recipient of emails){
-      await emailjs.send(EMAILJS_CONFIG.serviceId, EMAILJS_CONFIG.templateId, {
+      const templateParams = {
         to_email: recipient,
+        email: recipient,
+        reply_to: recipient,
         date: fmtDate(todayISO()),
-        content_pdf: pdfBase64
-      });
+        message: `Veuillez trouver ci-joint le rapport de prestation du ${fmtDate(todayISO())}.`,
+        content_pdf: pdfDataUri
+      };
+
+      await emailjs.send(
+        EMAILJS_CONFIG.serviceId,
+        EMAILJS_CONFIG.templateId,
+        templateParams,
+        EMAILJS_CONFIG.publicKey
+      );
     }
     toast(`✉️ Rapport transmis avec succès à ${emails.length} destinataire(s) !`);
   } catch(err) {
-    console.error(err);
-    toast("Erreur lors de l'envoi in-app. Vérifiez la configuration EmailJS.");
+    console.error("Erreur EmailJS détaillée :", err);
+    const detail = (err && err.text) ? err.text : (err.message || JSON.stringify(err));
+    toast(`EmailJS Erreur : ${detail}`);
   }
 }
 
