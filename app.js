@@ -255,7 +255,15 @@ function topbarHtml(title, sub){
     </div>
   `;
 }
-
+async function syncAgentsFromCloud(){
+  if(!navigator.onLine) return;
+  try {
+    const snap = await db.collection('agents').get();
+    for(const doc of snap.docs){
+      await idbPut('agents', Object.assign({ id: doc.id }, doc.data()));
+    }
+  } catch(e) { console.error('Erreur de synchro des profils:', e); }
+}
 function renderLogin(){
   root.innerHTML = `
     <div id="screen-login">
@@ -621,9 +629,20 @@ function openAgentModal(existing){
     const role = document.getElementById('am_role').value;
     if(!nom || !/^\d{4}$/.test(pin)){ toast('Saisissez un nom et un PIN à 4 chiffres'); return; }
     const id = existing ? existing.id : uid('agent');
-    await idbPut('agents', { id, nom, pin, role, actif:true });
+    const agentData = { id, nom, pin, role, actif:true };
+    
+    // Sauvegarde en local
+    await idbPut('agents', agentData);
+
+    // Envoi en ligne dans Firestore pour synchroniser les autres téléphones
+    try {
+      await db.collection('agents').doc(id).set(agentData, { merge: true });
+      toast('Profil sauvegardé et synchronisé en ligne !');
+    } catch(err) {
+      toast('Sauvegardé en local (hors-ligne)');
+    }
+
     backdrop.remove();
-    toast('Profil sauvegardé');
     refreshAgentsList();
   };
 }
