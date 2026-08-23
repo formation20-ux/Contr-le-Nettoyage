@@ -458,7 +458,7 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE (COMMENTAIRES DISTINCTS & AVERTISSEMENTS)
+   SAISIE CONTRÔLE / PRESTATION ZONE (BOUTONS VERROUILLÉS SANS PHOTO POUR ÉQUIPE)
    ========================================================================= */
 async function renderControle(){
   const date = todayISO();
@@ -504,6 +504,7 @@ async function renderControle(){
   const listEl = document.getElementById('pointsList');
   listEl.innerHTML = activePoints.map(p=>{
     const r = currentBranch.reponses[p.id] || { conforme: (isContreVisite ? true : null), photos:[], commentaire:'' };
+    
     if(isContreVisite && r.conforme === null) r.conforme = true;
 
     const myPhotos = r.photos || [];
@@ -511,7 +512,9 @@ async function renderControle(){
     const eqPhotos = isContreVisite ? (eqR.photos || []) : [];
 
     const isEquipeNok = isContreVisite && (eqR.conforme === false || !eqR.photos || eqR.photos.length === 0);
-    const isOkLocked = !isContreVisite && myPhotos.length === 0;
+    
+    // Verrouillage STRICT des deux boutons OK et NOK pour l'équipe sans photo
+    const isButtonsLocked = !isContreVisite && myPhotos.length === 0;
 
     return `
       <div class="point-item" data-point="${p.id}" style="border:1px solid ${isEquipeNok?'#B23A34':'#E7E1D6'};padding:12px;border-radius:10px;margin-bottom:12px;background:${isEquipeNok?'#F6DEDC':'#fff'};">
@@ -521,8 +524,8 @@ async function renderControle(){
             ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">⚠️ ÉQUIPE : NOK</span>` : ''}
           </div>
           <div class="point-toggle" style="margin-top:6px;">
-            <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" ${isOkLocked ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✓ OK</button>
-            <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false">✕ NOK</button>
+            <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" ${isButtonsLocked ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✓ OK</button>
+            <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" ${isButtonsLocked ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✕ NOK</button>
           </div>
         </div>
 
@@ -538,7 +541,7 @@ async function renderControle(){
         ` : ''}
 
         <div style="font-size:11px;color:#6B655C;margin-top:8px;">
-          ${isContreVisite ? 'Tes photos contrôleur (optionnel) :' : 'Photo obligatoire pour valider cet item :'}
+          ${isContreVisite ? 'Tes photos contrôleur (exigée si changement en NOK) :' : 'Photo obligatoire pour déverrouiller le choix :'}
         </div>
         <div class="point-photo-row" id="photos_${p.id}" style="display:flex;gap:6px;align-items:center;overflow-x:auto;margin-top:4px;">
           ${myPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo ${isContreVisite?'Contrôleur':'Équipe'} - ${p.label}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;">`).join('')}
@@ -567,7 +570,7 @@ async function renderControle(){
     item.querySelectorAll('.toggle-btn').forEach(btn=>{
       btn.onclick = (e)=>{
         if(btn.hasAttribute('disabled')){
-          toast('Photo obligatoire pour valider en OK !');
+          toast('📷 Dépose au moins une photo pour déverrouiller ce point');
           e.preventDefault();
           return;
         }
@@ -591,13 +594,13 @@ async function renderControle(){
       newImg.onclick = () => openPhotoViewer(dataUrl, `Nouvelle photo - ${pId}`);
       item.querySelector(`#photos_${pId}`).insertBefore(newImg, item.querySelector('.photo-btn'));
 
+      // Déverrouillage instantané de TOUS les boutons à la première photo ajoutée
       if(!isContreVisite){
-        const okBtn = item.querySelector('.toggle-btn.conforme');
-        if(okBtn){
-          okBtn.removeAttribute('disabled');
-          okBtn.style.opacity = '1';
-          okBtn.style.cursor = 'pointer';
-        }
+        item.querySelectorAll('.toggle-btn').forEach(b => {
+          b.removeAttribute('disabled');
+          b.style.opacity = '1';
+          b.style.cursor = 'pointer';
+        });
       }
     };
 
@@ -620,6 +623,17 @@ async function renderControle(){
       }
     } else {
       for(const p of activePoints){
+        const eqR = equipeReponses[p.id] || {};
+        const cvR = currentBranch.reponses[p.id] || {};
+        
+        const eqWasOk = (eqR.conforme === true && eqR.photos && eqR.photos.length > 0);
+        const cvIsNok = (cvR.conforme === false);
+
+        if(eqWasOk && cvIsNok && (!cvR.photos || cvR.photos.length === 0)){
+          toast(`Photo contrôleur obligatoire pour repasser "${p.label}" en NOK !`);
+          return;
+        }
+
         if(!currentBranch.reponses[p.id] || currentBranch.reponses[p.id].conforme === null){
           currentBranch.reponses[p.id] = currentBranch.reponses[p.id] || { photos:[], commentaire:'' };
           currentBranch.reponses[p.id].conforme = true;
@@ -813,7 +827,7 @@ async function renderStats(){
 }
 
 /* =========================================================================
-   GÉNÉRATION DU RAPPORT PDF GLOBAL (LÉGENDES INDIVIDUELLES ET OBSERVATIONS)
+   GÉNÉRATION DU RAPPORT PDF GLOBAL
    ========================================================================= */
 async function generateGlobalPDF(){
   if(typeof window.jspdf === 'undefined'){ toast('Bibliothèque PDF indisponible'); return; }
@@ -963,7 +977,6 @@ async function generateGlobalPDF(){
 
       y += 18;
 
-      // Détails nominatifs et horodatés par item
       const eqAgent = rEq.agentNom || eq.agentNom || 'Agent';
       const eqTime = rEq.heure || eq.heure || '--:--';
       const cvCtrl = rCv.controleurNom || cv.controleurNom || 'Contrôleur';
