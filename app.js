@@ -2,7 +2,7 @@
 'use strict';
 
 /* =========================================================================
-   CORRECTIFS MOBILE : ANTI-ZOOM, ANTI-CHIFFRES BLEUS ET RESPONSIVE AFICHAGE
+   CORRECTIFS MOBILE & CLAVIER PHYSIQUE PC (Saisie des codes au clavier)
    ========================================================================= */
 if(!document.querySelector('meta[name="format-detection"]')){
   const metaTel = document.createElement('meta');
@@ -13,27 +13,21 @@ if(!document.querySelector('meta[name="format-detection"]')){
 
 const styleFix = document.createElement('style');
 styleFix.innerHTML = `
-  /* Ajustements globaux pour la barre de navigation mobile */
   body, #app-root {
     padding-bottom: 90px !important;
   }
-  
   button, .pin-key, .role-btn, .zone-card, .back-link {
     touch-action: manipulation !important;
     -webkit-tap-highlight-color: transparent !important;
   }
-  
   .pin-key, .pin-key * {
     color: #211E1A !important;
     text-decoration: none !important;
   }
-
-  /* Correction du positionnement de la croix de suppression de photo */
   .point-photo-row {
     padding: 6px 8px !important;
     overflow-y: visible !important;
   }
-
   .del-photo-btn {
     position: absolute !important;
     top: -6px !important;
@@ -52,8 +46,6 @@ styleFix.innerHTML = `
     box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
     z-index: 10 !important;
   }
-
-  /* Correctif d'alignement des titres dans le dashboard */
   .dash-chart-title {
     display: flex !important;
     align-items: center !important;
@@ -63,6 +55,18 @@ styleFix.innerHTML = `
   }
 `;
 document.head.appendChild(styleFix);
+
+/* Écouteur global pour la saisie clavier physique (PC/Mac) */
+window.addEventListener('keydown', (e) => {
+  const loginScreen = document.getElementById('screen-login');
+  if(!loginScreen) return; // Uniquement actif sur l'écran de connexion PIN
+
+  if(e.key >= '0' && e.key <= '9'){
+    onPinKey(e.key);
+  } else if(e.key === 'Backspace' || e.key === 'Delete'){
+    onPinKey('⌫');
+  }
+});
 
 /* =========================================================================
    CONFIGURATION EMAILJS
@@ -582,7 +586,7 @@ async function renderZones(){
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:15px;">
-        <button class="btn ghost block" id="globalPdfBtn" style="flex:1;border-color:#C7791B;color:#C7791B;">📄 Rapport PDF de la Journée</button>
+        <button class="btn ghost block" id="globalPdfBtn" style="flex:1;border-color:#C7791B;color:#C7791B;">📄 Rapport PDF</button>
         <button class="btn ghost block" id="mailScheduleBtn" style="flex:1;border-color:#2B6E68;color:#2B6E68;">✉️ Envois Mails</button>
       </div>
 
@@ -1298,6 +1302,8 @@ async function renderStats(){
   const contextSelect = document.getElementById('statsContextSelect');
 
   let allControles = await idbGetAll('controles');
+  let dynamicTasks = await idbGetAll('task_schedule');
+
   if(navigator.onLine){
     try {
       const snap = await db.collection('controles').get();
@@ -1360,10 +1366,17 @@ async function renderStats(){
 
     let topNokItems = Object.keys(currentStats.itemNokMap).map(id => {
       let label = id;
+      
+      // Recherche du nom complet dans les tâches par défaut
       Object.keys(DEFAULT_POINTS).forEach(zk => {
         const found = DEFAULT_POINTS[zk].find(pt => pt.id === id);
         if(found) label = found.label;
       });
+
+      // Si non trouvé, recherche dans les tâches créées dynamiquement
+      const dynFound = dynamicTasks.find(dt => dt.taskId === id);
+      if(dynFound && dynFound.label) label = dynFound.label;
+
       return { id, label, count: currentStats.itemNokMap[id] };
     }).sort((a,b) => b.count - a.count).slice(0,5);
 
@@ -1427,9 +1440,9 @@ async function renderStats(){
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;">
         <div style="font-weight:700;font-size:13px;color:#B23A34;margin-bottom:10px;">⚠️ Classement des Tâches les plus souvent NOK</div>
         ${topNokItems.length > 0 ? topNokItems.map(te => `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #E7E1D6;font-size:12px;">
-            <span style="color:#211E1A;font-weight:500;">${te.label}</span>
-            <span style="background:#FEF2F2;color:#B23A34;font-weight:700;padding:2px 8px;border-radius:4px;font-size:11px;border:1px solid #B23A34;">${te.count} fois NOK</span>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #E7E1D6;font-size:12px;gap:10px;">
+            <span style="color:#211E1A;font-weight:500;flex:1;word-break:break-word;">${te.label}</span>
+            <span style="background:#FEF2F2;color:#B23A34;font-weight:700;padding:4px 8px;border-radius:4px;font-size:11px;border:1px solid #B23A34;white-space:nowrap;">${te.count} fois NOK</span>
           </div>
         `).join('') : '<div style="font-size:12px;color:#2B6E68;font-weight:600;">Aucune anomalie NOK relevée sur cette période ! 🎉</div>'}
       </div>
