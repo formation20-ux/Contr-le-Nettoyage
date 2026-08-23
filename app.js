@@ -25,6 +25,19 @@ styleFix.innerHTML = `
 document.head.appendChild(styleFix);
 
 /* =========================================================================
+   CONFIGURATION EMAILJS (VOS CLÉS DÉFINIES)
+   ========================================================================= */
+const EMAILJS_CONFIG = {
+  serviceId: "service_oxp40jn",
+  templateId: "template_w9x0ucj",
+  publicKey: "WaGLuQh-wIKia0dGl"
+};
+
+if(typeof emailjs !== 'undefined'){
+  emailjs.init(EMAILJS_CONFIG.publicKey);
+}
+
+/* =========================================================================
    CONFIGURATION FIREBASE
    ========================================================================= */
 const firebaseConfig = {
@@ -281,7 +294,7 @@ async function getPointsForToday(zoneId, dateIso){
 }
 
 /* =========================================================================
-   DÉCONNEXION AUTOMATIQUE & AUTOMATISATION MAIL
+   DÉCONNEXION AUTOMATIQUE & ENVOI MAIL IN-APP (EMAILJS)
    ========================================================================= */
 let session = null;
 let currentPin = '';
@@ -311,7 +324,6 @@ function resetInactivityTimer(){
   window.addEventListener(evt, resetInactivityTimer, { passive: true });
 });
 
-// Vérificateur automatique d'envoi unique quotidien
 setInterval(async () => {
   const config = await idbGet('mail_schedule', 'global_config');
   if(!config || !config.active || !config.emails || config.emails.length === 0) return;
@@ -323,8 +335,8 @@ setInterval(async () => {
   if(config.time1 === currentTime && config.lastSentDate !== `${todayKey}_${currentTime}`){
     config.lastSentDate = `${todayKey}_${currentTime}`;
     await pushToCloud('mail_schedule', 'global_config', config);
-    toast(`✉️ Heure atteinte : Lancement de la procédure d'envoi (${currentTime})`);
-    triggerMailSending(config.emails);
+    toast(`✉️ Heure d'envoi atteinte (${currentTime}). Envoi du mail en cours...`);
+    triggerInAppMailSending(config.emails);
   }
 }, 60000);
 
@@ -614,23 +626,124 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   PROGRAMMATION & TEST DES ENVOIS PAR MAIL (UN SEUL ENVOI HEBDOMADAIRE/QUOTIDIEN)
+   PROGRAMMATION & ENVOI DIRECT IN-APP DU MAIL (EMAILJS)
    ========================================================================= */
-async function triggerMailSending(emails){
+async function generatePDFBase64(){
+  const { jsPDF } = window.jspdf;
+  const docPdf = new jsPDF({ unit: 'mm', format: 'a4' });
+  const date = todayISO();
+  
+  const C_INK = [33, 30, 26];
+  const C_AMBER = [199, 121, 27];
+  const C_TEAL = [43, 110, 104];
+  const C_TEAL_BG = [220, 238, 236];
+  const C_RED = [178, 58, 52];
+  const C_RED_BG = [254, 242, 242];
+  const C_BG = [250, 248, 243];
+  const C_LINE = [231, 225, 214];
+
+  let totalNok = 0;
+  let totalEcarts = 0;
+  const zonePageMap = {};
+
+  docPdf.setFillColor(...C_INK); docPdf.rect(0, 0, 210, 28, 'F');
+  docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold'); docPdf.setFontSize(15);
+  docPdf.text('SASU SOAN — RAPPORT DE PRESTATION', 14, 15);
+  docPdf.setFont('helvetica', 'normal'); docPdf.setFontSize(9); docPdf.setTextColor(220, 220, 220);
+  docPdf.text(`Date : ${fmtDate(date)}  |  Généré le : ${new Date().toLocaleTimeString('fr-FR')}`, 14, 22);
+
+  docPdf.setFillColor(...C_BG); docPdf.roundedRect(14, 34, 182, 22, 3, 3, 'F');
+  docPdf.setDrawColor(...C_LINE); docPdf.roundedRect(14, 34, 182, 22, 3, 3, 'S');
+
+  docPdf.setTextColor(...C_INK); docPdf.setFont('helvetica', 'bold'); docPdf.setFontSize(10);
+  docPdf.text('SOMMAIRE DE PRESTATION', 18, 42);
+
+  let currentY = 64;
+  for(const z of ZONES){
+    docPdf.setFillColor(255, 255, 255); docPdf.roundedRect(14, currentY, 182, 12, 2, 2, 'F');
+    docPdf.setDrawColor(...C_LINE); docPdf.roundedRect(14, currentY, 182, 12, 2, 2, 'S');
+    docPdf.setFont('helvetica', 'bold'); docPdf.setFontSize(10); docPdf.setTextColor(...C_AMBER);
+    docPdf.text(`• ZONE : ${z.nom.toUpperCase()}`, 18, currentY + 8);
+    zonePageMap[z.id] = { ySommaire: currentY, pageTarget: 0 };
+    currentY += 16;
+  }
+
+  for(const z of ZONES){
+    docPdf.addPage();
+    const pageNum = docPdf.internal.getNumberOfPages();
+    zonePageMap[z.id].pageTarget = pageNum;
+    let y = 20;
+
+    docPdf.setFillColor(...C_AMBER); docPdf.rect(14, y, 182, 8, 'F');
+    docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold'); docPdf.setFontSize(11);
+    docPdf.text(`ZONE : ${z.nom.toUpperCase()}`, 18, y + 5.5);
+    y += 14;
+
+    const controleId = `${date}__${z.id}`;
+    let c = await idbGet('controles', controleId);
+    const activePoints = await getPointsForToday(z.id, date);
+    const eq = (c && c.passageEquipe) || {};
+    const cv = (c && c.contreVisite) || {};
+
+    for(const p of activePoints){
+      const rEq = (eq.reponses && eq.reponses[p.id]) || {};
+      const rCv = (cv.reponses && cv.reponses[p.id]) || {};
+      let eqConformeCalculated = (rEq.photos && rEq.photos.length > 0) ? (rEq.conforme !== false) : false;
+      let cvConformeCalculated = (rCv.conforme === false) ? false : true;
+
+      const isFinalOk = (cvConformeCalculated === true);
+      const isRealEcart = (eqConformeCalculated === true && cvConformeCalculated === false);
+
+      if(!isFinalOk || !eqConformeCalculated) totalNok++;
+      if(isRealEcart) totalEcarts++;
+
+      if(y > 250){ docPdf.addPage(); y = 20; }
+      docPdf.setFillColor(...(isFinalOk ? C_TEAL_BG : C_RED_BG));
+      docPdf.setDrawColor(...(isFinalOk ? C_TEAL : C_RED));
+      docPdf.roundedRect(14, y, 182, 14, 2, 2, 'FD');
+
+      docPdf.setFont('helvetica', 'bold'); docPdf.setFontSize(8.5); docPdf.setTextColor(...C_INK);
+      docPdf.text(p.label, 18, y + 6);
+      y += 18;
+    }
+  }
+
+  docPdf.setPage(1);
+  docPdf.setFillColor(...(totalNok === 0 ? C_TEAL : C_RED));
+  docPdf.roundedRect(14, 140, 182, 14, 3, 3, 'F');
+  docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold'); docPdf.setFontSize(10);
+  docPdf.text(`BILAN CONTRÔLE : ${totalNok === 0 ? 'PRESTATION CONFORME — 0 NOK' : totalNok + ' NOK dont ' + totalEcarts + ' écart(s)'}`, 18, 149);
+
+  return docPdf.output('datauristring');
+}
+
+async function triggerInAppMailSending(emails){
   if(!emails || emails.length === 0){
     toast('Inscrivez au moins un e-mail destinataire');
     return;
   }
-  
-  // 1. Génère et télécharge la pièce jointe PDF
-  await generateGlobalPDF();
 
-  // 2. Déclenche l'ouverture du client mail avec message pré-rempli
-  const subject = encodeURIComponent(`SASU SOAN — Rapport de Prestation du ${fmtDate(todayISO())}`);
-  const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le rapport de prestation de nettoyage SASU SOAN pour la journée du ${fmtDate(todayISO())}.\n\n(Le rapport PDF vient d'être téléchargé sur votre appareil, merci de l'attacher à cet e-mail avant envoi).\n\nCordialement,\nSASU SOAN`);
-  const recipients = emails.join(',');
+  if(typeof emailjs === 'undefined'){
+    toast("Erreur : Bibliothèque EmailJS introuvable dans index.html");
+    return;
+  }
 
-  window.location.href = `mailto:${recipients}?subject=${subject}&body=${body}`;
+  try {
+    toast("Génération & envoi du rapport en cours...");
+    const pdfBase64 = await generatePDFBase64();
+
+    for(const recipient of emails){
+      await emailjs.send(EMAILJS_CONFIG.serviceId, EMAILJS_CONFIG.templateId, {
+        to_email: recipient,
+        date: fmtDate(todayISO()),
+        content_pdf: pdfBase64
+      });
+    }
+    toast(`✉️ Rapport transmis avec succès à ${emails.length} destinataire(s) !`);
+  } catch(err) {
+    console.error(err);
+    toast("Erreur lors de l'envoi in-app. Vérifiez la configuration EmailJS.");
+  }
 }
 
 async function renderMailScheduleAdmin(){
@@ -683,7 +796,7 @@ async function renderMailScheduleAdmin(){
         </div>
 
         <button class="btn amber block" id="saveMailConfigBtn" style="margin-bottom:10px;">Enregistrer la Configuration</button>
-        <button class="btn ghost block" id="sendTestNowBtn" style="border-color:#2B6E68;color:#2B6E68;">🧪 Tester l'envoi du Mail</button>
+        <button class="btn ghost block" id="sendTestNowBtn" style="border-color:#2B6E68;color:#2B6E68;">🧪 Tester l'envoi In-App du Mail</button>
       </div>
     </div>
   `;
@@ -736,14 +849,12 @@ async function renderMailScheduleAdmin(){
     goToZones();
   };
 
-  // Bouton de Test réel d'envoi Mail + PDF
   document.getElementById('sendTestNowBtn').onclick = async () => {
     if(!mailConfig.emails || mailConfig.emails.length === 0){
       toast('Inscrivez au moins un e-mail destinataire');
       return;
     }
-    toast("Préparation du mail de test...");
-    await triggerMailSending(mailConfig.emails);
+    await triggerInAppMailSending(mailConfig.emails);
   };
 }
 
