@@ -577,26 +577,99 @@ async function renderControle(){
 /* =========================================================================
    GÉNÉRATION DU RAPPORT PDF GLOBAL (TOUTES ZONES + ÉCARTS + PHOTOS)
    ========================================================================= */
+/* =========================================================================
+   GÉNÉRATION DU RAPPORT PDF GLOBAL (DA WEB, SOMMAIRE CLIQUABLE, GRANDES PHOTOS)
+   ========================================================================= */
 async function generateGlobalPDF(){
   if(typeof window.jspdf === 'undefined'){ toast('Bibliothèque PDF indisponible'); return; }
   const { jsPDF } = window.jspdf;
-  const docPdf = new jsPDF();
+  const docPdf = new jsPDF({ unit: 'mm', format: 'a4' });
   const date = todayISO();
-  let y = 18;
-
-  // En-tête
-  docPdf.setFont('helvetica','bold'); docPdf.setFontSize(16);
-  docPdf.text('SASU SOAN — Rapport Global de Prestation', 14, y); y+=7;
-  docPdf.setFontSize(10); docPdf.setFont('helvetica','normal');
-  docPdf.text(`Date du contrôle : ${fmtDate(date)} | Généré le : ${new Date().toLocaleTimeString('fr-FR')}`, 14, y); y+=8;
-  docPdf.setLineWidth(0.5); docPdf.line(14, y, 196, y); y+=8;
+  
+  // Couleurs DA Web
+  const C_INK = [33, 30, 26];
+  const C_AMBER = [199, 121, 27];
+  const C_TEAL = [43, 110, 104];
+  const C_RED = [178, 58, 52];
+  const C_BG = [250, 248, 243];
+  const C_LINE = [231, 225, 214];
 
   let totalEcarts = 0;
+  const zonePageMap = {};
 
+  // --- PAGE 1 : EN-TÊTE ET SOMMAIRE ---
+  // Bandeau supérieur
+  docPdf.setFillColor(...C_INK);
+  docPdf.rect(0, 0, 210, 28, 'F');
+  
+  docPdf.setTextColor(255, 255, 255);
+  docPdf.setFont('helvetica', 'bold');
+  docPdf.setFontSize(16);
+  docPdf.text('SASU SOAN — RAPPORT DE PRESTATION', 14, 15);
+  
+  docPdf.setFont('helvetica', 'normal');
+  docPdf.setFontSize(9);
+  docPdf.setTextColor(220, 220, 220);
+  docPdf.text(`Date : ${fmtDate(date)}  |  Généré à : ${new Date().toLocaleTimeString('fr-FR')}`, 14, 22);
+
+  // Cartouche de Garde
+  docPdf.setFillColor(...C_BG);
+  docPdf.roundedRect(14, 34, 182, 22, 3, 3, 'F');
+  docPdf.setDrawColor(...C_LINE);
+  docPdf.roundedRect(14, 34, 182, 22, 3, 3, 'S');
+
+  docPdf.setTextColor(...C_INK);
+  docPdf.setFont('helvetica', 'bold');
+  docPdf.setFontSize(10);
+  docPdf.text('SOMMAIRE & NAVIGABILITÉ', 18, 42);
+  docPdf.setFont('helvetica', 'normal');
+  docPdf.setFontSize(8.5);
+  docPdf.setTextColor(100, 100, 100);
+  docPdf.text('Cliquez sur une zone ci-dessous pour accéder directement aux détails et photos.', 18, 48);
+
+  // --- PRÉ-CHARGEMENT ET CALCUL DU SOMMAIRE ---
+  let currentY = 64;
+  
   for(const z of ZONES){
+    docPdf.setFillColor(255, 255, 255);
+    docPdf.roundedRect(14, currentY, 182, 12, 2, 2, 'F');
+    docPdf.setDrawColor(...C_LINE);
+    docPdf.roundedRect(14, currentY, 182, 12, 2, 2, 'S');
+
+    docPdf.setFont('helvetica', 'bold');
+    docPdf.setFontSize(10);
+    docPdf.setTextColor(...C_AMBER);
+    docPdf.text(`• ZONE : ${z.nom.toUpperCase()}`, 18, currentY + 8);
+
+    docPdf.setFont('helvetica', 'normal');
+    docPdf.setFontSize(8.5);
+    docPdf.setTextColor(...C_INK);
+    docPdf.text('Accéder au détail →', 160, currentY + 8);
+
+    // Stockage de la position pour le lien interne
+    zonePageMap[z.id] = { ySommaire: currentY, pageTarget: 0 };
+    currentY += 16;
+  }
+
+  // --- GENERATION DES PAGES DE ZONES ---
+  for(const z of ZONES){
+    docPdf.addPage();
+    const pageNum = docPdf.internal.getNumberOfPages();
+    zonePageMap[z.id].pageTarget = pageNum;
+
+    let y = 20;
+
+    // Entête de zone
+    docPdf.setFillColor(...C_AMBER);
+    docPdf.rect(14, y, 182, 8, 'F');
+    docPdf.setTextColor(255, 255, 255);
+    docPdf.setFont('helvetica', 'bold');
+    docPdf.setFontSize(11);
+    docPdf.text(`ZONE : ${z.nom.toUpperCase()}`, 18, y + 5.5);
+    y += 14;
+
     const controleId = `${date}__${z.id}`;
     let c = await idbGet('controles', controleId);
-    
     if(navigator.onLine && !c){
       try {
         const doc = await db.collection('controles').doc(controleId).get();
@@ -608,13 +681,12 @@ async function generateGlobalPDF(){
     const eq = (c && c.passageEquipe) || {};
     const cv = (c && c.contreVisite) || {};
 
-    if(y > 250){ docPdf.addPage(); y = 20; }
-
-    // Titre de Zone
-    docPdf.setFont('helvetica','bold'); docPdf.setFontSize(12); docPdf.setTextColor(199, 121, 27);
-    docPdf.text(`ZONE : ${z.nom.toUpperCase()}`, 14, y); y+=6;
-    docPdf.setFontSize(9); docPdf.setTextColor(0, 0, 0); docPdf.setFont('helvetica','normal');
-    docPdf.text(`Équipe : ${eq.agentNom || 'Non saisi'} (${eq.heure||'--:--'}) | Contrôleur : ${cv.controleurNom || 'Non effectué'} (${cv.heure||'--:--'})`, 14, y); y+=6;
+    // Sous-titre Intervenants
+    docPdf.setFont('helvetica', 'normal');
+    docPdf.setFontSize(8.5);
+    docPdf.setTextColor(...C_INK);
+    docPdf.text(`Passage Équipe : ${eq.agentNom || 'Non renseigné'} (${eq.heure||'--:--'})   |   Contrôleur : ${cv.controleurNom || 'Non effectué'} (${cv.heure||'--:--'})`, 14, y);
+    y += 8;
 
     for(const p of activePoints){
       const rEq = (eq.reponses && eq.reponses[p.id]) || { conforme: null, photos:[], commentaire:'' };
@@ -623,51 +695,107 @@ async function generateGlobalPDF(){
       const eqStat = rEq.conforme === true ? 'OK' : (rEq.conforme === false ? 'NOK' : '—');
       const cvStat = rCv.conforme === true ? 'OK' : (rCv.conforme === false ? 'NOK' : '—');
 
-      // Détection d'écart
       const isEcart = (rEq.conforme !== null && rCv.conforme !== null && rEq.conforme !== rCv.conforme);
       if(isEcart) totalEcarts++;
 
-      if(y > 270){ docPdf.addPage(); y = 20; }
+      // Saut de page si nécessaire
+      if(y > 250){ docPdf.addPage(); y = 20; }
 
-      docPdf.setFont('helvetica', isEcart ? 'bold' : 'normal');
-      if(isEcart) docPdf.setTextColor(178, 58, 52); // Rouge si écart
+      // Encadré de Tâche
+      docPdf.setFillColor(isEcart ? 254 : 255, isEcart ? 242 : 255, isEcart ? 242 : 255);
+      docPdf.setDrawColor(...(isEcart ? C_RED : C_LINE));
+      docPdf.roundedRect(14, y, 182, 14, 2, 2, 'FD');
 
-      const statusText = `• ${p.label} -> Équipe: [${eqStat}] | Contrôleur: [${cvStat}] ${isEcart ? '⚠️ ÉCART DÉTECTÉ' : ''}`;
-      docPdf.text(statusText, 16, y); y+=5;
-      docPdf.setTextColor(0, 0, 0);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.setFontSize(9);
+      docPdf.setTextColor(...C_INK);
+      docPdf.text(p.label, 18, y + 6);
 
-      if(rEq.commentaire || rCv.commentaire){
-        docPdf.setFontSize(8); docPdf.setTextColor(100, 100, 100);
-        if(rEq.commentaire) { docPdf.text(`   Obs. Équipe: ${rEq.commentaire}`, 20, y); y+=4; }
-        if(rCv.commentaire) { docPdf.text(`   Obs. Contrôleur: ${rCv.commentaire}`, 20, y); y+=4; }
-        docPdf.setFontSize(9); docPdf.setTextColor(0, 0, 0);
+      // Statuts
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.setFontSize(8);
+      docPdf.text(`Équipe: ${eqStat}`, 130, y + 6);
+      docPdf.text(`Contrôleur: ${cvStat}`, 155, y + 6);
+
+      if(isEcart){
+        docPdf.setFillColor(...C_RED);
+        docPdf.rect(180, y + 2, 12, 10, 'F');
+        docPdf.setTextColor(255, 255, 255);
+        docPdf.setFont('helvetica', 'bold');
+        docPdf.setFontSize(7);
+        docPdf.text('ÉCART', 181.5, y + 8);
       }
 
-      // Insertion des photos dans le PDF
-      const allPhotos = [...(rEq.photos||[]), ...(rCv.photos||[])];
-      if(allPhotos.length > 0){
-        if(y > 230){ docPdf.addPage(); y = 20; }
-        let xImg = 20;
-        for(const imgBase64 of allPhotos.slice(0, 3)){ // Max 3 photos dans le PDF
+      y += 18;
+
+      // Commentaires
+      if(rEq.commentaire || rCv.commentaire){
+        docPdf.setFontSize(8);
+        docPdf.setTextColor(100, 100, 100);
+        if(rEq.commentaire){ docPdf.text(`• Obs. Équipe : ${rEq.commentaire}`, 18, y); y += 5; }
+        if(rCv.commentaire){ docPdf.text(`• Obs. Contrôleur : ${rCv.commentaire}`, 18, y); y += 5; }
+      }
+
+      // --- GALERIE PHOTO AGRANDIE (55 x 40 mm) ---
+      const allEqPhotos = rEq.photos || [];
+      const allCvPhotos = rCv.photos || [];
+
+      if(allEqPhotos.length > 0 || allCvPhotos.length > 0){
+        if(y > 220){ docPdf.addPage(); y = 20; }
+
+        let xPos = 18;
+        
+        // Affichage Grandes Photos Équipe
+        for(const imgBase64 of allEqPhotos){
           try {
-            docPdf.addImage(imgBase64, 'JPEG', xImg, y, 30, 22);
-            xImg += 34;
+            docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 40);
+            docPdf.setDrawColor(...C_TEAL);
+            docPdf.rect(xPos, y, 55, 40, 'S');
+            docPdf.setFontSize(7); docPdf.setTextColor(...C_TEAL);
+            docPdf.text('PHOTO ÉQUIPE', xPos + 2, y + 38);
+            xPos += 58;
+            if(xPos > 140){ xPos = 18; y += 43; }
           } catch(e){}
         }
-        y += 25;
+
+        // Affichage Grandes Photos Contrôleur
+        for(const imgBase64 of allCvPhotos){
+          try {
+            docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 40);
+            docPdf.setDrawColor(...C_AMBER);
+            docPdf.rect(xPos, y, 55, 40, 'S');
+            docPdf.setFontSize(7); docPdf.setTextColor(...C_AMBER);
+            docPdf.text('PHOTO CONTRÔLEUR', xPos + 2, y + 38);
+            xPos += 58;
+            if(xPos > 140){ xPos = 18; y += 43; }
+          } catch(e){}
+        }
+
+        y += 45;
       }
     }
-    y += 5;
-    docPdf.setLineWidth(0.2); docPdf.line(14, y, 196, y); y+=6;
   }
 
-  // Bilan en bas de page
-  docPdf.setFont('helvetica','bold'); docPdf.setFontSize(10);
-  docPdf.text(`BILAN PRESTATION : ${totalEcarts === 0 ? 'Conforme - Aucun écart détecté' : totalEcarts + ' Écart(s) constaté(s) lors du contrôle'}`, 14, y+5);
+  // --- RETOUR PAGE 1 : AJOUT DES LIENS DYNAMIQUES DU SOMMAIRE ---
+  docPdf.setPage(1);
+  for(const z of ZONES){
+    const info = zonePageMap[z.id];
+    if(info && info.pageTarget > 0){
+      // Ajout de la zone cliquable sur le sommaire
+      docPdf.link(14, info.ySommaire, 182, 12, { pageNumber: info.pageTarget });
+    }
+  }
 
-  docPdf.save(`Rapport_Global_SOAN_${date}.pdf`);
+  // Bilan final sur le sommaire
+  docPdf.setFillColor(...(totalEcarts === 0 ? C_TEAL : C_RED));
+  docPdf.roundedRect(14, 140, 182, 14, 3, 3, 'F');
+  docPdf.setTextColor(255, 255, 255);
+  docPdf.setFont('helvetica', 'bold');
+  docPdf.setFontSize(10);
+  docPdf.text(`BILAN CONTRÔLE : ${totalEcarts === 0 ? 'PRESTATION CONFORME — AUCUN ÉCART' : totalEcarts + ' ÉCART(S) CONSTATÉ(S)'}`, 18, 149);
+
+  docPdf.save(`Rapport_SOAN_Global_${date}.pdf`);
 }
-
 /* =========================================================================
    ADMINISTRATION DU PLANNING
    ========================================================================= */
