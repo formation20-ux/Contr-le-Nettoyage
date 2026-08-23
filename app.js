@@ -106,7 +106,7 @@ const POINTS = {
 };
 
 /* =========================================================================
-   MOTEUR DE STOCKAGE HYBRIDE (PROVISOIRE LOCAL -> CLOUD)
+   GESTION STOCKAGE HYBRIDE
    ========================================================================= */
 const DB_NAME = 'soan-hybrid-db';
 const DB_VERSION = 1;
@@ -169,9 +169,8 @@ async function idbDelete(store, id){
   });
 }
 
-/* Sync Engine : envoie le cache local vers Firestore dès qu'une connexion est disponible */
 async function pushToCloud(collection, id, data){
-  await idbPut(collection, data); // 1. Provisoire immédiat
+  await idbPut(collection, data);
   if(navigator.onLine){
     try {
       await db.collection(collection).doc(id).set(data, { merge: true });
@@ -223,6 +222,20 @@ function toast(msg){
   t.classList.add('show');
   clearTimeout(window.__toastTimer);
   window.__toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+// Lightbox pour agrandir n'importe quelle photo
+function openPhotoViewer(src, title){
+  const backdrop = document.createElement('div');
+  backdrop.className = 'pv-backdrop';
+  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;padding:20px;';
+  backdrop.innerHTML = `
+    <div style="color:#fff;margin-bottom:10px;font-weight:600;font-size:14px;">${title||'Visualisation Photo'}</div>
+    <img src="${src}" style="max-width:100%;max-height:80vh;border-radius:8px;box-shadow:0 5px 25px rgba(0,0,0,0.5);">
+    <button class="btn amber" style="margin-top:15px;padding:8px 20px;">Fermer</button>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.onclick = () => backdrop.remove();
 }
 
 function fileToResizedBase64(file, maxWidth){
@@ -389,6 +402,7 @@ async function renderZones(){
         <div class="section-title">Zones de Prestation</div>
         <div class="zone-grid" id="zoneGrid"></div>
       </div>
+      <button class="btn ghost block" id="globalPdfBtn" style="margin-bottom:15px;border-color:#C7791B;color:#C7791B;">📄 Générer Rapport Global PDF de la Journée</button>
       ${session.role==='controleur' ? `
         <button class="btn amber block" id="adminTasksBtn" style="margin-bottom:10px;">📅 Planning & Fréquence des Tâches</button>
         <button class="btn amber block" id="adminUsersBtn" style="margin-bottom:10px;">👤 Gestion des Utilisateurs / Accès</button>
@@ -422,6 +436,7 @@ async function renderZones(){
     };
   });
 
+  document.getElementById('globalPdfBtn').onclick = () => generateGlobalPDF();
   document.getElementById('logoutBtn').onclick = ()=>{ session=null; currentPin=''; renderLogin(); };
   
   const tasksBtn = document.getElementById('adminTasksBtn');
@@ -434,14 +449,12 @@ async function renderZones(){
 async function renderControle(){
   const date = todayISO();
   
-  // 1. Charger depuis IndexedDB local provisoire
   let c = await idbGet('controles', activeControleId) || {
     id: activeControleId, zoneId: activeZoneId, date,
     passageEquipe: { agentNom:null, heure:null, reponses:{} },
     contreVisite:  { controleurNom:null, heure:null, reponses:{} }
   };
 
-  // 2. Tenter d'enrichir depuis le Cloud sans effacer le local
   if(navigator.onLine){
     try {
       const doc = await db.collection('controles').doc(activeControleId).get();
@@ -467,53 +480,55 @@ async function renderControle(){
       <div class="back-link" id="backBtn">← Retour aux zones</div>
       <div class="section">
         <div id="pointsList"></div>
-        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">Enregistrer le rapport</button>
-        <button class="btn ghost block" id="pdfBtn" style="margin-top:8px;">📄 Générer Rapport de Prestation PDF</button>
+        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">Enregistrer la zone</button>
       </div>
     </div>
   `;
 
   document.getElementById('backBtn').onclick = goToZones;
-  document.getElementById('pdfBtn').onclick = () => generateControlePDF(c, activePoints);
 
   const listEl = document.getElementById('pointsList');
   listEl.innerHTML = activePoints.map(p=>{
     const r = currentBranch.reponses[p.id] || { conforme:null, photos:[], commentaire:'' };
     const myPhotos = r.photos || [];
     
-    // Extraction des photos faites par l'Équipe pour le Contrôleur
     const eqR = equipeReponses[p.id] || {};
     const eqPhotos = isContreVisite ? (eqR.photos || []) : [];
 
     return `
-      <div class="point-item" data-point="${p.id}">
+      <div class="point-item" data-point="${p.id}" style="border:1px solid #E7E1D6;padding:12px;border-radius:10px;margin-bottom:12px;">
         <div class="point-head">
-          <div class="point-label">${p.label} <small>(${p.freq==='J'?'Jour':(p.freq==='H'?'Hebdo':'Mensuel')})</small></div>
-          <div class="point-toggle">
+          <div class="point-label" style="font-weight:600;">${p.label} <small>(${p.freq==='J'?'Jour':(p.freq==='H'?'Hebdo':'Mensuel')})</small></div>
+          <div class="point-toggle" style="margin-top:6px;">
             <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true">✓ OK</button>
             <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false">✕ NOK</button>
           </div>
         </div>
 
         ${isContreVisite && eqPhotos.length ? `
-          <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:6px;">📸 Photos transmises par l'Équipe :</div>
-          <div class="point-photo-row" style="margin-bottom:8px;background:#DCEEEC;padding:6px;border-radius:8px;">
-            ${eqPhotos.map(pSrc=>`<img class="photo-thumb" src="${pSrc}" style="border:2px solid #2B6E68;">`).join('')}
+          <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:8px;">📸 Photos transmises par l'Équipe :</div>
+          <div class="point-photo-row" style="display:flex;gap:6px;overflow-x:auto;padding:6px;background:#DCEEEC;border-radius:8px;margin-top:4px;">
+            ${eqPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe - ${p.label}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
           </div>
         ` : ''}
 
-        <div style="font-size:11px;color:#6B655C;">${isContreVisite?'Tes photos contrôleur :':'Photos de prestation :'}</div>
-        <div class="point-photo-row" id="photos_${p.id}">
-          ${myPhotos.map(pSrc=>`<img class="photo-thumb" src="${pSrc}">`).join('')}
-          <label class="photo-btn">
-            📷 + Ajouter photo
+        <div style="font-size:11px;color:#6B655C;margin-top:8px;">${isContreVisite?'Tes photos contrôleur :':'Tes photos de prestation :'}</div>
+        <div class="point-photo-row" id="photos_${p.id}" style="display:flex;gap:6px;align-items:center;overflow-x:auto;margin-top:4px;">
+          ${myPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo ${isContreVisite?'Contrôleur':'Équipe'} - ${p.label}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;">`).join('')}
+          <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;">
+            📷 + Photo
             <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
           </label>
         </div>
-        <textarea class="point-comment" placeholder="Remarques / Observations">${r.commentaire||''}</textarea>
+        <textarea class="point-comment" placeholder="Remarques / Observations" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6;">${r.commentaire||''}</textarea>
       </div>
     `;
   }).join('');
+
+  // Gestion de la visionneuse photo
+  listEl.querySelectorAll('.click-zoom').forEach(img => {
+    img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
+  });
 
   listEl.querySelectorAll('.point-item').forEach(item=>{
     const pId = item.dataset.point;
@@ -536,9 +551,11 @@ async function renderControle(){
       r.photos.push(dataUrl);
       
       const newImg = document.createElement('img');
-      newImg.className = 'photo-thumb';
+      newImg.className = 'photo-thumb click-zoom';
       newImg.src = dataUrl;
-      item.querySelector('.point-photo-row').insertBefore(newImg, item.querySelector('.photo-btn'));
+      newImg.style.cssText = 'width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;';
+      newImg.onclick = () => openPhotoViewer(dataUrl, `Nouvelle photo - ${pId}`);
+      item.querySelector(`#photos_${pId}`).insertBefore(newImg, item.querySelector('.photo-btn'));
     };
 
     item.querySelector('.point-comment').oninput = (e)=>{
@@ -552,9 +569,103 @@ async function renderControle(){
     else currentBranch.agentNom = session.nom;
 
     const synced = await pushToCloud('controles', c.id, c);
-    toast(synced ? 'Rapport synchronisé au cloud !' : 'Enregistré localement (hors-ligne)');
+    toast(synced ? 'Zone sauvegardée et synchronisée !' : 'Sauvegardé en local');
     goToZones();
   };
+}
+
+/* =========================================================================
+   GÉNÉRATION DU RAPPORT PDF GLOBAL (TOUTES ZONES + ÉCARTS + PHOTOS)
+   ========================================================================= */
+async function generateGlobalPDF(){
+  if(typeof window.jspdf === 'undefined'){ toast('Bibliothèque PDF indisponible'); return; }
+  const { jsPDF } = window.jspdf;
+  const docPdf = new jsPDF();
+  const date = todayISO();
+  let y = 18;
+
+  // En-tête
+  docPdf.setFont('helvetica','bold'); docPdf.setFontSize(16);
+  docPdf.text('SASU SOAN — Rapport Global de Prestation', 14, y); y+=7;
+  docPdf.setFontSize(10); docPdf.setFont('helvetica','normal');
+  docPdf.text(`Date du contrôle : ${fmtDate(date)} | Généré le : ${new Date().toLocaleTimeString('fr-FR')}`, 14, y); y+=8;
+  docPdf.setLineWidth(0.5); docPdf.line(14, y, 196, y); y+=8;
+
+  let totalEcarts = 0;
+
+  for(const z of ZONES){
+    const controleId = `${date}__${z.id}`;
+    let c = await idbGet('controles', controleId);
+    
+    if(navigator.onLine && !c){
+      try {
+        const doc = await db.collection('controles').doc(controleId).get();
+        if(doc.exists) c = doc.data();
+      } catch(e){}
+    }
+
+    const activePoints = await getPointsForToday(z.id, date);
+    const eq = (c && c.passageEquipe) || {};
+    const cv = (c && c.contreVisite) || {};
+
+    if(y > 250){ docPdf.addPage(); y = 20; }
+
+    // Titre de Zone
+    docPdf.setFont('helvetica','bold'); docPdf.setFontSize(12); docPdf.setTextColor(199, 121, 27);
+    docPdf.text(`ZONE : ${z.nom.toUpperCase()}`, 14, y); y+=6;
+    docPdf.setFontSize(9); docPdf.setTextColor(0, 0, 0); docPdf.setFont('helvetica','normal');
+    docPdf.text(`Équipe : ${eq.agentNom || 'Non saisi'} (${eq.heure||'--:--'}) | Contrôleur : ${cv.controleurNom || 'Non effectué'} (${cv.heure||'--:--'})`, 14, y); y+=6;
+
+    for(const p of activePoints){
+      const rEq = (eq.reponses && eq.reponses[p.id]) || { conforme: null, photos:[], commentaire:'' };
+      const rCv = (cv.reponses && cv.reponses[p.id]) || { conforme: null, photos:[], commentaire:'' };
+
+      const eqStat = rEq.conforme === true ? 'OK' : (rEq.conforme === false ? 'NOK' : '—');
+      const cvStat = rCv.conforme === true ? 'OK' : (rCv.conforme === false ? 'NOK' : '—');
+
+      // Détection d'écart
+      const isEcart = (rEq.conforme !== null && rCv.conforme !== null && rEq.conforme !== rCv.conforme);
+      if(isEcart) totalEcarts++;
+
+      if(y > 270){ docPdf.addPage(); y = 20; }
+
+      docPdf.setFont('helvetica', isEcart ? 'bold' : 'normal');
+      if(isEcart) docPdf.setTextColor(178, 58, 52); // Rouge si écart
+
+      const statusText = `• ${p.label} -> Équipe: [${eqStat}] | Contrôleur: [${cvStat}] ${isEcart ? '⚠️ ÉCART DÉTECTÉ' : ''}`;
+      docPdf.text(statusText, 16, y); y+=5;
+      docPdf.setTextColor(0, 0, 0);
+
+      if(rEq.commentaire || rCv.commentaire){
+        docPdf.setFontSize(8); docPdf.setTextColor(100, 100, 100);
+        if(rEq.commentaire) { docPdf.text(`   Obs. Équipe: ${rEq.commentaire}`, 20, y); y+=4; }
+        if(rCv.commentaire) { docPdf.text(`   Obs. Contrôleur: ${rCv.commentaire}`, 20, y); y+=4; }
+        docPdf.setFontSize(9); docPdf.setTextColor(0, 0, 0);
+      }
+
+      // Insertion des photos dans le PDF
+      const allPhotos = [...(rEq.photos||[]), ...(rCv.photos||[])];
+      if(allPhotos.length > 0){
+        if(y > 230){ docPdf.addPage(); y = 20; }
+        let xImg = 20;
+        for(const imgBase64 of allPhotos.slice(0, 3)){ // Max 3 photos dans le PDF
+          try {
+            docPdf.addImage(imgBase64, 'JPEG', xImg, y, 30, 22);
+            xImg += 34;
+          } catch(e){}
+        }
+        y += 25;
+      }
+    }
+    y += 5;
+    docPdf.setLineWidth(0.2); docPdf.line(14, y, 196, y); y+=6;
+  }
+
+  // Bilan en bas de page
+  docPdf.setFont('helvetica','bold'); docPdf.setFontSize(10);
+  docPdf.text(`BILAN PRESTATION : ${totalEcarts === 0 ? 'Conforme - Aucun écart détecté' : totalEcarts + ' Écart(s) constaté(s) lors du contrôle'}`, 14, y+5);
+
+  docPdf.save(`Rapport_Global_SOAN_${date}.pdf`);
 }
 
 /* =========================================================================
@@ -629,7 +740,7 @@ async function renderTaskAdmin(){
 }
 
 /* =========================================================================
-   ADMINISTRATION UTILISATEURS (SUPPRESSION HYBRIDE CLOUD + LOCAL)
+   ADMINISTRATION UTILISATEURS
    ========================================================================= */
 async function renderAgentsAdmin(){
   root.innerHTML = `
@@ -692,7 +803,6 @@ function refreshAgentsList(agents){
       if(!confirm('Supprimer définitivement ce profil ?')) return;
       const id = btn.dataset.del;
       
-      // Suppression combinée Local + Cloud
       await idbDelete('agents', id);
       if(navigator.onLine){
         try { await db.collection('agents').doc(id).delete(); } catch(e){}
@@ -739,34 +849,6 @@ function openAgentModal(existing){
     toast('Profil sauvegardé !');
     await syncAgentsList();
   };
-}
-
-function generateControlePDF(c, points){
-  if(typeof window.jspdf === 'undefined'){ toast('jsPDF non disponible'); return; }
-  const { jsPDF } = window.jspdf;
-  const zone = ZONES.find(z=>z.id===c.zoneId);
-  const docPdf = new jsPDF();
-  let y = 20;
-
-  docPdf.setFont('helvetica','bold'); docPdf.setFontSize(16);
-  docPdf.text('SASU SOAN — Rapport de Prestation Nettoyage', 14, y); y+=8;
-  docPdf.setFontSize(11); docPdf.setFont('helvetica','normal');
-  docPdf.text(`Zone : ${zone?zone.nom:c.zoneId} | Date : ${fmtDate(c.date)}`, 14, y); y+=10;
-
-  const branch = c.passageEquipe.agentNom ? c.passageEquipe : c.contreVisite;
-  docPdf.setFont('helvetica','bold');
-  docPdf.text(`Intervenant : ${branch.agentNom || branch.controleurNom || 'N/A'} à ${branch.heure||'--:--'}`, 14, y); y+=8;
-
-  docPdf.setFont('helvetica','normal'); docPdf.setFontSize(9);
-  points.forEach(p=>{
-    const r = branch.reponses ? branch.reponses[p.id] : null;
-    if(y > 270){ docPdf.addPage(); y = 20; }
-    const status = r && r.conforme===true ? '[OK]' : (r && r.conforme===false ? '[NON CONFORME]' : '[NON FAIT]');
-    docPdf.text(`${status} ${p.label}`, 14, y); y+=5;
-    if(r && r.commentaire){ docPdf.text(`   Obs: ${r.commentaire}`, 18, y); y+=5; }
-  });
-
-  docPdf.save(`Rapport_SOAN_${c.zoneId}_${c.date}.pdf`);
 }
 
 if('serviceWorker' in navigator){
