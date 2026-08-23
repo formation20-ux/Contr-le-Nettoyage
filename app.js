@@ -189,6 +189,16 @@ const DEFAULT_POINTS = {
   ]
 };
 
+// Dictionnaire de correspondance pour rattraper les anciens IDs de sauvegarde
+const LEGACY_TASKS_MAP = {
+  'cui_sol': 'Nettoyage des sols cuisine',
+  'cui_plans': 'Nettoyage des plans de travail',
+  'cui_poub': 'Vidage & nettoyage des poubelles cuisine',
+  'cui_hottes': 'Nettoyage des hottes et filtres',
+  'sal_vitres': 'Nettoyage des surfaces vitrées',
+  'sal_sol': 'Nettoyage et mopage des sols lobby'
+};
+
 /* =========================================================================
    MOTEUR DE STOCKAGE HYBRIDE
    ========================================================================= */
@@ -566,7 +576,7 @@ async function checkPin(){
 async function goToZones(){ activeZoneId=null; await renderZones(); }
 
 /* =========================================================================
-   MENU PRINCIPAL (GESTION ACCORD DU PLURIEL)
+   MENU PRINCIPAL
    ========================================================================= */
 async function renderZones(){
   resetInactivityTimer();
@@ -627,7 +637,6 @@ async function renderZones(){
       const badgeText = remaining === 0 ? '✓ Complété' : `${remaining} restant(s)`;
       const badgeBg = remaining === 0 ? '#2B6E68' : '#C7791B';
 
-      // Gestion dynamique du pluriel (tâche / tâches)
       const nbTasks = activePoints.length;
       const taskLabelPlural = nbTasks <= 1 ? 'tâche' : 'tâches';
 
@@ -1282,7 +1291,7 @@ async function renderHistory(){
 }
 
 /* =========================================================================
-   ÉCRAN STATISTIQUES & SUIVI CENTRÉ SUR LES NOK (RESOLUTION NOMS ANOMALIES)
+   ÉCRAN STATISTIQUES & SUIVI CENTRÉ SUR LES NOK
    ========================================================================= */
 async function renderStats(){
   resetInactivityTimer();
@@ -1372,15 +1381,20 @@ async function renderStats(){
     let topNokItems = Object.keys(currentStats.itemNokMap).map(id => {
       let label = id;
       
-      // Recherche dans le référentiel par défaut
-      Object.keys(DEFAULT_POINTS).forEach(zk => {
-        const found = DEFAULT_POINTS[zk].find(pt => pt.id === id);
-        if(found && found.label) label = found.label;
-      });
+      // 1. Recherche dans le dictionnaire de correspondance historique
+      if(LEGACY_TASKS_MAP[id]){
+        label = LEGACY_TASKS_MAP[id];
+      } else {
+        // 2. Recherche dans le référentiel par défaut
+        Object.keys(DEFAULT_POINTS).forEach(zk => {
+          const found = DEFAULT_POINTS[zk].find(pt => pt.id === id);
+          if(found && found.label) label = found.label;
+        });
 
-      // Recherche dans les tâches dynamiques
-      const dynFound = dynamicTasks.find(dt => dt.taskId === id || dt.id === id);
-      if(dynFound && dynFound.label) label = dynFound.label;
+        // 3. Recherche dans les tâches créées dynamiquement
+        const dynFound = dynamicTasks.find(dt => dt.taskId === id || dt.id === id);
+        if(dynFound && dynFound.label) label = dynFound.label;
+      }
 
       return { id, label, count: currentStats.itemNokMap[id] };
     }).sort((a,b) => b.count - a.count).slice(0,5);
