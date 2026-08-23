@@ -145,10 +145,10 @@ const DEFAULT_POINTS = {
 };
 
 /* =========================================================================
-   MOTEUR DE STOCKAGE HYBRIDE
+   MOTEUR DE STOCKAGE HYBRIDE (MIGRATION AUTO VERSION 3)
    ========================================================================= */
 const DB_NAME = 'soan-hybrid-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 let dbPromise = null;
 
 function openDB(){
@@ -157,12 +157,12 @@ function openDB(){
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e)=>{
       const db = e.target.result;
-      if(!db.objectStoreNames.contains('controles')) db.createObjectStore('controles', { keyPath:'id' });
-      if(!db.objectStoreNames.contains('agents')) db.createObjectStore('agents', { keyPath:'id' });
-      if(!db.objectStoreNames.contains('task_schedule')) db.createObjectStore('task_schedule', { keyPath:'taskId' });
-      if(!db.objectStoreNames.contains('sync_queue')) db.createObjectStore('sync_queue', { keyPath:'id' });
-      if(!db.objectStoreNames.contains('mail_schedule')) db.createObjectStore('mail_schedule', { keyPath:'id' });
-      if(!db.objectStoreNames.contains('pdf_reports')) db.createObjectStore('pdf_reports', { keyPath:'id' });
+      const stores = ['controles', 'agents', 'task_schedule', 'sync_queue', 'mail_schedule', 'pdf_reports'];
+      stores.forEach(s => {
+        if(!db.objectStoreNames.contains(s)){
+          db.createObjectStore(s, { keyPath: (s === 'task_schedule' ? 'taskId' : 'id') });
+        }
+      });
     };
     req.onsuccess = ()=>resolve(req.result);
     req.onerror = ()=>reject(req.error);
@@ -171,43 +171,55 @@ function openDB(){
 }
 
 async function idbPut(store, value){
-  const db = await openDB();
-  return new Promise((resolve, reject)=>{
-    const tx = db.transaction(store, 'readwrite');
-    tx.objectStore(store).put(value);
-    tx.oncomplete = ()=>resolve(value);
-    tx.onerror = ()=>reject(tx.error);
-  });
+  try {
+    const db = await openDB();
+    if(!db.objectStoreNames.contains(store)) return value;
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).put(value);
+      tx.oncomplete = ()=>resolve(value);
+      tx.onerror = ()=>reject(tx.error);
+    });
+  } catch(e) { return value; }
 }
 
 async function idbGet(store, id){
-  const db = await openDB();
-  return new Promise((resolve, reject)=>{
-    const tx = db.transaction(store, 'readonly');
-    const req = tx.objectStore(store).get(id);
-    req.onsuccess = ()=>resolve(req.result || null);
-    req.onerror = ()=>reject(req.error);
-  });
+  try {
+    const db = await openDB();
+    if(!db.objectStoreNames.contains(store)) return null;
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(store, 'readonly');
+      const req = tx.objectStore(store).get(id);
+      req.onsuccess = ()=>resolve(req.result || null);
+      req.onerror = ()=>reject(req.error);
+    });
+  } catch(e) { return null; }
 }
 
 async function idbGetAll(store){
-  const db = await openDB();
-  return new Promise((resolve, reject)=>{
-    const tx = db.transaction(store, 'readonly');
-    const req = tx.objectStore(store).getAll();
-    req.onsuccess = ()=>resolve(req.result || []);
-    req.onerror = ()=>reject(req.error);
-  });
+  try {
+    const db = await openDB();
+    if(!db.objectStoreNames.contains(store)) return [];
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(store, 'readonly');
+      const req = tx.objectStore(store).getAll();
+      req.onsuccess = ()=>resolve(req.result || []);
+      req.onerror = ()=>reject(req.error);
+    });
+  } catch(e) { return []; }
 }
 
 async function idbDelete(store, id){
-  const db = await openDB();
-  return new Promise((resolve, reject)=>{
-    const tx = db.transaction(store, 'readwrite');
-    tx.objectStore(store).delete(id);
-    tx.oncomplete = ()=>resolve();
-    tx.onerror = ()=>reject(tx.error);
-  });
+  try {
+    const db = await openDB();
+    if(!db.objectStoreNames.contains(store)) return;
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).delete(id);
+      tx.oncomplete = ()=>resolve();
+      tx.onerror = ()=>reject(tx.error);
+    });
+  } catch(e) {}
 }
 
 async function pushToCloud(collection, id, data){
@@ -627,61 +639,23 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   PROGRAMMATION & ENVOI DIRECT IN-APP DU MAIL (SANS DEPASSEMENT EMAILJS 50KB)
+   PROGRAMMATION & ENVOI DIRECT IN-APP DU MAIL
    ========================================================================= */
 async function generateAndStorePDFData(){
-  const { jsPDF } = window.jspdf;
-  const docPdf = new jsPDF({ unit: 'mm', format: 'a4' });
   const date = todayISO();
-  
-  const C_INK = [33, 30, 26];
-  const C_AMBER = [199, 121, 27];
-  const C_TEAL = [43, 110, 104];
-  const C_TEAL_BG = [220, 238, 236];
-  const C_RED = [178, 58, 52];
-  const C_RED_BG = [254, 242, 242];
-  const C_BG = [250, 248, 243];
-  const C_LINE = [231, 225, 214];
-
   let totalNok = 0;
   let totalEcarts = 0;
-  const zonePageMap = {};
-
-  docPdf.setFillColor(...C_INK); docPdf.rect(0, 0, 210, 28, 'F');
-  docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold'); docPdf.setFontSize(15);
-  docPdf.text('SASU SOAN — RAPPORT DE PRESTATION', 14, 15);
-  docPdf.setFont('helvetica', 'normal'); docPdf.setFontSize(9); docPdf.setTextColor(220, 220, 220);
-  docPdf.text(`Date : ${fmtDate(date)}  |  Généré le : ${new Date().toLocaleTimeString('fr-FR')}`, 14, 22);
-
-  docPdf.setFillColor(...C_BG); docPdf.roundedRect(14, 34, 182, 22, 3, 3, 'F');
-  docPdf.setDrawColor(...C_LINE); docPdf.roundedRect(14, 34, 182, 22, 3, 3, 'S');
-
-  docPdf.setTextColor(...C_INK); docPdf.setFont('helvetica', 'bold'); docPdf.setFontSize(10);
-  docPdf.text('SOMMAIRE DE PRESTATION', 18, 42);
-
-  let currentY = 64;
-  for(const z of ZONES){
-    docPdf.setFillColor(255, 255, 255); docPdf.roundedRect(14, currentY, 182, 12, 2, 2, 'F');
-    docPdf.setDrawColor(...C_LINE); docPdf.roundedRect(14, currentY, 182, 12, 2, 2, 'S');
-    docPdf.setFont('helvetica', 'bold'); docPdf.setFontSize(10); docPdf.setTextColor(...C_AMBER);
-    docPdf.text(`• ZONE : ${z.nom.toUpperCase()}`, 18, currentY + 8);
-    zonePageMap[z.id] = { ySommaire: currentY, pageTarget: 0 };
-    currentY += 16;
-  }
 
   for(const z of ZONES){
-    docPdf.addPage();
-    const pageNum = docPdf.internal.getNumberOfPages();
-    zonePageMap[z.id].pageTarget = pageNum;
-    let y = 20;
-
-    docPdf.setFillColor(...C_AMBER); docPdf.rect(14, y, 182, 8, 'F');
-    docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold'); docPdf.setFontSize(11);
-    docPdf.text(`ZONE : ${z.nom.toUpperCase()}`, 18, y + 5.5);
-    y += 14;
-
     const controleId = `${date}__${z.id}`;
     let c = await idbGet('controles', controleId);
+    if(navigator.onLine && !c){
+      try {
+        const doc = await db.collection('controles').doc(controleId).get();
+        if(doc.exists) c = doc.data();
+      } catch(e){}
+    }
+
     const activePoints = await getPointsForToday(z.id, date);
     const eq = (c && c.passageEquipe) || {};
     const cv = (c && c.contreVisite) || {};
@@ -697,30 +671,13 @@ async function generateAndStorePDFData(){
 
       if(!isFinalOk || !eqConformeCalculated) totalNok++;
       if(isRealEcart) totalEcarts++;
-
-      if(y > 250){ docPdf.addPage(); y = 20; }
-      docPdf.setFillColor(...(isFinalOk ? C_TEAL_BG : C_RED_BG));
-      docPdf.setDrawColor(...(isFinalOk ? C_TEAL : C_RED));
-      docPdf.roundedRect(14, y, 182, 14, 2, 2, 'FD');
-
-      docPdf.setFont('helvetica', 'bold'); docPdf.setFontSize(8.5); docPdf.setTextColor(...C_INK);
-      docPdf.text(p.label, 18, y + 6);
-      y += 18;
     }
   }
 
-  docPdf.setPage(1);
-  docPdf.setFillColor(...(totalNok === 0 ? C_TEAL : C_RED));
-  docPdf.roundedRect(14, 140, 182, 14, 3, 3, 'F');
-  docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold'); docPdf.setFontSize(10);
-  
   const statusSummary = totalNok === 0 
     ? 'PRESTATION CONFORME — 0 NOK' 
     : `${totalNok} NOK dont ${totalEcarts} écart(s)`;
 
-  docPdf.text(`BILAN CONTRÔLE : ${statusSummary}`, 18, 149);
-
-  // Sauvegarde du rapport Cloud pour génération du lien
   const reportDocId = `report_${date}`;
   const reportData = {
     id: reportDocId,
@@ -733,7 +690,6 @@ async function generateAndStorePDFData(){
 
   await pushToCloud('pdf_reports', reportDocId, reportData);
 
-  // Lien direct de consultation
   const appUrl = window.location.href.split('#')[0];
   const downloadLink = `${appUrl}#histDateSelect`;
 
