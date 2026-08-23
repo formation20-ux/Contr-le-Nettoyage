@@ -10,11 +10,6 @@ const firebaseConfig = {
   appId: "1:1032576632030:web:4650e2bce60a2c7b67ae4f"
 };
 
-const EMAILJS_PUBLIC_KEY  = 'À_REMPLACER';
-const EMAILJS_SERVICE_ID  = 'À_REMPLACER';
-const EMAILJS_TEMPLATE_ID = 'À_REMPLACER';
-const RAPPORT_DESTINATAIRE = 'toi@mcdcaen.com';
-
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
@@ -110,8 +105,8 @@ const POINTS = {
   ]
 };
 
-const DB_NAME = 'controle-nettoyage';
-const DB_VERSION = 4;
+const DB_NAME = 'controle-nettoyage-soan';
+const DB_VERSION = 1;
 let dbPromise = null;
 
 function openDB(){
@@ -121,7 +116,6 @@ function openDB(){
     req.onupgradeneeded = (e)=>{
       const db = e.target.result;
       if(!db.objectStoreNames.contains('controles')) db.createObjectStore('controles', { keyPath:'id' });
-      if(!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', { keyPath:'id' });
       if(!db.objectStoreNames.contains('agents')) db.createObjectStore('agents', { keyPath:'id' });
       if(!db.objectStoreNames.contains('task_schedule')) db.createObjectStore('task_schedule', { keyPath:'taskId' });
     };
@@ -132,40 +126,51 @@ function openDB(){
 }
 
 async function idbPut(store, value){
-  const db = await openDB();
-  return new Promise((resolve, reject)=>{
-    const tx = db.transaction(store, 'readwrite');
-    tx.objectStore(store).put(value);
-    tx.oncomplete = ()=>resolve(value);
-    tx.onerror = ()=>reject(tx.error);
-  });
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).put(value);
+      tx.oncomplete = ()=>resolve(value);
+      tx.onerror = ()=>reject(tx.error);
+    });
+  } catch(e) { console.error(e); }
 }
+
 async function idbGet(store, id){
-  const db = await openDB();
-  return new Promise((resolve, reject)=>{
-    const tx = db.transaction(store, 'readonly');
-    const req = tx.objectStore(store).get(id);
-    req.onsuccess = ()=>resolve(req.result || null);
-    req.onerror = ()=>reject(req.error);
-  });
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(store, 'readonly');
+      const req = tx.objectStore(store).get(id);
+      req.onsuccess = ()=>resolve(req.result || null);
+      req.onerror = ()=>reject(req.error);
+    });
+  } catch(e) { return null; }
 }
+
 async function idbGetAll(store){
-  const db = await openDB();
-  return new Promise((resolve, reject)=>{
-    const tx = db.transaction(store, 'readonly');
-    const req = tx.objectStore(store).getAll();
-    req.onsuccess = ()=>resolve(req.result || []);
-    req.onerror = ()=>reject(req.error);
-  });
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(store, 'readonly');
+      const req = tx.objectStore(store).getAll();
+      req.onsuccess = ()=>resolve(req.result || []);
+      req.onerror = ()=>reject(req.error);
+    });
+  } catch(e) { return []; }
 }
+
 async function idbDelete(store, id){
-  const db = await openDB();
-  return new Promise((resolve, reject)=>{
-    const tx = db.transaction(store, 'readwrite');
-    tx.objectStore(store).delete(id);
-    tx.oncomplete = ()=>resolve();
-    tx.onerror = ()=>reject(tx.error);
-  });
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).delete(id);
+      tx.oncomplete = ()=>resolve();
+      tx.onerror = ()=>reject(tx.error);
+    });
+  } catch(e) { console.error(e); }
 }
 
 let session = null;
@@ -188,18 +193,6 @@ function toast(msg){
   t.classList.add('show');
   clearTimeout(window.__toastTimer);
   window.__toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
-}
-
-function openPhotoViewer(src, label){
-  const backdrop = document.createElement('div');
-  backdrop.className = 'pv-backdrop';
-  backdrop.innerHTML = `
-    ${label?`<div class="pv-label">${label}</div>`:''}
-    <button class="pv-close">✕</button>
-    <img class="pv-img" src="${src}">
-  `;
-  document.body.appendChild(backdrop);
-  backdrop.addEventListener('click', (e)=>{ if(e.target===backdrop || e.target.classList.contains('pv-close')) backdrop.remove(); });
 }
 
 function fileToResizedBase64(file, maxWidth){
@@ -226,7 +219,7 @@ function fileToResizedBase64(file, maxWidth){
 
 async function getPointsForToday(zoneId, dateIso){
   const d = new Date(dateIso);
-  const currentDay = d.getDay(); // 0=Dim, 1=Lun...
+  const currentDay = d.getDay();
   const currentDate = d.getDate();
   const allPoints = POINTS[zoneId] || [];
   const schedules = await idbGetAll('task_schedule');
@@ -237,11 +230,11 @@ async function getPointsForToday(zoneId, dateIso){
     if(p.freq === 'J') return true;
     const custom = schedMap[p.id];
     if(p.freq === 'H'){
-      const targetDay = custom ? Number(custom.targetValue) : 1; // Lundi par défaut
+      const targetDay = custom ? Number(custom.targetValue) : 1;
       return currentDay === targetDay;
     }
     if(p.freq === 'M'){
-      const targetDate = custom ? Number(custom.targetValue) : 1; // 1er du mois par défaut
+      const targetDate = custom ? Number(custom.targetValue) : 1;
       return currentDate === targetDate;
     }
     return false;
@@ -277,7 +270,7 @@ function renderLogin(){
         <div class="pin-dots" id="pinDots"></div>
         <div class="pin-pad" id="pinPad"></div>
         <div class="pin-error" id="pinError"></div>
-        <button class="btn ghost small block" id="bypassBtn" style="margin-top:15px;">🔓 Connexion Secours Admin</button>
+        <button class="btn ghost small block" id="bypassBtn" style="margin-top:15px;background:#C7791B;color:#fff;">🔓 Accès Direct Admin Contrôleur</button>
       </div>
     </div>
   `;
@@ -346,8 +339,8 @@ async function renderZones(){
         <div class="zone-grid" id="zoneGrid"></div>
       </div>
       ${session.role==='controleur' ? `
-        <button class="btn ghost block" id="adminTasksBtn" style="margin-bottom:10px;">📅 Planning & Fréquence des Tâches</button>
-        <button class="btn ghost block" id="adminUsersBtn" style="margin-bottom:10px;">👤 Gestion des Utilisateurs / Accès</button>
+        <button class="btn amber block" id="adminTasksBtn" style="margin-bottom:10px;">📅 Planning & Fréquence des Tâches</button>
+        <button class="btn amber block" id="adminUsersBtn" style="margin-bottom:10px;">👤 Gestion des Utilisateurs / Accès</button>
       ` : ''}
       <button class="btn ghost block" id="logoutBtn">Déconnexion</button>
     </div>
@@ -379,10 +372,12 @@ async function renderZones(){
   });
 
   document.getElementById('logoutBtn').addEventListener('click', ()=>{ session=null; currentPin=''; renderLogin(); });
+  
   const tasksBtn = document.getElementById('adminTasksBtn');
-  if(tasksBtn) tasksBtn.addEventListener('click', renderTaskAdmin);
+  if(tasksBtn) tasksBtn.onclick = () => renderTaskAdmin();
+
   const usersBtn = document.getElementById('adminUsersBtn');
-  if(usersBtn) usersBtn.addEventListener('click', renderAgentsAdmin);
+  if(usersBtn) usersBtn.onclick = () => renderAgentsAdmin();
 }
 
 async function renderControle(){
@@ -410,8 +405,8 @@ async function renderControle(){
     </div>
   `;
 
-  document.getElementById('backBtn').addEventListener('click', goToZones);
-  document.getElementById('pdfBtn').addEventListener('click', ()=>generateControlePDF(c, activePoints));
+  document.getElementById('backBtn').onclick = goToZones;
+  document.getElementById('pdfBtn').onclick = () => generateControlePDF(c, activePoints);
 
   const listEl = document.getElementById('pointsList');
   listEl.innerHTML = activePoints.map(p=>{
@@ -444,15 +439,15 @@ async function renderControle(){
     const r = branch.reponses[pId];
 
     item.querySelectorAll('.toggle-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
+      btn.onclick = ()=>{
         r.conforme = btn.dataset.val==='true';
         item.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active'));
         btn.classList.add('active');
-      });
+      };
     });
 
     const fileInput = item.querySelector('[data-photo-input]');
-    fileInput.addEventListener('change', async ()=>{
+    fileInput.onchange = async ()=>{
       if(!fileInput.files.length) return;
       const dataUrl = await fileToResizedBase64(fileInput.files[0], 800);
       r.photos = r.photos || [];
@@ -462,14 +457,14 @@ async function renderControle(){
       newImg.className = 'photo-thumb';
       newImg.src = dataUrl;
       item.querySelector('.point-photo-row').insertBefore(newImg, item.querySelector('.photo-btn'));
-    });
+    };
 
-    item.querySelector('.point-comment').addEventListener('input', (e)=>{
+    item.querySelector('.point-comment').oninput = (e)=>{
       r.commentaire = e.target.value;
-    });
+    };
   });
 
-  document.getElementById('saveBtn').addEventListener('click', async ()=>{
+  document.getElementById('saveBtn').onclick = async ()=>{
     branch.heure = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
     if(isContreVisite) branch.controleurNom = session.nom;
     else branch.agentNom = session.nom;
@@ -477,12 +472,9 @@ async function renderControle(){
     await idbPut('controles', c);
     toast('Prestation enregistrée avec succès !');
     goToZones();
-  });
+  };
 }
 
-/* =========================================================================
-   GESTION DU PLANNING TÂCHE PAR TÂCHE (ADMIN CONTRÔLEUR)
-   ========================================================================= */
 async function renderTaskAdmin(){
   const schedules = await idbGetAll('task_schedule');
   const schedMap = {};
@@ -492,17 +484,17 @@ async function renderTaskAdmin(){
   ZONES.forEach(z => {
     const periodicPoints = (POINTS[z.id] || []).filter(p => p.freq === 'H' || p.freq === 'M');
     if(periodicPoints.length){
-      tasksHtml += `<div class="section-title" style="margin-top:15px;font-size:16px;color:var(--amber);">${z.nom}</div>`;
+      tasksHtml += `<div class="section-title" style="margin-top:15px;font-size:16px;color:#C7791B;">${z.nom}</div>`;
       periodicPoints.forEach(p => {
         const custom = schedMap[p.id];
         const currentVal = custom ? custom.targetValue : 1;
         tasksHtml += `
-          <div class="agent-row" style="flex-direction:column;align-items:flex-start;gap:6px;">
+          <div class="agent-row" style="flex-direction:column;align-items:flex-start;gap:6px;padding:10px 0;border-bottom:1px solid #E7E1D6;">
             <div style="font-weight:600;">${p.label} <span class="badge-role">${p.freq==='H'?'Hebdo':'Mensuel'}</span></div>
             <div style="display:flex;align-items:center;gap:10px;width:100%;">
-              <label style="font-size:12px;color:var(--ink-soft);">Jour d'exécution :</label>
+              <label style="font-size:12px;color:#6B655C;">Jour d'exécution :</label>
               ${p.freq==='H' ? `
-                <select class="task-sched-select" data-task="${p.id}" data-freq="H" style="flex:1;padding:6px;border-radius:6px;border:1px solid var(--line);">
+                <select class="task-sched-select" data-task="${p.id}" data-freq="H" style="flex:1;padding:6px;border-radius:6px;border:1px solid #E7E1D6;">
                   <option value="1" ${currentVal==1?'selected':''}>Lundi</option>
                   <option value="2" ${currentVal==2?'selected':''}>Mardi</option>
                   <option value="3" ${currentVal==3?'selected':''}>Mercredi</option>
@@ -512,8 +504,8 @@ async function renderTaskAdmin(){
                   <option value="0" ${currentVal==0?'selected':''}>Dimanche</option>
                 </select>
               ` : `
-                <input type="number" class="task-sched-input" data-task="${p.id}" data-freq="M" min="1" max="28" value="${currentVal}" style="width:80px;padding:6px;border-radius:6px;border:1px solid var(--line);">
-                <span style="font-size:12px;color:var(--ink-soft);">du mois</span>
+                <input type="number" class="task-sched-input" data-task="${p.id}" data-freq="M" min="1" max="28" value="${currentVal}" style="width:80px;padding:6px;border-radius:6px;border:1px solid #E7E1D6;">
+                <span style="font-size:12px;color:#6B655C;">du mois</span>
               `}
             </div>
           </div>
@@ -534,8 +526,8 @@ async function renderTaskAdmin(){
     </div>
   `;
 
-  document.getElementById('backBtn').addEventListener('click', goToZones);
-  document.getElementById('saveTasksBtn').addEventListener('click', async ()=>{
+  document.getElementById('backBtn').onclick = goToZones;
+  document.getElementById('saveTasksBtn').onclick = async ()=>{
     const selects = document.querySelectorAll('.task-sched-select');
     for(const sel of selects){
       await idbPut('task_schedule', { taskId: sel.dataset.task, freq: sel.dataset.freq, targetValue: parseInt(sel.value) });
@@ -546,12 +538,9 @@ async function renderTaskAdmin(){
     }
     toast('Planning des tâches sauvegardé');
     goToZones();
-  });
+  };
 }
 
-/* =========================================================================
-   GESTION DES UTILISATEURS / ACCÈS (ADMIN CONTRÔLEUR)
-   ========================================================================= */
 async function renderAgentsAdmin(){
   root.innerHTML = `
     <div class="wrap">
@@ -563,8 +552,8 @@ async function renderAgentsAdmin(){
       </div>
     </div>
   `;
-  document.getElementById('backBtn').addEventListener('click', goToZones);
-  document.getElementById('addAgentBtn').addEventListener('click', ()=>openAgentModal());
+  document.getElementById('backBtn').onclick = goToZones;
+  document.getElementById('addAgentBtn').onclick = ()=>openAgentModal();
   await refreshAgentsList();
 }
 
@@ -576,12 +565,12 @@ async function refreshAgentsList(){
     return;
   }
   el.innerHTML = agents.map(a=>`
-    <div class="agent-row">
+    <div class="agent-row" style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #E7E1D6;">
       <div>
-        <div class="agent-name">${a.nom} ${a.role==='controleur'?'<span class="badge-role">Contrôleur</span>':''}</div>
-        <div class="agent-meta">Code PIN : <strong>${a.pin}</strong></div>
+        <div class="agent-name" style="font-weight:600;">${a.nom} ${a.role==='controleur'?'<span class="badge-role">Contrôleur</span>':''}</div>
+        <div class="agent-meta" style="font-size:12px;color:#6B655C;">Code PIN : <strong>${a.pin}</strong></div>
       </div>
-      <div class="agent-actions">
+      <div class="agent-actions" style="display:flex;gap:6px;">
         <button class="btn ghost small" data-edit="${a.id}">Modifier</button>
         <button class="btn danger small" data-del="${a.id}">Suppr.</button>
       </div>
@@ -589,18 +578,18 @@ async function refreshAgentsList(){
   `).join('');
 
   el.querySelectorAll('[data-edit]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
+    btn.onclick = async ()=>{
       const a = await idbGet('agents', btn.dataset.edit);
       openAgentModal(a);
-    });
+    };
   });
   el.querySelectorAll('[data-del]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
+    btn.onclick = async ()=>{
       if(!confirm('Supprimer ce profil utilisateur ?')) return;
       await idbDelete('agents', btn.dataset.del);
       toast('Profil supprimé');
       refreshAgentsList();
-    });
+    };
   });
 }
 
@@ -625,9 +614,8 @@ function openAgentModal(existing){
     </div>
   `;
   document.body.appendChild(backdrop);
-  backdrop.addEventListener('click', (e)=>{ if(e.target===backdrop) backdrop.remove(); });
-  document.getElementById('am_cancel').addEventListener('click', ()=>backdrop.remove());
-  document.getElementById('am_save').addEventListener('click', async ()=>{
+  document.getElementById('am_cancel').onclick = ()=>backdrop.remove();
+  document.getElementById('am_save').onclick = async ()=>{
     const nom = document.getElementById('am_nom').value.trim();
     const pin = document.getElementById('am_pin').value.trim();
     const role = document.getElementById('am_role').value;
@@ -637,7 +625,7 @@ function openAgentModal(existing){
     backdrop.remove();
     toast('Profil sauvegardé');
     refreshAgentsList();
-  });
+  };
 }
 
 function generateControlePDF(c, points){
