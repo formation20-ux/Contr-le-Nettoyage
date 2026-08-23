@@ -458,7 +458,7 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE (BOUTONS VERROUILLÉS SANS PHOTO POUR ÉQUIPE)
+   SAISIE CONTRÔLE / PRESTATION ZONE (VERROUILLAGE SÉCURISÉ & SUPPRESSION PHOTOS)
    ========================================================================= */
 async function renderControle(){
   const date = todayISO();
@@ -501,113 +501,130 @@ async function renderControle(){
 
   document.getElementById('backBtn').onclick = goToZones;
 
-  const listEl = document.getElementById('pointsList');
-  listEl.innerHTML = activePoints.map(p=>{
-    const r = currentBranch.reponses[p.id] || { conforme: (isContreVisite ? true : null), photos:[], commentaire:'' };
-    
-    if(isContreVisite && r.conforme === null) r.conforme = true;
-
-    const myPhotos = r.photos || [];
-    const eqR = equipeReponses[p.id] || {};
-    const eqPhotos = isContreVisite ? (eqR.photos || []) : [];
-
-    const isEquipeNok = isContreVisite && (eqR.conforme === false || !eqR.photos || eqR.photos.length === 0);
-    
-    // Verrouillage STRICT des deux boutons OK et NOK pour l'équipe sans photo
-    const isButtonsLocked = !isContreVisite && myPhotos.length === 0;
-
-    return `
-      <div class="point-item" data-point="${p.id}" style="border:1px solid ${isEquipeNok?'#B23A34':'#E7E1D6'};padding:12px;border-radius:10px;margin-bottom:12px;background:${isEquipeNok?'#F6DEDC':'#fff'};">
-        <div class="point-head">
-          <div class="point-label" style="font-weight:600;">
-            ${p.label} <small>(${p.freq==='J'?'Jour':(p.freq==='H'?'Hebdo':'Mensuel')})</small>
-            ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">⚠️ ÉQUIPE : NOK</span>` : ''}
-          </div>
-          <div class="point-toggle" style="margin-top:6px;">
-            <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" ${isButtonsLocked ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✓ OK</button>
-            <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" ${isButtonsLocked ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✕ NOK</button>
-          </div>
-        </div>
-
-        ${isContreVisite && eqPhotos.length ? `
-          <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:8px;">📸 Photos transmises par l'Équipe :</div>
-          <div class="point-photo-row" style="display:flex;gap:6px;overflow-x:auto;padding:6px;background:#DCEEEC;border-radius:8px;margin-top:4px;">
-            ${eqPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe - ${p.label}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
-          </div>
-        ` : ''}
-
-        ${isContreVisite && eqR.commentaire ? `
-          <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">💬 Obs. Équipe (${c.passageEquipe.agentNom||'Équipe'}) : "${eqR.commentaire}"</div>
-        ` : ''}
-
-        <div style="font-size:11px;color:#6B655C;margin-top:8px;">
-          ${isContreVisite ? 'Tes photos contrôleur (exigée si changement en NOK) :' : 'Photo obligatoire pour déverrouiller le choix :'}
-        </div>
-        <div class="point-photo-row" id="photos_${p.id}" style="display:flex;gap:6px;align-items:center;overflow-x:auto;margin-top:4px;">
-          ${myPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo ${isContreVisite?'Contrôleur':'Équipe'} - ${p.label}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;">`).join('')}
-          <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;">
-            📷 + Photo
-            <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
-          </label>
-        </div>
-        
-        <textarea class="point-comment" placeholder="${isContreVisite ? 'Remarques Contrôleur (optionnel)' : 'Remarques Équipe (optionnel)'}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6;">${r.commentaire||''}</textarea>
+  const renderPhotosHtml = (photos, isMine, pId) => {
+    return photos.map((pSrc, idx) => `
+      <div style="position:relative;display:inline-block;">
+        <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo - ${pId}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;">
+        ${isMine ? `<button class="del-photo-btn" data-point="${pId}" data-idx="${idx}" style="position:absolute;top:-4px;right:-4px;background:#B23A34;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;font-weight:bold;line-height:1;">✕</button>` : ''}
       </div>
-    `;
-  }).join('');
+    `).join('');
+  };
 
-  listEl.querySelectorAll('.click-zoom').forEach(img => {
-    img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
-  });
+  const listEl = document.getElementById('pointsList');
+  
+  const refreshPointsListUI = () => {
+    listEl.innerHTML = activePoints.map(p=>{
+      const r = currentBranch.reponses[p.id] || { conforme: (isContreVisite ? true : null), photos:[], commentaire:'' };
+      if(isContreVisite && r.conforme === null) r.conforme = true;
 
-  listEl.querySelectorAll('.point-item').forEach(item=>{
-    const pId = item.dataset.point;
-    if(!currentBranch.reponses[pId]) {
-      currentBranch.reponses[pId] = { conforme: (isContreVisite ? true : null), photos:[], commentaire:'' };
-    }
-    const r = currentBranch.reponses[pId];
+      const myPhotos = r.photos || [];
+      const eqR = equipeReponses[p.id] || {};
+      const eqPhotos = isContreVisite ? (eqR.photos || []) : [];
 
-    item.querySelectorAll('.toggle-btn').forEach(btn=>{
-      btn.onclick = (e)=>{
-        if(btn.hasAttribute('disabled')){
-          toast('📷 Dépose au moins une photo pour déverrouiller ce point');
-          e.preventDefault();
-          return;
+      const eqWasOk = (eqR.conforme === true && eqR.photos && eqR.photos.length > 0);
+      const isEquipeNok = isContreVisite && !eqWasOk;
+
+      // Verrouillages
+      const isEquipeLocked = !isContreVisite && myPhotos.length === 0;
+      const isCtrlNokLocked = isContreVisite && eqWasOk && myPhotos.length === 0;
+
+      return `
+        <div class="point-item" data-point="${p.id}" style="border:1px solid ${isEquipeNok?'#B23A34':'#E7E1D6'};padding:12px;border-radius:10px;margin-bottom:12px;background:${isEquipeNok?'#F6DEDC':'#fff'};">
+          <div class="point-head">
+            <div class="point-label" style="font-weight:600;">
+              ${p.label} <small>(${p.freq==='J'?'Jour':(p.freq==='H'?'Hebdo':'Mensuel')})</small>
+              ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">⚠️ ÉQUIPE : NOK</span>` : ''}
+            </div>
+            <div class="point-toggle" style="margin-top:6px;">
+              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" ${isEquipeLocked ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✓ OK</button>
+              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" ${(isEquipeLocked || isCtrlNokLocked) ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✕ NOK</button>
+            </div>
+          </div>
+
+          ${isContreVisite && eqPhotos.length ? `
+            <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:8px;">📸 Photos transmises par l'Équipe :</div>
+            <div class="point-photo-row" style="display:flex;gap:6px;overflow-x:auto;padding:6px;background:#DCEEEC;border-radius:8px;margin-top:4px;">
+              ${eqPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe - ${p.label}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
+            </div>
+          ` : ''}
+
+          ${isContreVisite && eqR.commentaire ? `
+            <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">💬 Obs. Équipe (${c.passageEquipe.agentNom||'Équipe'}) : "${eqR.commentaire}"</div>
+          ` : ''}
+
+          <div style="font-size:11px;color:#6B655C;margin-top:8px;">
+            ${isContreVisite ? 'Tes photos contrôleur (exigée si passage en NOK) :' : 'Photo obligatoire pour activer la réponse :'}
+          </div>
+          <div class="point-photo-row" id="photos_${p.id}" style="display:flex;gap:6px;align-items:center;overflow-x:auto;margin-top:4px;">
+            ${renderPhotosHtml(myPhotos, true, p.id)}
+            <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;">
+              📷 + Photo
+              <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
+            </label>
+          </div>
+          
+          <textarea class="point-comment" placeholder="${isContreVisite ? 'Remarques Contrôleur (optionnel)' : 'Remarques Équipe (optionnel)'}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6;">${r.commentaire||''}</textarea>
+        </div>
+      `;
+    }).join('');
+
+    // Attach click events
+    listEl.querySelectorAll('.click-zoom').forEach(img => {
+      img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
+    });
+
+    listEl.querySelectorAll('.del-photo-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const pId = btn.dataset.point;
+        const idx = parseInt(btn.dataset.idx);
+        if(currentBranch.reponses[pId] && currentBranch.reponses[pId].photos){
+          currentBranch.reponses[pId].photos.splice(idx, 1);
+          refreshPointsListUI();
         }
-        r.conforme = btn.dataset.val==='true';
-        item.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active'));
-        btn.classList.add('active');
       };
     });
 
-    const fileInput = item.querySelector('[data-photo-input]');
-    fileInput.onchange = async ()=>{
-      if(!fileInput.files.length) return;
-      const dataUrl = await fileToResizedBase64(fileInput.files[0], 600);
-      r.photos = r.photos || [];
-      r.photos.push(dataUrl);
-      
-      const newImg = document.createElement('img');
-      newImg.className = 'photo-thumb click-zoom';
-      newImg.src = dataUrl;
-      newImg.style.cssText = 'width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;';
-      newImg.onclick = () => openPhotoViewer(dataUrl, `Nouvelle photo - ${pId}`);
-      item.querySelector(`#photos_${pId}`).insertBefore(newImg, item.querySelector('.photo-btn'));
-
-      // Déverrouillage instantané de TOUS les boutons à la première photo ajoutée
-      if(!isContreVisite){
-        item.querySelectorAll('.toggle-btn').forEach(b => {
-          b.removeAttribute('disabled');
-          b.style.opacity = '1';
-          b.style.cursor = 'pointer';
-        });
+    listEl.querySelectorAll('.point-item').forEach(item=>{
+      const pId = item.dataset.point;
+      if(!currentBranch.reponses[pId]) {
+        currentBranch.reponses[pId] = { conforme: (isContreVisite ? true : null), photos:[], commentaire:'' };
       }
-    };
+      const r = currentBranch.reponses[pId];
 
-    item.querySelector('.point-comment').oninput = (e)=>{
-      r.commentaire = e.target.value;
-    };
-  });
+      item.querySelectorAll('.toggle-btn').forEach(btn=>{
+        btn.onclick = (e)=>{
+          if(btn.hasAttribute('disabled')){
+            if(!isContreVisite){
+              toast('📷 Dépose au moins une photo pour déverrouiller cet item');
+            } else {
+              toast('📷 Photo contrôleur obligatoire pour passer cet item Équipe OK en NOK !');
+            }
+            e.preventDefault();
+            return;
+          }
+          r.conforme = btn.dataset.val==='true';
+          item.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active'));
+          btn.classList.add('active');
+        };
+      });
+
+      const fileInput = item.querySelector('[data-photo-input]');
+      fileInput.onchange = async ()=>{
+        if(!fileInput.files.length) return;
+        const dataUrl = await fileToResizedBase64(fileInput.files[0], 600);
+        r.photos = r.photos || [];
+        r.photos.push(dataUrl);
+        refreshPointsListUI();
+      };
+
+      item.querySelector('.point-comment').oninput = (e)=>{
+        r.commentaire = e.target.value;
+      };
+    });
+  };
+
+  refreshPointsListUI();
 
   document.getElementById('saveBtn').onclick = async ()=>{
     const currentTime = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
@@ -630,7 +647,7 @@ async function renderControle(){
         const cvIsNok = (cvR.conforme === false);
 
         if(eqWasOk && cvIsNok && (!cvR.photos || cvR.photos.length === 0)){
-          toast(`Photo contrôleur obligatoire pour repasser "${p.label}" en NOK !`);
+          toast(`Photo contrôleur obligatoire pour passer "${p.label}" en NOK !`);
           return;
         }
 
