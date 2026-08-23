@@ -1312,7 +1312,12 @@ async function renderHistory(){
   const loadHistoryDate = async (selectedDate) => {
     const summaryEl = document.getElementById('histSummary');
     const content = document.getElementById('histContent');
-    content.innerHTML = `<div class="section-note">${t('Chargement des données...')}</div>`;
+    content.innerHTML = `
+      <div style="text-align:center;padding:30px;">
+        <div class="loading-spinner"></div>
+        <div style="font-size:12px;color:#6B655C;margin-top:10px;">${t('Chargement des données...')}</div>
+      </div>
+    `;
     summaryEl.innerHTML = '';
     
     let htmlContent = '';
@@ -1368,7 +1373,7 @@ async function renderHistory(){
         htmlContent += `
           <div id="hist_zone_${z.id}" style="border:1px solid #E7E1D6;border-radius:12px;margin-bottom:20px;background:#fff;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
             <div style="background:#211E1A;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
-              <div style="font-weight:700;font-size:14px;color:#F3E2C6;">${t('ZONE').toUpperCase()} : ${translatedZoneName.toUpperCase()}</div>
+              <div style="font-weight:700;font-size:14px;color:#F3E2C6;">ZONE : ${translatedZoneName.toUpperCase()}</div>
               <a href="#histSummary" style="color:#C7791B;font-size:11px;text-decoration:none;">↑ ${t('Sommaire')}</a>
             </div>
 
@@ -1457,7 +1462,7 @@ async function renderHistory(){
   };
 
   dateInput.onchange = (e) => loadHistoryDate(e.target.value);
-  loadHistoryDate(todayISO());
+  await loadHistoryDate(todayISO());
 }
 
 /* =========================================================================
@@ -1479,7 +1484,12 @@ async function renderStats(){
             <option value="target">${t('7 derniers jours vs Seuil Cible (Max 5% NOK)')}</option>
           </select>
         </div>
-        <div id="statsDashboard">Chargement du dashboard…</div>
+        <div id="statsDashboard">
+          <div style="text-align:center;padding:30px;">
+            <div class="loading-spinner"></div>
+            <div style="font-size:12px;color:#6B655C;margin-top:10px;">${t('Chargement…')}</div>
+          </div>
+        </div>
       </div>
     </div>
   `;
