@@ -1,12 +1,6 @@
 (function(){
 'use strict';
 
-/* =========================================================================
-   FIREBASE — projet "Controle Nettoyage"
-   L'apiKey n'est pas un secret : la sécurité vient des règles Firestore,
-   pas de cacher cette config (elle est de toute façon visible dans le
-   navigateur de n'importe quel visiteur).
-   ========================================================================= */
 const firebaseConfig = {
   apiKey: "AIzaSyA4pQGdFIgDtt1GxfohxexgHauc4wXM4sk",
   authDomain: "controle-nettoyage.firebaseapp.com",
@@ -16,23 +10,17 @@ const firebaseConfig = {
   appId: "1:1032576632030:web:4650e2bce60a2c7b67ae4f"
 };
 
-/* =========================================================================
-   EMAILJS — à configurer (voir instructions fournies)
-   ========================================================================= */
 const EMAILJS_PUBLIC_KEY  = 'À_REMPLACER';
 const EMAILJS_SERVICE_ID  = 'À_REMPLACER';
 const EMAILJS_TEMPLATE_ID = 'À_REMPLACER';
-const RAPPORT_DESTINATAIRE = 'toi@mcdcaen.com'; // adresse qui reçoit les rapports
+const RAPPORT_DESTINATAIRE = 'toi@mcdcaen.com';
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-if(typeof emailjs !== 'undefined' && EMAILJS_PUBLIC_KEY!=='À_REMPLACER'){
+if(typeof emailjs !== 'undefined' && EMAILJS_PUBLIC_KEY !== 'À_REMPLACER'){
   emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
 }
 
-/* =========================================================================
-   RÉFÉRENTIEL — à terme chargé depuis Firestore, en dur pour le MVP
-   ========================================================================= */
 const ZONES = [
   { id:'cuisine',    nom:'Cuisine' },
   { id:'salle',      nom:'Salle' },
@@ -68,14 +56,6 @@ const POINTS = {
   ],
 };
 
-/* TODO sécurité : ce PIN client-side n'est pas une vraie authentification —
-   n'importe qui inspectant le réseau/la base voit les PIN. Suffisant pour un
-   usage interne à faible enjeu, mais à remplacer par une Cloud Function
-   (loginWithPin + Custom Token) si le besoin de sécurité augmente. */
-
-/* =========================================================================
-   STOCKAGE HORS-LIGNE (IndexedDB)
-   ========================================================================= */
 const DB_NAME = 'controle-nettoyage';
 const DB_VERSION = 2;
 let dbPromise = null;
@@ -139,21 +119,15 @@ async function idbDelete(store, id){
   });
 }
 
-/* =========================================================================
-   ÉTAT
-   ========================================================================= */
-let session = null;          // { role:'agent'|'controleur', agentId, nom }
+let session = null;
 let currentPin = '';
 let pendingRole = 'agent';
 let activeZoneId = null;
 let activeControleId = null;
-let activeMode = 'equipe';   // 'equipe' | 'contreVisite'
+let activeMode = 'equipe';
 
 const root = document.getElementById('app-root');
 
-/* =========================================================================
-   UTILITAIRES
-   ========================================================================= */
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 function uid(prefix){ return (prefix||'id')+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,8); }
 function fmtDate(iso){ return iso.split('-').reverse().join('/'); }
@@ -197,8 +171,6 @@ async function getOrCreateControle(zoneId, date){
   return c;
 }
 
-/* Compresse une photo prise/choisie en JPEG base64 (même logique que le
-   Suivi de stock : redimensionnement via canvas avant stockage/upload) */
 function fileToResizedBase64(file, maxWidth){
   return new Promise((resolve, reject)=>{
     const img = new Image();
@@ -213,7 +185,7 @@ function fileToResizedBase64(file, maxWidth){
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.75));
+        resolve(canvas.toDataURL('image/jpeg', 0.65));
       };
       img.src = reader.result;
     };
@@ -221,12 +193,6 @@ function fileToResizedBase64(file, maxWidth){
   });
 }
 
-/* =========================================================================
-   SYNCHRO — file d'attente hors-ligne
-   TODO backend : brancher pushToServer() sur Firestore (via Cloud Function
-   ou SDK Firestore avec persistance offline). Tant que ce n'est pas fait,
-   les éléments restent visibles dans la file "en attente".
-   ========================================================================= */
 async function queueForSync(controle){
   await idbPut('outbox', { id: controle.id, controle, queuedAt: Date.now() });
   updateSyncBadge();
@@ -234,10 +200,6 @@ async function queueForSync(controle){
 }
 
 async function pushToServer(item){
-  // Écrit le contrôle dans Firestore. NOTE : les photos sont encore
-  // stockées en base64 dans le document (limite Firestore : 1 Mo/document).
-  // Ça passe pour tester, mais à migrer vers Drive avant un usage réel
-  // avec plusieurs photos par contrôle (équipe + contre-visite cumulées).
   await db.collection('controles').doc(item.controle.id).set(item.controle, { merge:true });
 }
 
@@ -249,7 +211,6 @@ async function trySync(){
       await pushToServer(item);
       await idbDelete('outbox', item.id);
     }catch(err){
-      // reste en file, on retentera plus tard
       break;
     }
   }
@@ -270,9 +231,6 @@ async function updateSyncBadge(){
 
 window.addEventListener('online', trySync);
 
-/* =========================================================================
-   RENDU — TOPBAR COMMUNE
-   ========================================================================= */
 function topbarHtml(title, sub){
   const online = navigator.onLine;
   return `
@@ -289,9 +247,6 @@ function topbarHtml(title, sub){
   `;
 }
 
-/* =========================================================================
-   ÉCRAN LOGIN
-   ========================================================================= */
 function renderLogin(){
   syncAgentsFromFirestore();
   root.innerHTML = `
@@ -319,11 +274,12 @@ function renderLogin(){
 
 function renderPinDots(){
   const el = document.getElementById('pinDots');
-  el.innerHTML = [0,1,2,3].map(i=>`<div class="pin-dot ${i<currentPin.length?'filled':''}"></div>`).join('');
+  if(el) el.innerHTML = [0,1,2,3].map(i=>`<div class="pin-dot ${i<currentPin.length?'filled':''}"></div>`).join('');
 }
 
 function renderPinPad(){
   const el = document.getElementById('pinPad');
+  if(!el) return;
   const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
   el.innerHTML = keys.map(k=>{
     if(k==='') return `<div></div>`;
@@ -336,7 +292,7 @@ function renderPinPad(){
 
 function onPinKey(k){
   const errEl = document.getElementById('pinError');
-  if(k==='⌫'){ currentPin = currentPin.slice(0,-1); errEl.textContent=''; renderPinDots(); return; }
+  if(k==='⌫'){ currentPin = currentPin.slice(0,-1); if(errEl) errEl.textContent=''; renderPinDots(); return; }
   if(currentPin.length>=4) return;
   currentPin += k;
   renderPinDots();
@@ -355,7 +311,7 @@ async function syncAgentsFromFirestore(){
       tx.oncomplete = resolve;
       tx.onerror = ()=>reject(tx.error);
     });
-  }catch(err){ /* on retentera plus tard, le cache local reste valable */ }
+  }catch(err){}
 }
 
 async function checkPin(){
@@ -366,13 +322,10 @@ async function checkPin(){
     session = { role:pendingRole, agentId:match.id, nom:match.nom };
     currentPin=''; goToZones();
   } else {
-    errEl.textContent = 'Code incorrect'; currentPin=''; setTimeout(renderPinDots,150);
+    if(errEl) errEl.textContent = 'Code incorrect'; currentPin=''; setTimeout(renderPinDots,150);
   }
 }
 
-/* =========================================================================
-   ÉCRAN LISTE DES ZONES
-   ========================================================================= */
 async function goToZones(){ activeZoneId=null; trySync(); await renderZones(); }
 
 async function renderZones(){
@@ -397,7 +350,7 @@ async function renderZones(){
   grid.innerHTML = ZONES.map((z,i)=>{
     const c = controles[i];
     const statut = session.role==='agent' ? c.passageEquipe.statut : c.contreVisite.statut;
-    const badge = statutBadge(statut, session.role);
+    const badge = statutBadge(statut);
     const nbPoints = POINTS[z.id].length;
     return `
       <div class="zone-card" data-zone="${z.id}">
@@ -424,7 +377,7 @@ async function renderZones(){
   updateSyncBadge();
 }
 
-function statutBadge(statut, role){
+function statutBadge(statut){
   const map = {
     a_faire:      { cls:'a-faire', label:'À faire' },
     rempli:       { cls:'fait',    label:'Rempli' },
@@ -437,9 +390,6 @@ function statutBadge(statut, role){
   return `<span class="zone-badge ${m.cls}">${m.label}</span>`;
 }
 
-/* =========================================================================
-   ÉCRAN POINTS DE CONTRÔLE (passage équipe OU contre-visite)
-   ========================================================================= */
 async function renderControle(){
   const c = await idbGet('controles', activeControleId);
   const zone = ZONES.find(z=>z.id===activeZoneId);
@@ -519,7 +469,7 @@ async function renderControle(){
     const fileInput = item.querySelector('[data-photo-input]');
     fileInput.addEventListener('change', async ()=>{
       if(!fileInput.files.length) return;
-      const dataUrl = await fileToResizedBase64(fileInput.files[0], 1200);
+      const dataUrl = await fileToResizedBase64(fileInput.files[0], 800);
       r.photo = dataUrl;
       let thumb = item.querySelector('.photo-thumb[data-label="'+(isContreVisite?'Contre-visite':'Équipe')+'"]') || item.querySelector('.point-photo-row .photo-thumb:not([title])');
       if(!thumb){
@@ -564,9 +514,6 @@ function refreshEcartFlag(item, pointId, equipeReponses, isContreVisite){
   }
 }
 
-/* =========================================================================
-   ÉCRAN DASHBOARD
-   ========================================================================= */
 let dashChart = null;
 
 async function fetchAllControles(){
@@ -575,11 +522,10 @@ async function fetchAllControles(){
 }
 
 function computeStats(docs){
-  // Conformité par zone (basée sur le passage équipe)
-  const zoneStats = {}; // zoneId -> {conforme, total}
-  const byDate = {};    // date -> {conforme, total}
-  const pointFail = {}; // "zone · label" -> count non conforme
-  const ecarts = [];    // liste des écarts équipe vs contre-visite
+  const zoneStats = {};
+  const byDate = {};
+  const pointFail = {};
+  const ecarts = [];
 
   docs.forEach(doc=>{
     const zone = ZONES.find(z=>z.id===doc.zoneId);
@@ -712,9 +658,6 @@ function renderDashboardControleur(docs){
   }
 }
 
-/* =========================================================================
-   ÉCRAN GESTION DES UTILISATEURS (contrôleur uniquement)
-   ========================================================================= */
 async function renderAgentsAdmin(){
   root.innerHTML = `
     <div class="wrap">
@@ -817,9 +760,6 @@ function openAgentModal(existing){
   });
 }
 
-/* =========================================================================
-   GÉNÉRATION PDF
-   ========================================================================= */
 function generateControlePDF(c){
   if(typeof window.jspdf === 'undefined'){ toast('Génération PDF indisponible (bibliothèque non chargée)'); return; }
   const { jsPDF } = window.jspdf;
@@ -845,7 +785,7 @@ function generateControlePDF(c){
       if(r && r.commentaire){ docPdf.setFontSize(9); docPdf.text(`   "${r.commentaire}"`, 18, y); docPdf.setFontSize(10); y+=6; }
       if(r && r.photo){
         if(y>230){ docPdf.addPage(); y=20; }
-        try{ docPdf.addImage(r.photo, 'JPEG', 16, y, 50, 38); y+=42; }catch(e){ /* image illisible, on ignore */ }
+        try{ docPdf.addImage(r.photo, 'JPEG', 16, y, 50, 38); y+=42; }catch(e){}
       }
     });
     y+=6;
@@ -857,9 +797,6 @@ function generateControlePDF(c){
   docPdf.save(`controle-${c.zoneId}-${c.date}.pdf`);
 }
 
-/* =========================================================================
-   ENVOI DE MAIL (via EmailJS — voir instructions de configuration)
-   ========================================================================= */
 async function sendReportEmail(c){
   if(EMAILJS_PUBLIC_KEY==='À_REMPLACER'){
     toast('EmailJS non configuré — voir les instructions');
@@ -889,9 +826,6 @@ async function sendReportEmail(c){
   }
 }
 
-/* =========================================================================
-   INIT
-   ========================================================================= */
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('service-worker.js').catch(()=>{});
