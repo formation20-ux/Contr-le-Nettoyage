@@ -2,7 +2,7 @@
 'use strict';
 
 /* =========================================================================
-   CORRECTIFS MOBILE : ANTI-ZOOM DOUBLE-TAP & ANTI-CHIFFRES BLEUS
+   CORRECTIFS MOBILE : ANTI-ZOOM, ANTI-CHIFFRES BLEUS ET RESPONSIVE AFICHAGE
    ========================================================================= */
 if(!document.querySelector('meta[name="format-detection"]')){
   const metaTel = document.createElement('meta');
@@ -13,13 +13,53 @@ if(!document.querySelector('meta[name="format-detection"]')){
 
 const styleFix = document.createElement('style');
 styleFix.innerHTML = `
+  /* Ajustements globaux pour la barre de navigation mobile */
+  body, #app-root {
+    padding-bottom: 90px !important;
+  }
+  
   button, .pin-key, .role-btn, .zone-card, .back-link {
     touch-action: manipulation !important;
     -webkit-tap-highlight-color: transparent !important;
   }
+  
   .pin-key, .pin-key * {
     color: #211E1A !important;
     text-decoration: none !important;
+  }
+
+  /* Correction du positionnement de la croix de suppression de photo */
+  .point-photo-row {
+    padding: 6px 8px !important;
+    overflow-y: visible !important;
+  }
+
+  .del-photo-btn {
+    position: absolute !important;
+    top: -6px !important;
+    right: -6px !important;
+    background: #B23A34 !important;
+    color: #fff !important;
+    border: 2px solid #fff !important;
+    border-radius: 50% !important;
+    width: 22px !important;
+    height: 22px !important;
+    font-size: 11px !important;
+    font-weight: bold !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+    z-index: 10 !important;
+  }
+
+  /* Correctif d'alignement des titres dans le dashboard */
+  .dash-chart-title {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex-wrap: wrap !important;
+    word-break: break-word !important;
   }
 `;
 document.head.appendChild(styleFix);
@@ -542,7 +582,7 @@ async function renderZones(){
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:15px;">
-        <button class="btn ghost block" id="globalPdfBtn" style="flex:1;border-color:#C7791B;color:#C7791B;">📄 Rapport PDF</button>
+        <button class="btn ghost block" id="globalPdfBtn" style="flex:1;border-color:#C7791B;color:#C7791B;">📄 Rapport PDF de la Journée</button>
         <button class="btn ghost block" id="mailScheduleBtn" style="flex:1;border-color:#2B6E68;color:#2B6E68;">✉️ Envois Mails</button>
       </div>
 
@@ -639,7 +679,7 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   PROGRAMMATION & ENVOI DIRECT IN-APP DU MAIL (SANS DÉPASSEMENT EMAILJS 50KB)
+   PROGRAMMATION & ENVOI DIRECT IN-APP DU MAIL
    ========================================================================= */
 async function generateAndStorePDFData(){
   const date = todayISO();
@@ -924,9 +964,9 @@ async function renderControle(){
 
   const renderPhotosHtml = (photos, isMine, pId) => {
     return photos.map((pSrc, idx) => `
-      <div style="position:relative;display:inline-block;">
+      <div style="position:relative;display:inline-block;margin-right:8px;margin-top:4px;">
         <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo - ${pId}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;">
-        ${isMine ? `<button class="del-photo-btn" data-point="${pId}" data-idx="${idx}" style="position:absolute;top:-4px;right:-4px;background:#B23A34;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;font-weight:bold;line-height:1;">✕</button>` : ''}
+        ${isMine ? `<button class="del-photo-btn" data-point="${pId}" data-idx="${idx}">✕</button>` : ''}
       </div>
     `).join('');
   };
@@ -974,9 +1014,9 @@ async function renderControle(){
           <div style="font-size:11px;color:#6B655C;margin-top:8px;">
             ${isContreVisite ? 'Tes photos contrôleur (exigée si passage en NOK) :' : 'Photo obligatoire pour activer la réponse :'}
           </div>
-          <div class="point-photo-row" id="photos_${p.id}" style="display:flex;gap:6px;align-items:center;overflow-x:auto;margin-top:4px;">
+          <div class="point-photo-row" id="photos_${p.id}" style="display:flex;align-items:center;overflow-x:auto;margin-top:4px;">
             ${renderPhotosHtml(myPhotos, true, p.id)}
-            <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;">
+            <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
               📷 + Photo
               <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
             </label>
@@ -1345,7 +1385,7 @@ async function renderStats(){
       </div>
 
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
-        <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:12px;">📊 Analyse Comparative des Défauts (NOK)</div>
+        <div class="dash-chart-title" style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:12px;">📊 Analyse Comparative des Défauts (NOK)</div>
         <div style="display:flex;align-items:flex-end;justify-style:space-around;height:120px;border-bottom:2px solid #E7E1D6;padding-bottom:5px;">
           <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
             <span style="font-size:11px;font-weight:700;color:#B23A34;margin-bottom:4px;">${currentStats.nokRate}% NOK</span>
