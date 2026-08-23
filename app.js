@@ -17,47 +17,101 @@ const RAPPORT_DESTINATAIRE = 'toi@mcdcaen.com';
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-if(typeof emailjs !== 'undefined' && EMAILJS_PUBLIC_KEY !== 'À_REMPLACER'){
-  emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
-}
 
+/* =========================================================================
+   RÉFÉRENTIEL CONTRAT SASU SOAN
+   ========================================================================= */
 const ZONES = [
-  { id:'cuisine',    nom:'Cuisine' },
-  { id:'salle',      nom:'Salle' },
-  { id:'sanitaires', nom:'Sanitaires' },
-  { id:'reserve',    nom:'Réserve' },
-  { id:'exterieur',  nom:'Extérieur / parking' },
+  { id:'lobby',           nom:'Lobby' },
+  { id:'cuisine',         nom:'Cuisine' },
+  { id:'arriere_cuisine', nom:'Arrière-cuisine' },
+  { id:'comptoir',        nom:'Comptoir' }
 ];
 
 const POINTS = {
+  lobby: [
+    { id:'lob_1', label:'Nettoyage complet int/ext des blocs poubelles', freq:'J' },
+    { id:'lob_2', label:'Nettoyage des tables dessus et tranches', freq:'J' },
+    { id:'lob_3', label:'Nettoyage des pieds de tables', freq:'J' },
+    { id:'lob_4', label:'Montée des chaises sur les tables', freq:'J' },
+    { id:'lob_5', label:'Déplacement des tables', freq:'J' },
+    { id:'lob_6', label:'Balayage des sols', freq:'J' },
+    { id:'lob_7', label:'Mopage des sols', freq:'J' },
+    { id:'lob_8', label:'Descente des chaises', freq:'J' },
+    { id:'lob_9', label:'Nettoyage complet des chaises par zones', freq:'J' },
+    { id:'lob_10', label:'Nettoyage traces sur surfaces vitrées', freq:'J' },
+    { id:'lob_11', label:'Nettoyage rampes inox', freq:'J' }
+  ],
   cuisine: [
-    { id:'cui_sol',    label:'Sol dégraissé et sec' },
-    { id:'cui_plans',  label:'Plans de travail désinfectés' },
-    { id:'cui_hottes', label:'Hottes et filtres propres' },
-    { id:'cui_poub',   label:'Poubelles vidées et lavées' },
+    { id:'cui_1', label:'Nettoyage des 2 grils & rabats', freq:'J' },
+    { id:'cui_2', label:'Nettoyage arrière des grills et friteuses', freq:'J' },
+    { id:'cui_3', label:'Nettoyage des Nids d’abeilles', freq:'J' },
+    { id:'cui_4', label:'Nettoyage de l’arrière des 2 grills et 2 friteuses', freq:'J' },
+    { id:'cui_5', label:'Nettoyage des UHC X 3 avec brosse blanche', freq:'J' },
+    { id:'cui_6', label:'Nettoyage friteuses FCN et frites', freq:'J' },
+    { id:'cui_7', label:'Démontage des éléments à passer à la plonge', freq:'J' },
+    { id:'cui_8', label:'Nettoyage et aseptisation des écrans, Bump, imprimante', freq:'J' },
+    { id:'cui_9', label:'Nettoyage et aseptisation du frigo positif cuisine', freq:'J' },
+    { id:'cui_10', label:'Nettoyage et aseptisation du frigo positif comptoir', freq:'J' },
+    { id:'cui_11', label:'Nettoyage des armoires négatives et arc Fry', freq:'J' },
+    { id:'cui_12', label:'Nettoyage du torsteur croque', freq:'J' },
+    { id:'cui_13', label:'Nettoyage de l’Egg Cooker', freq:'J' },
+    { id:'cui_14', label:'Nettoyage et aseptisation des tables à toaster', freq:'J' },
+    { id:'cui_15', label:'Nettoyage des lavabos de cuisine et détartrage', freq:'J' },
+    { id:'cui_16', label:'Nettoyage de l’îlot central (tables production)', freq:'J' },
+    { id:'cui_17', label:'Nettoyage de l’arbre à panière', freq:'J' },
+    { id:'cui_18', label:'Nettoyage du poste OAT sur roulette', freq:'J' },
+    { id:'cui_19', label:'Nettoyage du poste de boisson', freq:'J' },
+    { id:'cui_20', label:'Nettoyage du poste dessert', freq:'J' },
+    { id:'cui_21', label:'Nettoyage des tables amovibles comptoir', freq:'J' },
+    { id:'cui_22', label:'Nettoyage poste LAD', freq:'J' },
+    { id:'cui_23', label:'Nettoyage du micro-onde comptoir', freq:'J' },
+    { id:'cui_24', label:'Nettoyage de l’îlot à boisson', freq:'J' },
+    { id:'cui_25', label:'Nettoyage arrière des machines carpigiani et shake', freq:'J' },
+    { id:'cui_26', label:'Nettoyage des plinthes de la cuisine', freq:'H' }
   ],
-  salle: [
-    { id:'sal_tables', label:'Tables et assises propres' },
-    { id:'sal_sol',    label:'Sol lavé, sans traces' },
-    { id:'sal_vitres', label:'Vitres et portes sans traces' },
+  arriere_cuisine: [
+    { id:'ac_1', label:'Nettoyage du lave plateaux', freq:'J' },
+    { id:'ac_2', label:'Nettoyage de la plonge dessus dessous', freq:'J' },
+    { id:'ac_3', label:'Nettoyage coin machine à laver', freq:'J' },
+    { id:'ac_4', label:'Nettoyage du coin évacuation eaux usées', freq:'J' },
+    { id:'ac_5', label:'Nettoyage des sols', freq:'J' },
+    { id:'ac_6', label:'Nettoyage encadrements porte aluminium', freq:'H' },
+    { id:'ac_7', label:'Nettoyage complet portes accès', freq:'H' },
+    { id:'ac_8', label:'Nettoyage des murs', freq:'H' },
+    { id:'ac_9', label:'Nettoyage des grilles d’aérations', freq:'M' }
   ],
-  sanitaires: [
-    { id:'san_wc',     label:'WC et lavabos désinfectés' },
-    { id:'san_sol',    label:'Sol désinfecté' },
-    { id:'san_stock',  label:'Papier / savon réapprovisionnés' },
-  ],
-  reserve: [
-    { id:'res_sol',    label:'Sol propre et dégagé' },
-    { id:'res_range',  label:'Rangement conforme' },
-  ],
-  exterieur: [
-    { id:'ext_abords', label:'Abords et parking sans déchets' },
-    { id:'ext_poub',   label:'Poubelles extérieures vidées' },
-  ],
+  comptoir: [
+    { id:'cmp_1', label:'Nettoyage du poste à frites', freq:'J' },
+    { id:'cmp_2', label:'Nettoyage du comptoir intégral (dessus/dessous/face)', freq:'J' },
+    { id:'cmp_3', label:'Nettoyage des dessous de caisses', freq:'J' },
+    { id:'cmp_4', label:'Remontage des éléments passés à la plonge', freq:'J' },
+    { id:'cmp_5', label:'Nettoyage des dessus d’éléments', freq:'J' },
+    { id:'cmp_6', label:'Brossage et brossage des sols', freq:'J' },
+    { id:'cmp_7', label:'Nettoyage des évacuations (grille, cloches)', freq:'J' },
+    { id:'cmp_8', label:'Nettoyage des deux faces portes accès', freq:'J' },
+    { id:'cmp_9', label:'Nettoyage des évacuations d’eau', freq:'J' },
+    { id:'cmp_10', label:'Nettoyage de luminaires comptoir', freq:'J' },
+    { id:'cmp_11', label:'Nettoyage des Plexiglas comptoir et vitre caisse', freq:'J' },
+    { id:'cmp_12', label:'Nettoyage des sols', freq:'J' },
+    { id:'cmp_13', label:'Nettoyage du salad bar et du plug pâtisserie', freq:'J' },
+    { id:'cmp_14', label:'Nettoyage des inox', freq:'J' },
+    { id:'cmp_15', label:'Nettoyage frigo intérieur', freq:'J' },
+    { id:'cmp_16', label:'Nettoyage de l’arche du comptoir', freq:'J' },
+    { id:'cmp_17', label:'Nettoyage des seuils de porte d’entrée', freq:'J' },
+    { id:'cmp_18', label:'Nettoyage poignées de portes', freq:'J' },
+    { id:'cmp_19', label:'Nettoyage des roulettes des équipements', freq:'H' },
+    { id:'cmp_20', label:'Nettoyage toaster + uhc', freq:'H' },
+    { id:'cmp_21', label:'Nettoyage des plinthes', freq:'H' },
+    { id:'cmp_22', label:'Nettoyage des roulettes', freq:'H' },
+    { id:'cmp_23', label:'Nettoyage grilles d’aérations cuisine blanche', freq:'M' },
+    { id:'cmp_24', label:'Nettoyage des murs', freq:'M' },
+    { id:'cmp_25', label:'Nettoyage des grilles d’aérations', freq:'M' }
+  ]
 };
 
 const DB_NAME = 'controle-nettoyage';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 let dbPromise = null;
 
 function openDB(){
@@ -66,15 +120,10 @@ function openDB(){
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e)=>{
       const db = e.target.result;
-      if(!db.objectStoreNames.contains('controles')){
-        db.createObjectStore('controles', { keyPath:'id' });
-      }
-      if(!db.objectStoreNames.contains('outbox')){
-        db.createObjectStore('outbox', { keyPath:'id' });
-      }
-      if(!db.objectStoreNames.contains('agents')){
-        db.createObjectStore('agents', { keyPath:'id' });
-      }
+      if(!db.objectStoreNames.contains('controles')) db.createObjectStore('controles', { keyPath:'id' });
+      if(!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', { keyPath:'id' });
+      if(!db.objectStoreNames.contains('agents')) db.createObjectStore('agents', { keyPath:'id' });
+      if(!db.objectStoreNames.contains('config')) db.createObjectStore('config', { keyPath:'id' });
     };
     req.onsuccess = ()=>resolve(req.result);
     req.onerror = ()=>reject(req.error);
@@ -91,15 +140,6 @@ async function idbPut(store, value){
     tx.onerror = ()=>reject(tx.error);
   });
 }
-async function idbGetAll(store){
-  const db = await openDB();
-  return new Promise((resolve, reject)=>{
-    const tx = db.transaction(store, 'readonly');
-    const req = tx.objectStore(store).getAll();
-    req.onsuccess = ()=>resolve(req.result || []);
-    req.onerror = ()=>reject(req.error);
-  });
-}
 async function idbGet(store, id){
   const db = await openDB();
   return new Promise((resolve, reject)=>{
@@ -109,13 +149,13 @@ async function idbGet(store, id){
     req.onerror = ()=>reject(req.error);
   });
 }
-async function idbDelete(store, id){
+async function idbGetAll(store){
   const db = await openDB();
   return new Promise((resolve, reject)=>{
-    const tx = db.transaction(store, 'readwrite');
-    tx.objectStore(store).delete(id);
-    tx.oncomplete = ()=>resolve();
-    tx.onerror = ()=>reject(tx.error);
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = ()=>resolve(req.result || []);
+    req.onerror = ()=>reject(req.error);
   });
 }
 
@@ -129,7 +169,6 @@ let activeMode = 'equipe';
 const root = document.getElementById('app-root');
 
 function todayISO(){ return new Date().toISOString().slice(0,10); }
-function uid(prefix){ return (prefix||'id')+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,8); }
 function fmtDate(iso){ return iso.split('-').reverse().join('/'); }
 
 function toast(msg){
@@ -146,29 +185,11 @@ function openPhotoViewer(src, label){
   backdrop.className = 'pv-backdrop';
   backdrop.innerHTML = `
     ${label?`<div class="pv-label">${label}</div>`:''}
-    <button class="pv-close" aria-label="Fermer">✕</button>
+    <button class="pv-close">✕</button>
     <img class="pv-img" src="${src}">
   `;
   document.body.appendChild(backdrop);
-  const close = ()=>backdrop.remove();
-  backdrop.addEventListener('click', (e)=>{ if(e.target===backdrop) close(); });
-  backdrop.querySelector('.pv-close').addEventListener('click', close);
-}
-
-function controleId(zoneId, date){ return `${date}__${zoneId}`; }
-
-async function getOrCreateControle(zoneId, date){
-  const id = controleId(zoneId, date);
-  let c = await idbGet('controles', id);
-  if(!c){
-    c = {
-      id, zoneId, date,
-      passageEquipe: { agentNom:null, heure:null, reponses:{}, statut:'a_faire' },
-      contreVisite:  { controleurNom:null, heure:null, reponses:{}, statut:'non_demarree' },
-    };
-    await idbPut('controles', c);
-  }
-  return c;
+  backdrop.addEventListener('click', (e)=>{ if(e.target===backdrop || e.target.classList.contains('pv-close')) backdrop.remove(); });
 }
 
 function fileToResizedBase64(file, maxWidth){
@@ -193,72 +214,56 @@ function fileToResizedBase64(file, maxWidth){
   });
 }
 
-async function queueForSync(controle){
-  await idbPut('outbox', { id: controle.id, controle, queuedAt: Date.now() });
-  updateSyncBadge();
-  trySync();
-}
-
-async function pushToServer(item){
-  await db.collection('controles').doc(item.controle.id).set(item.controle, { merge:true });
-}
-
-async function trySync(){
-  if(!navigator.onLine) return;
-  const items = await idbGetAll('outbox');
-  for(const item of items){
-    try{
-      await pushToServer(item);
-      await idbDelete('outbox', item.id);
-    }catch(err){
-      break;
-    }
+async function getConfigSchedule(){
+  let cfg = await idbGet('config', 'schedule');
+  if(!cfg){
+    cfg = { id:'schedule', hebdoDay:1, mensuelDate:1 }; // Par défaut : Lundi et 1er du mois
+    await idbPut('config', cfg);
   }
-  updateSyncBadge();
+  return cfg;
 }
 
-async function updateSyncBadge(){
-  const items = await idbGetAll('outbox');
-  const el = document.getElementById('syncBadge');
-  if(!el) return;
-  if(items.length){
-    el.textContent = `${items.length} en attente de synchro`;
-    el.classList.remove('hidden');
-  } else {
-    el.classList.add('hidden');
-  }
-}
+async function getPointsForToday(zoneId, dateIso){
+  const cfg = await getConfigSchedule();
+  const d = new Date(dateIso);
+  const currentDay = d.getDay(); // 0=Dim, 1=Lun...
+  const currentDate = d.getDate();
 
-window.addEventListener('online', trySync);
+  const allPoints = POINTS[zoneId] || [];
+  return allPoints.filter(p=>{
+    if(p.freq==='J') return true;
+    if(p.freq==='H' && currentDay === Number(cfg.hebdoDay)) return true;
+    if(p.freq==='M' && currentDate === Number(cfg.mensuelDate)) return true;
+    return false;
+  });
+}
 
 function topbarHtml(title, sub){
   const online = navigator.onLine;
   return `
     <div class="topbar">
       <div>
-        <div class="brand-eyebrow">${sub||'Contrôle Nettoyage'}</div>
+        <div class="brand-eyebrow">${sub||'SASU SOAN — Prestation Nettoyage'}</div>
         <div class="brand-title">${title}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
         <div class="net-status ${online?'online':'offline'}"><span class="net-dot"></span>${online?'En ligne':'Hors-ligne'}</div>
-        <div class="sync-pill hidden" id="syncBadge"></div>
       </div>
     </div>
   `;
 }
 
 function renderLogin(){
-  syncAgentsFromFirestore();
   root.innerHTML = `
     <div id="screen-login">
       <div class="login-card">
-        <div class="brand-eyebrow">McDo Caen Centre Ville</div>
-        <div class="brand-title">Contrôle Nettoyage</div>
+        <div class="brand-eyebrow">SASU SOAN</div>
+        <div class="brand-title">Contrôle Prestations</div>
         <div class="role-switch">
-          <button class="role-btn ${pendingRole==='agent'?'active':''}" data-role="agent">Équipe nettoyage</button>
+          <button class="role-btn ${pendingRole==='agent'?'active':''}" data-role="agent">Équipe</button>
           <button class="role-btn ${pendingRole==='controleur'?'active':''}" data-role="controleur">Contrôleur</button>
         </div>
-        <div class="section-note">Entre ton code à 4 chiffres</div>
+        <div class="section-note">Saisis ton code à 4 chiffres</div>
         <div class="pin-dots" id="pinDots"></div>
         <div class="pin-pad" id="pinPad"></div>
         <div class="pin-error" id="pinError"></div>
@@ -272,9 +277,8 @@ function renderLogin(){
   renderPinDots();
   renderPinPad();
 
-  // Bouton de secours pour débloquer l'accès
   document.getElementById('bypassBtn').addEventListener('click', ()=>{
-    session = { role: 'controleur', agentId: 'admin_temp', nom: 'Admin Temp' };
+    session = { role: 'controleur', agentId: 'admin_temp', nom: 'Admin Secours' };
     goToZones();
   });
 }
@@ -306,170 +310,129 @@ function onPinKey(k){
   if(currentPin.length===4) checkPin();
 }
 
-async function syncAgentsFromFirestore(){
-  if(!navigator.onLine) return;
-  try{
-    const snap = await db.collection('agents').get();
-    const dbi = await openDB();
-    await new Promise((resolve, reject)=>{
-      const tx = dbi.transaction('agents', 'readwrite');
-      const store = tx.objectStore('agents');
-      snap.docs.forEach(d=>store.put(Object.assign({ id:d.id }, d.data())));
-      tx.oncomplete = resolve;
-      tx.onerror = ()=>reject(tx.error);
-    });
-  }catch(err){}
-}
-
 async function checkPin(){
-  const errEl = document.getElementById('pinError');
   const agents = await idbGetAll('agents');
   const match = agents.find(a=>a.pin===currentPin && a.role===pendingRole && a.actif!==false);
   if(match){
     session = { role:pendingRole, agentId:match.id, nom:match.nom };
     currentPin=''; goToZones();
   } else {
+    const errEl = document.getElementById('pinError');
     if(errEl) errEl.textContent = 'Code incorrect'; currentPin=''; setTimeout(renderPinDots,150);
   }
 }
 
-async function goToZones(){ activeZoneId=null; trySync(); await renderZones(); }
+async function goToZones(){ activeZoneId=null; await renderZones(); }
 
 async function renderZones(){
   const date = todayISO();
-  const controles = await Promise.all(ZONES.map(z=>getOrCreateControle(z.id, date)));
-  const roleLabel = session.role==='agent' ? `Équipe · ${session.nom}` : 'Contre-visite';
+  const roleLabel = session.role==='agent' ? `Équipe · ${session.nom}` : `Contrôleur · ${session.nom}`;
 
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml(roleLabel, fmtDate(date))}
       <div class="section">
-        <div class="section-title">Zones à contrôler</div>
-        <div class="section-note" style="margin-bottom:12px;">${session.role==='agent' ? 'Choisis une zone pour saisir ton passage.' : 'Choisis une zone pour faire ta contre-visite.'}</div>
+        <div class="section-title">Zones de Prestation</div>
         <div class="zone-grid" id="zoneGrid"></div>
       </div>
-      <button class="btn ghost block" id="dashBtn" style="margin-bottom:10px;">📊 Tableau de bord</button>
-      ${session.role==='controleur' ? '<button class="btn ghost block" id="agentsBtn" style="margin-bottom:10px;">👤 Gestion des utilisateurs</button>' : ''}
-      <button class="btn ghost block" id="logoutBtn">Changer d'utilisateur</button>
+      ${session.role==='controleur' ? '<button class="btn ghost block" id="configBtn" style="margin-bottom:10px;">⚙️ Planning Tâches Hebdo/Mensuel</button>' : ''}
+      <button class="btn ghost block" id="logoutBtn">Déconnexion</button>
     </div>
   `;
+
   const grid = document.getElementById('zoneGrid');
-  grid.innerHTML = ZONES.map((z,i)=>{
-    const c = controles[i];
-    const statut = session.role==='agent' ? c.passageEquipe.statut : c.contreVisite.statut;
-    const badge = statutBadge(statut);
-    const nbPoints = POINTS[z.id].length;
-    return `
+  let html = '';
+  for(const z of ZONES){
+    const activePoints = await getPointsForToday(z.id, date);
+    html += `
       <div class="zone-card" data-zone="${z.id}">
         <div>
           <div class="zone-name">${z.nom}</div>
-          <div class="zone-meta">${nbPoints} point${nbPoints>1?'s':''} de contrôle</div>
+          <div class="zone-meta">${activePoints.length} tâche(s) programmée(s) aujourd'hui</div>
         </div>
-        ${badge}
+        <span class="zone-badge a-faire">À réaliser</span>
       </div>
     `;
-  }).join('');
+  }
+  grid.innerHTML = html;
+
   grid.querySelectorAll('.zone-card').forEach(card=>{
     card.addEventListener('click', ()=>{
       activeZoneId = card.dataset.zone;
-      activeControleId = controleId(activeZoneId, date);
+      activeControleId = `${date}__${activeZoneId}`;
       activeMode = session.role==='agent' ? 'equipe' : 'contreVisite';
       renderControle();
     });
   });
-  document.getElementById('logoutBtn').addEventListener('click', ()=>{ session=null; currentPin=''; renderLogin(); });
-  document.getElementById('dashBtn').addEventListener('click', renderDashboard);
-  const agentsBtn = document.getElementById('agentsBtn');
-  if(agentsBtn) agentsBtn.addEventListener('click', renderAgentsAdmin);
-  updateSyncBadge();
-}
 
-function statutBadge(statut){
-  const map = {
-    a_faire:      { cls:'a-faire', label:'À faire' },
-    rempli:       { cls:'fait',    label:'Rempli' },
-    'synchronisé':{ cls:'fait',    label:'Rempli' },
-    non_demarree: { cls:'a-faire', label:'À faire' },
-    en_cours:     { cls:'en-cours',label:'En cours' },
-    faite:        { cls:'fait',    label:'Faite' },
-  };
-  const m = map[statut] || map.a_faire;
-  return `<span class="zone-badge ${m.cls}">${m.label}</span>`;
+  document.getElementById('logoutBtn').addEventListener('click', ()=>{ session=null; currentPin=''; renderLogin(); });
+  const cfgBtn = document.getElementById('configBtn');
+  if(cfgBtn) cfgBtn.addEventListener('click', renderScheduleConfig);
 }
 
 async function renderControle(){
-  const c = await idbGet('controles', activeControleId);
+  const date = todayISO();
+  let c = await idbGet('controles', activeControleId) || {
+    id: activeControleId, zoneId: activeZoneId, date,
+    passageEquipe: { agentNom:null, heure:null, reponses:{} },
+    contreVisite:  { controleurNom:null, heure:null, reponses:{} }
+  };
+
   const zone = ZONES.find(z=>z.id===activeZoneId);
-  const points = POINTS[activeZoneId];
+  const activePoints = await getPointsForToday(activeZoneId, date);
   const isContreVisite = activeMode==='contreVisite';
   const branch = isContreVisite ? c.contreVisite : c.passageEquipe;
-  const equipeReponses = c.passageEquipe.reponses || {};
 
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml(zone.nom, isContreVisite ? 'Contre-visite' : 'Passage équipe')}
+      ${topbarHtml(zone.nom, isContreVisite ? 'Contre-visite Contrôleur' : 'Réalisation Prestation')}
       <div class="back-link" id="backBtn">← Retour aux zones</div>
-      <div class="section" style="padding-bottom:6px;">
+      <div class="section">
         <div id="pointsList"></div>
-        <button class="btn amber block" id="saveBtn" style="margin-top:6px;">
-          ${isContreVisite ? 'Enregistrer la contre-visite' : 'Enregistrer le passage'}
-        </button>
-        ${branch.statut==='rempli' || branch.statut==='faite' ? `
-        <div style="display:flex;gap:8px;margin-top:10px;">
-          <button class="btn ghost small" id="pdfBtn" style="flex:1;">📄 PDF</button>
-          ${session.role==='controleur' ? '<button class="btn ghost small" id="mailBtn" style="flex:1;">✉️ Envoyer par mail</button>' : ''}
-        </div>` : ''}
+        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">Enregistrer le rapport</button>
+        <button class="btn ghost block" id="pdfBtn" style="margin-top:8px;">📄 Générer Rapport de Prestation PDF</button>
       </div>
     </div>
   `;
+
   document.getElementById('backBtn').addEventListener('click', goToZones);
-  const pdfBtn = document.getElementById('pdfBtn');
-  if(pdfBtn) pdfBtn.addEventListener('click', ()=>generateControlePDF(c));
-  const mailBtn = document.getElementById('mailBtn');
-  if(mailBtn) mailBtn.addEventListener('click', ()=>sendReportEmail(c));
+  document.getElementById('pdfBtn').addEventListener('click', ()=>generateControlePDF(c, activePoints));
 
   const listEl = document.getElementById('pointsList');
-  listEl.innerHTML = points.map(p=>{
-    const r = branch.reponses[p.id] || { conforme:null, photo:null, commentaire:'' };
-    const ecart = isContreVisite && equipeReponses[p.id] && r.conforme!==null && r.conforme!==equipeReponses[p.id].conforme;
+  listEl.innerHTML = activePoints.map(p=>{
+    const r = branch.reponses[p.id] || { conforme:null, photos:[], commentaire:'' };
+    const photos = r.photos || [];
     return `
       <div class="point-item" data-point="${p.id}">
         <div class="point-head">
-          <div class="point-label">${p.label}${ecart?'<span class="ecart-flag">écart</span>':''}</div>
+          <div class="point-label">${p.label} <small>(${p.freq==='J'?'Jour':(p.freq==='H'?'Hebdo':'Mensuel')})</small></div>
           <div class="point-toggle">
-            <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true">✓ Conforme</button>
-            <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false">✕ Non conforme</button>
+            <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true">✓ OK</button>
+            <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false">✕ NOK</button>
           </div>
         </div>
-        <div class="point-photo-row">
-          ${r.photo ? `<img class="photo-thumb" src="${r.photo}" data-full="${r.photo}" data-label="${isContreVisite?'Contre-visite':'Équipe'}">` : ''}
+        <div class="point-photo-row" id="photos_${p.id}">
+          ${photos.map(pSrc=>`<img class="photo-thumb" src="${pSrc}">`).join('')}
           <label class="photo-btn">
-            📷 ${r.photo?'Reprendre la photo':'Prendre une photo'}
+            📷 + Ajouter une photo
             <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
           </label>
-          ${isContreVisite && equipeReponses[p.id] && equipeReponses[p.id].photo ? `<img class="photo-thumb" src="${equipeReponses[p.id].photo}" data-full="${equipeReponses[p.id].photo}" data-label="Photo équipe" title="Photo de l'équipe">` : ''}
         </div>
-        <textarea class="point-comment" placeholder="Commentaire (optionnel)">${r.commentaire||''}</textarea>
+        <textarea class="point-comment" placeholder="Remarques / Observations">${r.commentaire||''}</textarea>
       </div>
     `;
   }).join('');
 
-  listEl.addEventListener('click', (e)=>{
-    const img = e.target.closest('.photo-thumb[data-full]');
-    if(img) openPhotoViewer(img.dataset.full, img.dataset.label||'');
-  });
-
   listEl.querySelectorAll('.point-item').forEach(item=>{
-    const pointId = item.dataset.point;
-    if(!branch.reponses[pointId]) branch.reponses[pointId] = { conforme:null, photo:null, commentaire:'' };
-    const r = branch.reponses[pointId];
+    const pId = item.dataset.point;
+    if(!branch.reponses[pId]) branch.reponses[pId] = { conforme:null, photos:[], commentaire:'' };
+    const r = branch.reponses[pId];
 
     item.querySelectorAll('.toggle-btn').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         r.conforme = btn.dataset.val==='true';
         item.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active'));
         btn.classList.add('active');
-        refreshEcartFlag(item, pointId, equipeReponses, isContreVisite);
       });
     });
 
@@ -477,16 +440,13 @@ async function renderControle(){
     fileInput.addEventListener('change', async ()=>{
       if(!fileInput.files.length) return;
       const dataUrl = await fileToResizedBase64(fileInput.files[0], 800);
-      r.photo = dataUrl;
-      let thumb = item.querySelector('.photo-thumb[data-label="'+(isContreVisite?'Contre-visite':'Équipe')+'"]') || item.querySelector('.point-photo-row .photo-thumb:not([title])');
-      if(!thumb){
-        thumb = document.createElement('img');
-        thumb.className = 'photo-thumb';
-        item.querySelector('.point-photo-row').prepend(thumb);
-      }
-      thumb.src = dataUrl;
-      thumb.dataset.full = dataUrl;
-      thumb.dataset.label = isContreVisite ? 'Contre-visite' : 'Équipe';
+      r.photos = r.photos || [];
+      r.photos.push(dataUrl);
+      
+      const newImg = document.createElement('img');
+      newImg.className = 'photo-thumb';
+      newImg.src = dataUrl;
+      item.querySelector('.point-photo-row').insertBefore(newImg, item.querySelector('.photo-btn'));
     });
 
     item.querySelector('.point-comment').addEventListener('input', (e)=>{
@@ -495,353 +455,88 @@ async function renderControle(){
   });
 
   document.getElementById('saveBtn').addEventListener('click', async ()=>{
-    const allAnswered = points.every(p=>branch.reponses[p.id] && branch.reponses[p.id].conforme!==null);
-    if(!allAnswered){ toast('Renseigne conforme / non conforme sur chaque point'); return; }
     branch.heure = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
-    if(isContreVisite){ branch.controleurNom = session.nom; branch.statut = 'faite'; }
-    else { branch.agentNom = session.nom; branch.statut = 'rempli'; }
+    if(isContreVisite) branch.controleurNom = session.nom;
+    else branch.agentNom = session.nom;
+
     await idbPut('controles', c);
-    await queueForSync(c);
-    toast('Enregistré' + (navigator.onLine ? '' : ' — en attente de réseau'));
+    toast('Prestation enregistrée avec succès !');
     goToZones();
   });
 }
 
-function refreshEcartFlag(item, pointId, equipeReponses, isContreVisite){
-  if(!isContreVisite) return;
-  const labelEl = item.querySelector('.point-label');
-  const existingFlag = labelEl.querySelector('.ecart-flag');
-  const currentBtn = item.querySelector('.toggle-btn.active');
-  const currentVal = currentBtn ? currentBtn.dataset.val==='true' : null;
-  const hasEcart = equipeReponses[pointId] && currentVal!==null && currentVal!==equipeReponses[pointId].conforme;
-  if(hasEcart && !existingFlag){
-    labelEl.insertAdjacentHTML('beforeend', '<span class="ecart-flag">écart</span>');
-  } else if(!hasEcart && existingFlag){
-    existingFlag.remove();
-  }
-}
-
-let dashChart = null;
-
-async function fetchAllControles(){
-  const snap = await db.collection('controles').get();
-  return snap.docs.map(d=>d.data());
-}
-
-function computeStats(docs){
-  const zoneStats = {};
-  const byDate = {};
-  const pointFail = {};
-  const ecarts = [];
-
-  docs.forEach(doc=>{
-    const zone = ZONES.find(z=>z.id===doc.zoneId);
-    const zoneNom = zone ? zone.nom : doc.zoneId;
-    const points = POINTS[doc.zoneId] || [];
-    const eqReponses = (doc.passageEquipe && doc.passageEquipe.reponses) || {};
-    const cvReponses = (doc.contreVisite && doc.contreVisite.reponses) || {};
-
-    zoneStats[doc.zoneId] = zoneStats[doc.zoneId] || { nom:zoneNom, conforme:0, total:0 };
-    byDate[doc.date] = byDate[doc.date] || { conforme:0, total:0 };
-
-    points.forEach(p=>{
-      const r = eqReponses[p.id];
-      if(r && r.conforme!==null && r.conforme!==undefined){
-        zoneStats[doc.zoneId].total++;
-        byDate[doc.date].total++;
-        if(r.conforme){ zoneStats[doc.zoneId].conforme++; byDate[doc.date].conforme++; }
-        else{
-          const key = `${zoneNom} · ${p.label}`;
-          pointFail[key] = (pointFail[key]||0)+1;
-        }
-      }
-      const rc = cvReponses[p.id];
-      if(r && rc && r.conforme!==null && rc.conforme!==null && r.conforme!==rc.conforme){
-        ecarts.push({ date:doc.date, zone:zoneNom, point:p.label, equipe:r.conforme, controleur:rc.conforme });
-      }
-    });
-  });
-
-  return { zoneStats, byDate, pointFail, ecarts };
-}
-
-async function renderDashboard(){
+async function renderScheduleConfig(){
+  const cfg = await getConfigSchedule();
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Tableau de bord', session.role==='agent' ? session.nom : 'Contrôleur')}
-      <div class="back-link" id="backBtn">← Retour aux zones</div>
-      <div id="dashContent" class="section"><div class="section-note">Chargement…</div></div>
-    </div>
-  `;
-  document.getElementById('backBtn').addEventListener('click', goToZones);
-
-  let docs = [];
-  try{ docs = await fetchAllControles(); }
-  catch(err){ document.getElementById('dashContent').innerHTML = '<div class="section-note">Impossible de charger les statistiques (hors-ligne ?). Réessaie une fois connecté.</div>'; return; }
-
-  if(session.role==='agent'){ renderDashboardAgent(docs); }
-  else{ renderDashboardControleur(docs); }
-}
-
-function renderDashboardAgent(docs){
-  const mine = docs.filter(d=>d.passageEquipe && d.passageEquipe.agentNom===session.nom)
-    .sort((a,b)=>b.date.localeCompare(a.date)).slice(0,15);
-  const el = document.getElementById('dashContent');
-  if(!mine.length){ el.innerHTML = '<div class="section-note">Aucun passage enregistré pour l\'instant.</div>'; return; }
-  el.innerHTML = `
-    <div class="section-title" style="margin-bottom:10px;">Tes derniers passages</div>
-    ${mine.map(d=>{
-      const zone = ZONES.find(z=>z.id===d.zoneId);
-      const points = POINTS[d.zoneId]||[];
-      const reponses = d.passageEquipe.reponses||{};
-      const nbConforme = points.filter(p=>reponses[p.id] && reponses[p.id].conforme).length;
-      return `<div class="hist-row"><div><div class="hist-main">${zone?zone.nom:d.zoneId}</div><div class="hist-sub">${fmtDate(d.date)} · ${d.passageEquipe.heure||''}</div></div><span class="pill ${nbConforme===points.length?'pos':'neg'}">${nbConforme}/${points.length} conforme</span></div>`;
-    }).join('')}
-  `;
-}
-
-function renderDashboardControleur(docs){
-  const { zoneStats, byDate, pointFail, ecarts } = computeStats(docs);
-  const zoneKeys = Object.keys(zoneStats);
-  const totalConforme = zoneKeys.reduce((s,k)=>s+zoneStats[k].conforme,0);
-  const totalPoints = zoneKeys.reduce((s,k)=>s+zoneStats[k].total,0);
-  const tauxGlobal = totalPoints ? Math.round(totalConforme/totalPoints*100) : null;
-
-  const topFails = Object.entries(pointFail).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  const recentEcarts = ecarts.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8);
-
-  const el = document.getElementById('dashContent');
-  el.innerHTML = `
-    <div class="kpis">
-      <div class="kpi ${tauxGlobal!==null && tauxGlobal>=90?'pos':(tauxGlobal!==null && tauxGlobal<70?'neg':'')}">
-        <div class="label">Conformité globale</div>
-        <div class="value">${tauxGlobal===null?'—':tauxGlobal+'%'}</div>
-      </div>
-      <div class="kpi ${ecarts.length?'neg':'pos'}">
-        <div class="label">Écarts équipe / contre-visite</div>
-        <div class="value">${ecarts.length}</div>
-      </div>
-    </div>
-
-    <div class="section-title" style="font-size:16px;margin-bottom:8px;">Conformité par zone</div>
-    ${zoneKeys.map(k=>{
-      const z = zoneStats[k];
-      const pct = z.total ? Math.round(z.conforme/z.total*100) : null;
-      return `<div class="rank-row"><span>${z.nom}</span><span class="pill ${pct===null?'zero':(pct>=90?'pos':(pct<70?'neg':'zero'))}">${pct===null?'—':pct+'%'}</span></div>`;
-    }).join('') || '<div class="section-note">Pas encore de données.</div>'}
-
-    <div class="section-title" style="font-size:16px;margin:18px 0 8px;">Points les plus souvent non conformes</div>
-    ${topFails.length ? topFails.map(([label,count])=>`<div class="rank-row"><span>${label}</span><span class="rank-count">${count}×</span></div>`).join('') : '<div class="section-note">Aucun point en défaut pour l\'instant.</div>'}
-
-    <div class="section-title" style="font-size:16px;margin:18px 0 8px;">Évolution de la conformité</div>
-    <canvas id="dashChartCanvas" height="140"></canvas>
-
-    <div class="section-title" style="font-size:16px;margin:18px 0 8px;">Derniers écarts équipe / contre-visite</div>
-    ${recentEcarts.length ? recentEcarts.map(e=>`
-      <div class="hist-row">
-        <div><div class="hist-main">${e.zone} · ${e.point}</div><div class="hist-sub">${fmtDate(e.date)}</div></div>
-        <span class="ecart-flag">équipe : ${e.equipe?'conforme':'non conforme'} → toi : ${e.controleur?'conforme':'non conforme'}</span>
-      </div>`).join('') : '<div class="section-note">Aucun écart détecté.</div>'}
-  `;
-
-  const dateKeys = Object.keys(byDate).sort();
-  const canvas = document.getElementById('dashChartCanvas');
-  if(canvas && dateKeys.length && typeof Chart !== 'undefined'){
-    if(dashChart) dashChart.destroy();
-    dashChart = new Chart(canvas, {
-      type:'line',
-      data:{
-        labels: dateKeys.map(fmtDate),
-        datasets:[{
-          label:'Conformité (%)',
-          data: dateKeys.map(k=>byDate[k].total ? Math.round(byDate[k].conforme/byDate[k].total*100) : null),
-          borderColor:'#2B6E68', backgroundColor:'#2B6E68', tension:.3, pointRadius:3
-        }]
-      },
-      options:{ responsive:true, scales:{ y:{ min:0, max:100 } }, plugins:{ legend:{ display:false } } }
-    });
-  } else if(canvas){
-    canvas.replaceWith(Object.assign(document.createElement('div'),{className:'section-note',textContent:'Pas encore assez de données pour la courbe.'}));
-  }
-}
-
-async function renderAgentsAdmin(){
-  root.innerHTML = `
-    <div class="wrap">
-      ${topbarHtml('Utilisateurs', 'Gestion des accès')}
+      ${topbarHtml('Planning Tâches', 'Configuration')}
       <div class="back-link" id="backBtn">← Retour aux zones</div>
       <div class="section">
-        <div id="agentsList"><div class="section-note">Chargement…</div></div>
-        <button class="btn amber block" id="addAgentBtn" style="margin-top:12px;">+ Ajouter un utilisateur</button>
+        <div class="field">
+          <label>Jour d'exécution des tâches HEBDOMADAIRES</label>
+          <select id="cfg_hebdo">
+            <option value="1" ${cfg.hebdoDay==1?'selected':''}>Lundi</option>
+            <option value="2" ${cfg.hebdoDay==2?'selected':''}>Mardi</option>
+            <option value="3" ${cfg.hebdoDay==3?'selected':''}>Mercredi</option>
+            <option value="4" ${cfg.hebdoDay==4?'selected':''}>Jeudi</option>
+            <option value="5" ${cfg.hebdoDay==5?'selected':''}>Vendredi</option>
+            <option value="6" ${cfg.hebdoDay==6?'selected':''}>Samedi</option>
+            <option value="0" ${cfg.hebdoDay==0?'selected':''}>Dimanche</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Jour du mois des tâches MENSUELLES (1 à 28)</label>
+          <input type="number" id="cfg_mensuel" min="1" max="28" value="${cfg.mensuelDate}">
+        </div>
+        <button class="btn amber block" id="saveCfgBtn" style="margin-top:15px;">Enregistrer la planification</button>
       </div>
     </div>
   `;
+
   document.getElementById('backBtn').addEventListener('click', goToZones);
-  document.getElementById('addAgentBtn').addEventListener('click', ()=>openAgentModal());
-  await refreshAgentsList();
-}
-
-async function refreshAgentsList(){
-  const el = document.getElementById('agentsList');
-  if(!navigator.onLine){
-    el.innerHTML = '<div class="section-note">Connexion requise pour gérer les utilisateurs.</div>';
-    return;
-  }
-  let snap;
-  try{ snap = await db.collection('agents').get(); }
-  catch(err){ el.innerHTML = '<div class="section-note">Erreur de chargement.</div>'; return; }
-  const agents = snap.docs.map(d=>Object.assign({ id:d.id }, d.data()));
-  if(!agents.length){ el.innerHTML = '<div class="section-note">Aucun utilisateur. Ajoute le premier contrôleur (toi) pour commencer.</div>'; return; }
-  el.innerHTML = agents.map(a=>`
-    <div class="agent-row" data-id="${a.id}">
-      <div>
-        <div class="agent-name">${a.nom}${a.role==='controleur'?'<span class="badge-role">Contrôleur</span>':''}${a.actif===false?'<span class="badge-inactif">Inactif</span>':''}</div>
-        <div class="agent-meta">PIN : ${a.pin}</div>
-      </div>
-      <div class="agent-actions">
-        <button class="btn ghost small" data-edit="${a.id}">Modifier</button>
-        <button class="btn danger small" data-del="${a.id}">Suppr.</button>
-      </div>
-    </div>
-  `).join('');
-  el.querySelectorAll('[data-edit]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const a = agents.find(x=>x.id===btn.dataset.edit);
-      openAgentModal(a);
-    });
-  });
-  el.querySelectorAll('[data-del]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      if(!confirm('Supprimer cet utilisateur ?')) return;
-      await db.collection('agents').doc(btn.dataset.del).delete();
-      await syncAgentsFromFirestore();
-      refreshAgentsList();
-      toast('Utilisateur supprimé');
-    });
+  document.getElementById('saveCfgBtn').addEventListener('click', async ()=>{
+    const hebdoDay = parseInt(document.getElementById('cfg_hebdo').value);
+    const mensuelDate = parseInt(document.getElementById('cfg_mensuel').value);
+    await idbPut('config', { id:'schedule', hebdoDay, mensuelDate });
+    toast('Planning mis à jour');
+    goToZones();
   });
 }
 
-function openAgentModal(existing){
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  backdrop.innerHTML = `
-    <div class="modal">
-      <h3>${existing?'Modifier':'Nouvel'} utilisateur</h3>
-      <div class="field"><label>Nom</label><input id="am_nom" value="${existing?existing.nom:''}" placeholder="ex: Karim"></div>
-      <div class="field"><label>Code PIN (4 chiffres)</label><input id="am_pin" value="${existing?existing.pin:''}" maxlength="4" inputmode="numeric" placeholder="ex: 1234"></div>
-      <div class="field"><label>Rôle</label>
-        <select id="am_role">
-          <option value="agent" ${existing && existing.role==='agent'?'selected':''}>Équipe nettoyage</option>
-          <option value="controleur" ${existing && existing.role==='controleur'?'selected':''}>Contrôleur</option>
-        </select>
-      </div>
-      <div class="field"><label>Statut</label>
-        <select id="am_actif">
-          <option value="true" ${!existing || existing.actif!==false?'selected':''}>Actif</option>
-          <option value="false" ${existing && existing.actif===false?'selected':''}>Inactif</option>
-        </select>
-      </div>
-      <div class="form-actions" style="display:flex;gap:10px;">
-        <button class="btn amber" id="am_save">Enregistrer</button>
-        <button class="btn ghost" id="am_cancel">Annuler</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(backdrop);
-  backdrop.addEventListener('click', (e)=>{ if(e.target===backdrop) backdrop.remove(); });
-  document.getElementById('am_cancel').addEventListener('click', ()=>backdrop.remove());
-  document.getElementById('am_save').addEventListener('click', async ()=>{
-    const nom = document.getElementById('am_nom').value.trim();
-    const pin = document.getElementById('am_pin').value.trim();
-    const role = document.getElementById('am_role').value;
-    const actif = document.getElementById('am_actif').value==='true';
-    if(!nom || !/^\d{4}$/.test(pin)){ toast('Nom requis et PIN à 4 chiffres'); return; }
-    const id = existing ? existing.id : uid('agent');
-    try{
-      await db.collection('agents').doc(id).set({ nom, pin, role, actif }, { merge:true });
-      await syncAgentsFromFirestore();
-      backdrop.remove();
-      toast('Utilisateur enregistré');
-      refreshAgentsList();
-    }catch(err){ toast('Erreur d\'enregistrement (connexion ?)'); }
-  });
-}
-
-function generateControlePDF(c){
-  if(typeof window.jspdf === 'undefined'){ toast('Génération PDF indisponible (bibliothèque non chargée)'); return; }
+function generateControlePDF(c, points){
+  if(typeof window.jspdf === 'undefined'){ toast('jsPDF non disponible'); return; }
   const { jsPDF } = window.jspdf;
   const zone = ZONES.find(z=>z.id===c.zoneId);
-  const points = POINTS[c.zoneId] || [];
   const docPdf = new jsPDF();
   let y = 20;
 
   docPdf.setFont('helvetica','bold'); docPdf.setFontSize(16);
-  docPdf.text('McDo Caen Centre Ville — Contrôle Nettoyage', 14, y); y+=8;
-  docPdf.setFontSize(12);
-  docPdf.text(`${zone?zone.nom:c.zoneId} — ${fmtDate(c.date)}`, 14, y); y+=10;
+  docPdf.text('SASU SOAN — Rapport de Prestation Nettoyage', 14, y); y+=8;
+  docPdf.setFontSize(11); docPdf.setFont('helvetica','normal');
+  docPdf.text(`Zone : ${zone?zone.nom:c.zoneId} | Date : ${fmtDate(c.date)}`, 14, y); y+=10;
 
-  const addBranch = (label, branch)=>{
-    docPdf.setFont('helvetica','bold'); docPdf.setFontSize(12);
-    docPdf.text(label + (branch.heure?` (${branch.heure})`:''), 14, y); y+=7;
-    docPdf.setFont('helvetica','normal'); docPdf.setFontSize(10);
-    points.forEach(p=>{
-      const r = branch.reponses ? branch.reponses[p.id] : null;
-      if(y>270){ docPdf.addPage(); y=20; }
-      const verdict = r && r.conforme===true ? 'Conforme' : (r && r.conforme===false ? 'NON CONFORME' : '—');
-      docPdf.text(`• ${p.label} : ${verdict}`, 16, y); y+=6;
-      if(r && r.commentaire){ docPdf.setFontSize(9); docPdf.text(`   "${r.commentaire}"`, 18, y); docPdf.setFontSize(10); y+=6; }
-      if(r && r.photo){
-        if(y>230){ docPdf.addPage(); y=20; }
-        try{ docPdf.addImage(r.photo, 'JPEG', 16, y, 50, 38); y+=42; }catch(e){}
-      }
-    });
-    y+=6;
-  };
+  const branch = c.passageEquipe.agentNom ? c.passageEquipe : c.contreVisite;
+  docPdf.setFont('helvetica','bold');
+  docPdf.text(`Intervenant : ${branch.agentNom || branch.controleurNom || 'N/A'} à ${branch.heure||'--:--'}`, 14, y); y+=8;
 
-  addBranch('Passage équipe', c.passageEquipe || {});
-  if(c.contreVisite && c.contreVisite.statut==='faite'){ addBranch('Contre-visite', c.contreVisite); }
+  docPdf.setFont('helvetica','normal'); docPdf.setFontSize(9);
+  points.forEach(p=>{
+    const r = branch.reponses ? branch.reponses[p.id] : null;
+    if(y > 270){ docPdf.addPage(); y = 20; }
+    const status = r && r.conforme===true ? '[OK]' : (r && r.conforme===false ? '[NON CONFORME]' : '[NON FAIT]');
+    docPdf.text(`${status} ${p.label}`, 14, y); y+=5;
+    if(r && r.commentaire){ docPdf.text(`   Obs: ${r.commentaire}`, 18, y); y+=5; }
+  });
 
-  docPdf.save(`controle-${c.zoneId}-${c.date}.pdf`);
-}
-
-async function sendReportEmail(c){
-  if(EMAILJS_PUBLIC_KEY==='À_REMPLACER'){
-    toast('EmailJS non configuré — voir les instructions');
-    return;
-  }
-  const zone = ZONES.find(z=>z.id===c.zoneId);
-  const points = POINTS[c.zoneId] || [];
-  const reponses = (c.passageEquipe && c.passageEquipe.reponses) || {};
-  const nonConformes = points.filter(p=>reponses[p.id] && reponses[p.id].conforme===false);
-  const summary = points.map(p=>{
-    const r = reponses[p.id];
-    const v = r && r.conforme===true ? 'Conforme' : (r && r.conforme===false ? 'NON CONFORME' : '—');
-    return `- ${p.label} : ${v}${r && r.commentaire ? ' ('+r.commentaire+')' : ''}`;
-  }).join('\n');
-
-  try{
-    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-      to_email: RAPPORT_DESTINATAIRE,
-      zone: zone ? zone.nom : c.zoneId,
-      date: fmtDate(c.date),
-      nb_non_conformes: nonConformes.length,
-      resume: summary,
-    });
-    toast('Rapport envoyé par mail');
-  }catch(err){
-    toast('Échec de l\'envoi — vérifie la config EmailJS');
-  }
+  docPdf.save(`Rapport_SOAN_${c.zoneId}_${c.date}.pdf`);
 }
 
 if('serviceWorker' in navigator){
-  window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('service-worker.js').catch(()=>{});
-  });
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('service-worker.js').catch(()=>{}); });
 }
 
 (function init(){
   renderLogin();
-  trySync();
 })();
 
 })();
