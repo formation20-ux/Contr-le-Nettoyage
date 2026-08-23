@@ -1,38 +1,39 @@
-const CACHE_NAME = 'controle-nettoyage-v4';
-const APP_SHELL = [
-  './index.html',
-  './app.js',
-  './manifest.json',
+const CACHE_NAME = 'controle-soan-v10';
+const ASSETS = [
+  './',
+  'index.html',
+  'app.js',
+  'manifest.json'
 ];
 
-self.addEventListener('install', (event)=>{
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache=>cache.addAll(APP_SHELL))
-  );
+self.addEventListener('install', (event) => {
   self.skipWaiting();
-});
-
-self.addEventListener('activate', (event)=>{
   event.waitUntil(
-    caches.keys().then(keys=>
-      Promise.all(keys.filter(k=>k!==CACHE_NAME).map(k=>caches.delete(k)))
-    )
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
   );
-  self.clients.claim();
 });
 
-// Stratégie "cache d'abord" pour la coquille de l'appli : permet de
-// recharger l'appli même sans réseau (réserve, sous-sol...). Les points de
-// contrôle eux-mêmes sont stockés dans IndexedDB, géré côté app.js.
-self.addEventListener('fetch', (event)=>{
-  if(event.request.method !== 'GET') return;
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => 
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
+});
+
+// Stratégie Réseau d'abord (Network First) pour toujours charger le dernier code
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+  
   event.respondWith(
-    caches.match(event.request).then(cached=>{
-      return cached || fetch(event.request).then(resp=>{
-        const clone = resp.clone();
-        caches.open(CACHE_NAME).then(cache=>cache.put(event.request, clone));
-        return resp;
-      }).catch(()=>cached);
-    })
+    fetch(event.request)
+      .then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return networkResponse;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
