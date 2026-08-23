@@ -542,7 +542,7 @@ async function renderZones(){
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:15px;">
-        <button class="btn ghost block" id="globalPdfBtn" style="flex:1;border-color:#C7791B;color:#C7791B;">📄 Rapport PDF de la Journée</button>
+        <button class="btn ghost block" id="globalPdfBtn" style="flex:1;border-color:#C7791B;color:#C7791B;">📄 Rapport PDF</button>
         <button class="btn ghost block" id="mailScheduleBtn" style="flex:1;border-color:#2B6E68;color:#2B6E68;">✉️ Envois Mails</button>
       </div>
 
