@@ -671,13 +671,7 @@ async function renderControle(){
 }
 
 /* =========================================================================
-   ÉCRAN HISTORIQUE
-   ========================================================================= */
-/* =========================================================================
-   ÉCRAN HISTORIQUE (DESIGN CARTE ÉLÉGANT & DÉTAILLÉ)
-   ========================================================================= */
-/* =========================================================================
-   ÉCRAN HISTORIQUE (BADGES DE COULEURS INDIVIDUELS)
+   ÉCRAN HISTORIQUE (ALIGNÉ À 100% SUR LES RÈGLES ET COULEURS DU PDF)
    ========================================================================= */
 async function renderHistory(){
   root.innerHTML = `
@@ -722,11 +716,6 @@ async function renderHistory(){
               <div style="font-weight:700;font-size:15px;color:#F3E2C6;">ZONE : ${z.nom.toUpperCase()}</div>
               <div style="font-size:11px;color:#E7E1D6;">${fmtDate(selectedDate)}</div>
             </div>
-            
-            <div style="background:#FAF8F3;padding:10px 16px;border-bottom:1px solid #E7E1D6;font-size:12px;color:#6B655C;display:flex;gap:15px;flex-wrap:wrap;">
-              <div>👥 <strong>Équipe :</strong> ${eq.agentNom||'N/A'} <small>(${eq.heure||'--:--'})</small></div>
-              <div>🕵️ <strong>Contrôleur :</strong> ${cv.controleurNom||'N/A'} <small>(${cv.heure||'--:--'})</small></div>
-            </div>
 
             <div style="padding:12px;">
         `;
@@ -740,52 +729,62 @@ async function renderHistory(){
           const eqPhotos = rEq.photos || [];
           const cvPhotos = rCv.photos || [];
 
-          // Validation stricte Équipe (avec photo) et Contrôleur
+          // Règle 1 : Équipe sans photo -> NOK
           const eqOk = (eqPhotos.length > 0 && rEq.conforme !== false);
+          
+          // Règle 2 : Contrôleur sans mise en NOK -> OK
           const cvOk = (rCv.conforme !== false);
 
-          const isEcart = (eqOk !== cvOk);
+          // Règle 3 : Seul l'arbitrage du Contrôleur décide si le fond est vert (Final OK)
+          const isFinalOk = (cvOk === true);
+
+          // Règle 4 : Vrai Écart (Équipe OK mais Contrôleur NOK)
+          const isRealEcart = (eqOk === true && cvOk === false);
+
+          // Noms et Horodatages spécifiques à l'item
+          const eqAgent = rEq.agentNom || eq.agentNom || 'Agent';
+          const eqTime = rEq.heure || eq.heure || '--:--';
+          const cvCtrl = rCv.controleurNom || cv.controleurNom || 'Contrôleur';
+          const cvTime = rCv.heure || cv.heure || '--:--';
 
           html += `
-            <div style="border:1px solid ${isEcart?'#B23A34':'#E7E1D6'};background:${isEcart?'#FEF2F2':'#FAF8F3'};padding:12px;border-radius:8px;margin-bottom:10px;">
+            <div style="border:1px solid ${isFinalOk ? '#2B6E68' : '#B23A34'};background:${isFinalOk ? '#DCEEEC' : '#FEF2F2'};padding:12px;border-radius:8px;margin-bottom:10px;">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
                 <div style="font-weight:600;font-size:13.5px;color:#211E1A;flex:1;">${p.label}</div>
-                ${isEcart ? `<span style="background:#B23A34;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap;">ÉCART</span>` : ''}
+                ${isRealEcart ? `<span style="background:#B23A34;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap;">ÉCART</span>` : ''}
               </div>
 
-              <!-- Badges Individuels Colorés -->
+              <!-- Badges de Statuts -->
               <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-                <!-- Badge Équipe -->
-                <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${eqOk?'#DCEEEC':'#F6DEDC'};color:${eqOk?'#2B6E68':'#B23A34'};border:1px solid ${eqOk?'#2B6E68':'#B23A34'};">
-                  <span>Équipe :</span>
+                <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${eqOk?'#2B6E68':'#B23A34'};color:#fff;">
+                  <span>Équipe (${eqAgent} à ${eqTime}) :</span>
                   <strong>${eqOk?'✓ OK':'✕ NOK'}</strong>
                 </div>
 
-                <!-- Badge Contrôleur -->
-                <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${cvOk?'#DCEEEC':'#F6DEDC'};color:${cvOk?'#2B6E68':'#B23A34'};border:1px solid ${cvOk?'#2B6E68':'#B23A34'};">
-                  <span>Contrôleur :</span>
+                <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${cvOk?'#2B6E68':'#B23A34'};color:#fff;">
+                  <span>Contrôleur (${cvCtrl} à ${cvTime}) :</span>
                   <strong>${cvOk?'✓ OK':'✕ NOK'}</strong>
                 </div>
               </div>
 
-              <!-- Observations -->
-              ${rEq.commentaire ? `<div style="font-size:11px;color:#6B655C;margin-top:4px;">💬 <em>Obs. Équipe (${rEq.agentNom||'Agent'}) :</em> ${rEq.commentaire}</div>` : ''}
-              ${rCv.commentaire ? `<div style="font-size:11px;color:#C7791B;margin-top:4px;">💬 <em>Obs. Contrôleur (${rCv.controleurNom||'Ctrl'}) :</em> ${rCv.commentaire}</div>` : ''}
+              <!-- Observations avec Horodatage individuel -->
+              ${rEq.commentaire ? `<div style="font-size:11px;color:#4A453E;margin-top:4px;">💬 <em>Obs. Équipe [${eqAgent} à ${eqTime}] :</em> "${rEq.commentaire}"</div>` : ''}
+              ${rCv.commentaire ? `<div style="font-size:11px;color:#C7791B;margin-top:4px;">💬 <em>Obs. Contrôleur [${cvCtrl} à ${cvTime}] :</em> "${rCv.commentaire}"</div>` : ''}
 
-              <!-- Photos -->
+              <!-- Photos avec Légendes Individuelles -->
               ${(eqPhotos.length || cvPhotos.length) ? `
                 <div style="display:flex;gap:8px;margin-top:10px;overflow-x:auto;padding-bottom:4px;">
                   ${eqPhotos.map(pSrc => `
                     <div style="position:relative;flex-shrink:0;">
-                      <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe - ${p.label}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
-                      <span style="position:absolute;bottom:2px;left:2px;background:#2B6E68;color:#fff;font-size:7px;padding:1px 3px;border-radius:2px;font-weight:bold;">ÉQUIPE</span>
+                      <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe (${eqAgent} ${eqTime}) - ${p.label}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
+                      <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">ÉQUIPE: ${eqAgent}</span>
                     </div>
                   `).join('')}
 
                   ${cvPhotos.map(pSrc => `
                     <div style="position:relative;flex-shrink:0;">
-                      <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Contrôleur - ${p.label}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
-                      <span style="position:absolute;bottom:2px;left:2px;background:#C7791B;color:#fff;font-size:7px;padding:1px 3px;border-radius:2px;font-weight:bold;">CTRL</span>
+                      <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Contrôleur (${cvCtrl} ${cvTime}) - ${p.label}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
+                      <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">CTRL: ${cvCtrl}</span>
                     </div>
                   `).join('')}
                 </div>
