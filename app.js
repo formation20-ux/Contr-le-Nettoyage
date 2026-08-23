@@ -870,12 +870,14 @@ async function generateAndStorePDFData(){
       const rEq = (eq.reponses && eq.reponses[p.id]) || {};
       const rCv = (cv.reponses && cv.reponses[p.id]) || {};
       let eqConformeCalculated = (rEq.photos && rEq.photos.length > 0) ? (rEq.conforme !== false) : false;
-      let cvConformeCalculated = (rCv.conforme === false) ? false : true;
+      
+      // La décision finale du contrôleur (OK ou NOK) fait foi pour le bilan
+      let cvConformeCalculated = (rCv.conforme === false) ? false : (rCv.conforme === true ? true : eqConformeCalculated);
 
       const isFinalOk = (cvConformeCalculated === true);
       const isRealEcart = (eqConformeCalculated === true && cvConformeCalculated === false);
 
-      if(!isFinalOk || !eqConformeCalculated) totalNok++;
+      if(!isFinalOk) totalNok++;
       if(isRealEcart) totalEcarts++;
     }
   }
@@ -1395,12 +1397,12 @@ async function generatePDFForDate(targetDateIso){
       const rCv = (cv.reponses && cv.reponses[p.id]) || { conforme: null, photos:[], commentaire:'', controleurNom: cv.controleurNom, heure: cv.heure };
 
       let eqConformeCalculated = (rEq.photos && rEq.photos.length > 0) ? (rEq.conforme !== false) : false;
-      let cvConformeCalculated = (rCv.conforme === false) ? false : true;
+      let cvConformeCalculated = (rCv.conforme === false) ? false : (rCv.conforme === true ? true : eqConformeCalculated);
 
       const isFinalOk = (cvConformeCalculated === true);
       const isRealEcart = (eqConformeCalculated === true && cvConformeCalculated === false);
 
-      if(!isFinalOk || !eqConformeCalculated) totalNok++;
+      if(!isFinalOk) totalNok++;
       if(isRealEcart) totalEcarts++;
 
       if(y > 250){ docPdf.addPage(); y = 20; }
@@ -2016,12 +2018,12 @@ async function generateGlobalPDF(){
       const rCv = (cv.reponses && cv.reponses[p.id]) || { conforme: null, photos:[], commentaire:'', controleurNom: cv.controleurNom, heure: cv.heure };
 
       let eqConformeCalculated = (rEq.photos && rEq.photos.length > 0) ? (rEq.conforme !== false) : false;
-      let cvConformeCalculated = (rCv.conforme === false) ? false : true;
+      let cvConformeCalculated = (rCv.conforme === false) ? false : (rCv.conforme === true ? true : eqConformeCalculated);
 
       const isFinalOk = (cvConformeCalculated === true);
       const isRealEcart = (eqConformeCalculated === true && cvConformeCalculated === false);
 
-      if(!isFinalOk || !eqConformeCalculated) totalNok++;
+      if(!isFinalOk) totalNok++;
       if(isRealEcart) totalEcarts++;
 
       if(y > 250){ docPdf.addPage(); y = 20; }
