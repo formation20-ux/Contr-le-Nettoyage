@@ -391,7 +391,7 @@ async function checkPin(){
 async function goToZones(){ activeZoneId=null; await renderZones(); }
 
 /* =========================================================================
-   MENU PRINCIPAL - ZONES & NAVIGATION
+   MENU PRINCIPAL
    ========================================================================= */
 async function renderZones(){
   const date = todayISO();
@@ -458,7 +458,7 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE (RÈGLES STRICTES DE PHOTO)
+   SAISIE CONTRÔLE / PRESTATION ZONE (ALERTE NOK & SÉCURITÉ PHOTO)
    ========================================================================= */
 async function renderControle(){
   const date = todayISO();
@@ -505,17 +505,23 @@ async function renderControle(){
   listEl.innerHTML = activePoints.map(p=>{
     const r = currentBranch.reponses[p.id] || { conforme: (isContreVisite ? true : null), photos:[], commentaire:'' };
     
-    // Si c'est le contrôleur et qu'il n'a pas encore touché à cet item, OK par défaut
+    // Si contrôleur et non renseigné -> Valider OK par défaut
     if(isContreVisite && r.conforme === null) r.conforme = true;
 
     const myPhotos = r.photos || [];
     const eqR = equipeReponses[p.id] || {};
     const eqPhotos = isContreVisite ? (eqR.photos || []) : [];
 
+    // Détection si l'équipe a validé en NOK (ou si elle a été bloquée NOK sans photo)
+    const isEquipeNok = isContreVisite && (eqR.conforme === false || !eqR.photos || eqR.photos.length === 0);
+
     return `
-      <div class="point-item" data-point="${p.id}" style="border:1px solid #E7E1D6;padding:12px;border-radius:10px;margin-bottom:12px;">
+      <div class="point-item" data-point="${p.id}" style="border:1px solid ${isEquipeNok?'#B23A34':'#E7E1D6'};padding:12px;border-radius:10px;margin-bottom:12px;background:${isEquipeNok?'#F6DEDC':'#fff'};">
         <div class="point-head">
-          <div class="point-label" style="font-weight:600;">${p.label} <small>(${p.freq==='J'?'Jour':(p.freq==='H'?'Hebdo':'Mensuel')})</small></div>
+          <div class="point-label" style="font-weight:600;">
+            ${p.label} <small>(${p.freq==='J'?'Jour':(p.freq==='H'?'Hebdo':'Mensuel')})</small>
+            ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">⚠️ ÉQUIPE : NOK</span>` : ''}
+          </div>
           <div class="point-toggle" style="margin-top:6px;">
             <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true">✓ OK</button>
             <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false">✕ NOK</button>
@@ -584,17 +590,17 @@ async function renderControle(){
   });
 
   document.getElementById('saveBtn').onclick = async ()=>{
-    // Validation des règles métier pour l'Équipe
+    // Application des règles métiers
     if(!isContreVisite){
       for(const p of activePoints){
         const r = currentBranch.reponses[p.id];
-        // Si l'équipe n'a pas mis au moins 1 photo -> Force le statut à NOK
+        // Règle : Pas de photo par l'équipe -> verrouillé en NOK
         if(!r || !r.photos || r.photos.length === 0){
           r.conforme = false; 
         }
       }
     } else {
-      // Pour le contrôleur : Si non modifié -> Considérer comme OK
+      // Pour le contrôleur : Si non retouché -> OK par défaut
       for(const p of activePoints){
         if(!currentBranch.reponses[p.id] || currentBranch.reponses[p.id].conforme === null){
           currentBranch.reponses[p.id] = currentBranch.reponses[p.id] || { photos:[], commentaire:'' };
@@ -666,9 +672,12 @@ async function renderHistory(){
           const rCv = (cv.reponses && cv.reponses[p.id]) || {};
           const allPhotos = [...(rEq.photos||[]), ...(rCv.photos||[])];
 
+          const eqOk = rEq.conforme === true && rEq.photos && rEq.photos.length > 0;
+          const cvOk = rCv.conforme !== false;
+
           html += `
             <div style="padding:6px 0;border-top:1px dashed #E7E1D6;font-size:12px;">
-              <div><strong>${p.label}</strong> -> Équipe: [${rEq.conforme===true?'OK':(rEq.conforme===false?'NOK':'—')}] | Ctrl: [${rCv.conforme===true?'OK':(rCv.conforme===false?'NOK':'OK')}]</div>
+              <div><strong>${p.label}</strong> -> Équipe: [${eqOk?'OK':'NOK'}] | Ctrl: [${cvOk?'OK':'NOK'}]</div>
               ${allPhotos.length ? `
                 <div style="display:flex;gap:6px;margin-top:4px;overflow-x:auto;">
                   ${allPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="${p.label}" style="width:45px;height:45px;object-fit:cover;border-radius:4px;cursor:pointer;">`).join('')}
@@ -729,17 +738,18 @@ async function renderStats(){
 
     Object.keys(eq).forEach(pId => {
       const rEq = eq[pId];
-      if(rEq && rEq.conforme !== null){
+      if(rEq){
         totalPointsChecked++;
-        if(rEq.conforme === true) {
+        const eqOk = rEq.conforme === true && rEq.photos && rEq.photos.length > 0;
+        if(eqOk) {
           totalConformes++;
           if(zoneStats[c.zoneId]) zoneStats[c.zoneId].ok++;
         }
         if(zoneStats[c.zoneId]) zoneStats[c.zoneId].total++;
-      }
-      const rCv = cv[pId];
-      if(rEq && rCv && rEq.conforme !== null && rCv.conforme !== null && rEq.conforme !== rCv.conforme){
-        totalEcarts++;
+
+        const rCv = cv[pId];
+        const cvOk = rCv ? (rCv.conforme !== false) : true;
+        if(eqOk !== cvOk) totalEcarts++;
       }
     });
   });
@@ -781,7 +791,7 @@ async function renderStats(){
 }
 
 /* =========================================================================
-   GÉNÉRATION DU RAPPORT PDF GLOBAL (LÉGENDES PROPRES & RÈGLES STRICTES)
+   GÉNÉRATION DU RAPPORT PDF GLOBAL (FONDS VERTS & BANDEAUX SÉPARÉS)
    ========================================================================= */
 async function generateGlobalPDF(){
   if(typeof window.jspdf === 'undefined'){ toast('Bibliothèque PDF indisponible'); return; }
@@ -792,7 +802,9 @@ async function generateGlobalPDF(){
   const C_INK = [33, 30, 26];
   const C_AMBER = [199, 121, 27];
   const C_TEAL = [43, 110, 104];
+  const C_TEAL_BG = [220, 238, 236]; // Fond vert pastel
   const C_RED = [178, 58, 52];
+  const C_RED_BG = [254, 242, 242]; // Fond rouge pastel
   const C_BG = [250, 248, 243];
   const C_LINE = [231, 225, 214];
 
@@ -889,22 +901,30 @@ async function generateGlobalPDF(){
       const rCv = (cv.reponses && cv.reponses[p.id]) || { conforme: null, photos:[], commentaire:'' };
 
       // Règle 1 : Pas de photo équipe -> NOK
-      let eqConformeCalculated = rEq.conforme;
-      if(!rEq.photos || rEq.photos.length === 0) eqConformeCalculated = false;
+      let eqConformeCalculated = (rEq.photos && rEq.photos.length > 0) ? (rEq.conforme !== false) : false;
 
-      // Règle 2 : Pas de mise en NOK par contrôleur -> OK par défaut
+      // Règle 2 : Pas de mise en NOK contrôleur -> OK par défaut
       let cvConformeCalculated = (rCv.conforme === false) ? false : true;
 
-      const eqStat = eqConformeCalculated === true ? 'OK' : 'NOK';
-      const cvStat = cvConformeCalculated === true ? 'OK' : 'NOK';
-
+      const isBothOk = (eqConformeCalculated === true && cvConformeCalculated === true);
       const isEcart = (eqConformeCalculated !== cvConformeCalculated);
+
       if(isEcart) totalEcarts++;
 
       if(y > 250){ docPdf.addPage(); y = 20; }
 
-      docPdf.setFillColor(isEcart ? 254 : 255, isEcart ? 242 : 255, isEcart ? 242 : 255);
-      docPdf.setDrawColor(...(isEcart ? C_RED : C_LINE));
+      // Couleur de fond de l'encadré
+      if(isBothOk){
+        docPdf.setFillColor(...C_TEAL_BG);
+        docPdf.setDrawColor(...C_TEAL);
+      } else if(isEcart){
+        docPdf.setFillColor(...C_RED_BG);
+        docPdf.setDrawColor(...C_RED);
+      } else {
+        docPdf.setFillColor(255, 255, 255);
+        docPdf.setDrawColor(...C_LINE);
+      }
+
       docPdf.roundedRect(14, y, 182, 14, 2, 2, 'FD');
 
       docPdf.setFont('helvetica', 'bold');
@@ -914,8 +934,8 @@ async function generateGlobalPDF(){
 
       docPdf.setFont('helvetica', 'normal');
       docPdf.setFontSize(8);
-      docPdf.text(`Équipe: ${eqStat}`, 125, y + 6);
-      docPdf.text(`Contrôleur: ${cvStat}`, 150, y + 6);
+      docPdf.text(`Équipe: ${eqConformeCalculated?'OK':'NOK'}`, 125, y + 6);
+      docPdf.text(`Contrôleur: ${cvConformeCalculated?'OK':'NOK'}`, 150, y + 6);
 
       if(isEcart){
         docPdf.setFillColor(...C_RED);
@@ -943,11 +963,11 @@ async function generateGlobalPDF(){
 
         let xPos = 18;
         
-        // Affichage des photos Équipe avec bandeau sous l'image
+        // Affichage des photos Équipe
         for(const imgBase64 of allEqPhotos){
           try {
             docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 38);
-            // Bandeau de légende sous la photo
+            // Bandeau de légende distinct sous la photo
             docPdf.setFillColor(...C_TEAL);
             docPdf.rect(xPos, y + 38, 55, 6, 'F');
             docPdf.setFontSize(7); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
@@ -958,11 +978,11 @@ async function generateGlobalPDF(){
           } catch(e){}
         }
 
-        // Affichage des photos Contrôleur avec bandeau sous l'image
+        // Affichage des photos Contrôleur
         for(const imgBase64 of allCvPhotos){
           try {
             docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 38);
-            // Bandeau de légende sous la photo
+            // Bandeau de légende distinct sous la photo
             docPdf.setFillColor(...C_AMBER);
             docPdf.rect(xPos, y + 38, 55, 6, 'F');
             docPdf.setFontSize(7); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
