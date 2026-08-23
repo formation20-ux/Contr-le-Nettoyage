@@ -106,7 +106,7 @@ const POINTS = {
 };
 
 /* =========================================================================
-   STOCKAGE HYBRIDE (LOCAL + CLOUD)
+   MOTEUR DE STOCKAGE HYBRIDE
    ========================================================================= */
 const DB_NAME = 'soan-hybrid-db';
 const DB_VERSION = 1;
@@ -309,9 +309,6 @@ function topbarHtml(title, sub){
   `;
 }
 
-/* =========================================================================
-   ÉCRAN DE LOGIN
-   ========================================================================= */
 function renderLogin(){
   syncPendingQueue();
   root.innerHTML = `
@@ -461,7 +458,7 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE
+   SAISIE CONTRÔLE / PRESTATION ZONE (RÈGLES STRICTES DE PHOTO)
    ========================================================================= */
 async function renderControle(){
   const date = todayISO();
@@ -506,9 +503,12 @@ async function renderControle(){
 
   const listEl = document.getElementById('pointsList');
   listEl.innerHTML = activePoints.map(p=>{
-    const r = currentBranch.reponses[p.id] || { conforme:null, photos:[], commentaire:'' };
-    const myPhotos = r.photos || [];
+    const r = currentBranch.reponses[p.id] || { conforme: (isContreVisite ? true : null), photos:[], commentaire:'' };
     
+    // Si c'est le contrôleur et qu'il n'a pas encore touché à cet item, OK par défaut
+    if(isContreVisite && r.conforme === null) r.conforme = true;
+
+    const myPhotos = r.photos || [];
     const eqR = equipeReponses[p.id] || {};
     const eqPhotos = isContreVisite ? (eqR.photos || []) : [];
 
@@ -529,7 +529,9 @@ async function renderControle(){
           </div>
         ` : ''}
 
-        <div style="font-size:11px;color:#6B655C;margin-top:8px;">${isContreVisite?'Tes photos contrôleur :':'Tes photos de prestation :'}</div>
+        <div style="font-size:11px;color:#6B655C;margin-top:8px;">
+          ${isContreVisite ? 'Tes photos contrôleur (optionnel) :' : 'Photo obligatoire pour valider cet item :'}
+        </div>
         <div class="point-photo-row" id="photos_${p.id}" style="display:flex;gap:6px;align-items:center;overflow-x:auto;margin-top:4px;">
           ${myPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo ${isContreVisite?'Contrôleur':'Équipe'} - ${p.label}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;">`).join('')}
           <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;">
@@ -548,7 +550,9 @@ async function renderControle(){
 
   listEl.querySelectorAll('.point-item').forEach(item=>{
     const pId = item.dataset.point;
-    if(!currentBranch.reponses[pId]) currentBranch.reponses[pId] = { conforme:null, photos:[], commentaire:'' };
+    if(!currentBranch.reponses[pId]) {
+      currentBranch.reponses[pId] = { conforme: (isContreVisite ? true : null), photos:[], commentaire:'' };
+    }
     const r = currentBranch.reponses[pId];
 
     item.querySelectorAll('.toggle-btn').forEach(btn=>{
@@ -580,6 +584,25 @@ async function renderControle(){
   });
 
   document.getElementById('saveBtn').onclick = async ()=>{
+    // Validation des règles métier pour l'Équipe
+    if(!isContreVisite){
+      for(const p of activePoints){
+        const r = currentBranch.reponses[p.id];
+        // Si l'équipe n'a pas mis au moins 1 photo -> Force le statut à NOK
+        if(!r || !r.photos || r.photos.length === 0){
+          r.conforme = false; 
+        }
+      }
+    } else {
+      // Pour le contrôleur : Si non modifié -> Considérer comme OK
+      for(const p of activePoints){
+        if(!currentBranch.reponses[p.id] || currentBranch.reponses[p.id].conforme === null){
+          currentBranch.reponses[p.id] = currentBranch.reponses[p.id] || { photos:[], commentaire:'' };
+          currentBranch.reponses[p.id].conforme = true;
+        }
+      }
+    }
+
     currentBranch.heure = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
     if(isContreVisite) currentBranch.controleurNom = session.nom;
     else currentBranch.agentNom = session.nom;
@@ -591,7 +614,7 @@ async function renderControle(){
 }
 
 /* =========================================================================
-   ÉCRAN HISTORIQUE & CONSULTATION DES ANCIENS RAPPORTS
+   ÉCRAN HISTORIQUE
    ========================================================================= */
 async function renderHistory(){
   root.innerHTML = `
@@ -645,7 +668,7 @@ async function renderHistory(){
 
           html += `
             <div style="padding:6px 0;border-top:1px dashed #E7E1D6;font-size:12px;">
-              <div><strong>${p.label}</strong> -> Équipe: [${rEq.conforme===true?'OK':(rEq.conforme===false?'NOK':'—')}] | Ctrl: [${rCv.conforme===true?'OK':(rCv.conforme===false?'NOK':'—')}]</div>
+              <div><strong>${p.label}</strong> -> Équipe: [${rEq.conforme===true?'OK':(rEq.conforme===false?'NOK':'—')}] | Ctrl: [${rCv.conforme===true?'OK':(rCv.conforme===false?'NOK':'OK')}]</div>
               ${allPhotos.length ? `
                 <div style="display:flex;gap:6px;margin-top:4px;overflow-x:auto;">
                   ${allPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="${p.label}" style="width:45px;height:45px;object-fit:cover;border-radius:4px;cursor:pointer;">`).join('')}
@@ -670,7 +693,7 @@ async function renderHistory(){
 }
 
 /* =========================================================================
-   ÉCRAN STATISTIQUES & SUIVI DE CONFORMITÉ
+   ÉCRAN STATISTIQUES
    ========================================================================= */
 async function renderStats(){
   root.innerHTML = `
@@ -758,7 +781,7 @@ async function renderStats(){
 }
 
 /* =========================================================================
-   GÉNÉRATION DU RAPPORT PDF GLOBAL (CORRIGÉ SANS DÉPASSEMENT)
+   GÉNÉRATION DU RAPPORT PDF GLOBAL (LÉGENDES PROPRES & RÈGLES STRICTES)
    ========================================================================= */
 async function generateGlobalPDF(){
   if(typeof window.jspdf === 'undefined'){ toast('Bibliothèque PDF indisponible'); return; }
@@ -820,7 +843,6 @@ async function generateGlobalPDF(){
     docPdf.setFont('helvetica', 'normal');
     docPdf.setFontSize(8.5);
     docPdf.setTextColor(...C_INK);
-    // Alignement X ajusté à 140 mm pour supprimer le dépassement
     docPdf.text('Accéder au détail ->', 140, currentY + 8);
 
     zonePageMap[z.id] = { ySommaire: currentY, pageTarget: 0 };
@@ -866,10 +888,17 @@ async function generateGlobalPDF(){
       const rEq = (eq.reponses && eq.reponses[p.id]) || { conforme: null, photos:[], commentaire:'' };
       const rCv = (cv.reponses && cv.reponses[p.id]) || { conforme: null, photos:[], commentaire:'' };
 
-      const eqStat = rEq.conforme === true ? 'OK' : (rEq.conforme === false ? 'NOK' : '—');
-      const cvStat = rCv.conforme === true ? 'OK' : (rCv.conforme === false ? 'NOK' : '—');
+      // Règle 1 : Pas de photo équipe -> NOK
+      let eqConformeCalculated = rEq.conforme;
+      if(!rEq.photos || rEq.photos.length === 0) eqConformeCalculated = false;
 
-      const isEcart = (rEq.conforme !== null && rCv.conforme !== null && rEq.conforme !== rCv.conforme);
+      // Règle 2 : Pas de mise en NOK par contrôleur -> OK par défaut
+      let cvConformeCalculated = (rCv.conforme === false) ? false : true;
+
+      const eqStat = eqConformeCalculated === true ? 'OK' : 'NOK';
+      const cvStat = cvConformeCalculated === true ? 'OK' : 'NOK';
+
+      const isEcart = (eqConformeCalculated !== cvConformeCalculated);
       if(isEcart) totalEcarts++;
 
       if(y > 250){ docPdf.addPage(); y = 20; }
@@ -910,35 +939,41 @@ async function generateGlobalPDF(){
       const allCvPhotos = rCv.photos || [];
 
       if(allEqPhotos.length > 0 || allCvPhotos.length > 0){
-        if(y > 220){ docPdf.addPage(); y = 20; }
+        if(y > 210){ docPdf.addPage(); y = 20; }
 
         let xPos = 18;
         
+        // Affichage des photos Équipe avec bandeau sous l'image
         for(const imgBase64 of allEqPhotos){
           try {
-            docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 40);
-            docPdf.setDrawColor(...C_TEAL);
-            docPdf.rect(xPos, y, 55, 40, 'S');
-            docPdf.setFontSize(7); docPdf.setTextColor(...C_TEAL);
-            docPdf.text('PHOTO ÉQUIPE', xPos + 2, y + 38);
+            docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 38);
+            // Bandeau de légende sous la photo
+            docPdf.setFillColor(...C_TEAL);
+            docPdf.rect(xPos, y + 38, 55, 6, 'F');
+            docPdf.setFontSize(7); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
+            docPdf.text('PHOTO ÉQUIPE', xPos + 15, y + 42.5);
+
             xPos += 58;
-            if(xPos > 140){ xPos = 18; y += 43; }
+            if(xPos > 140){ xPos = 18; y += 48; }
           } catch(e){}
         }
 
+        // Affichage des photos Contrôleur avec bandeau sous l'image
         for(const imgBase64 of allCvPhotos){
           try {
-            docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 40);
-            docPdf.setDrawColor(...C_AMBER);
-            docPdf.rect(xPos, y, 55, 40, 'S');
-            docPdf.setFontSize(7); docPdf.setTextColor(...C_AMBER);
-            docPdf.text('PHOTO CONTRÔLEUR', xPos + 2, y + 38);
+            docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 38);
+            // Bandeau de légende sous la photo
+            docPdf.setFillColor(...C_AMBER);
+            docPdf.rect(xPos, y + 38, 55, 6, 'F');
+            docPdf.setFontSize(7); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
+            docPdf.text('PHOTO CONTRÔLEUR', xPos + 12, y + 42.5);
+
             xPos += 58;
-            if(xPos > 140){ xPos = 18; y += 43; }
+            if(xPos > 140){ xPos = 18; y += 48; }
           } catch(e){}
         }
 
-        y += 45;
+        y += 50;
       }
     }
   }
