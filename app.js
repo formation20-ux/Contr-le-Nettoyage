@@ -13,6 +13,9 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
+// Activer la persistance hors-ligne native de Firebase
+db.enablePersistence().catch(()=>{});
+
 /* =========================================================================
    RÉFÉRENTIEL TÂCHES SASU SOAN
    ========================================================================= */
@@ -105,74 +108,6 @@ const POINTS = {
   ]
 };
 
-const DB_NAME = 'controle-nettoyage-soan';
-const DB_VERSION = 1;
-let dbPromise = null;
-
-function openDB(){
-  if(dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject)=>{
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e)=>{
-      const db = e.target.result;
-      if(!db.objectStoreNames.contains('controles')) db.createObjectStore('controles', { keyPath:'id' });
-      if(!db.objectStoreNames.contains('agents')) db.createObjectStore('agents', { keyPath:'id' });
-      if(!db.objectStoreNames.contains('task_schedule')) db.createObjectStore('task_schedule', { keyPath:'taskId' });
-    };
-    req.onsuccess = ()=>resolve(req.result);
-    req.onerror = ()=>reject(req.error);
-  });
-  return dbPromise;
-}
-
-async function idbPut(store, value){
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject)=>{
-      const tx = db.transaction(store, 'readwrite');
-      tx.objectStore(store).put(value);
-      tx.oncomplete = ()=>resolve(value);
-      tx.onerror = ()=>reject(tx.error);
-    });
-  } catch(e) { console.error(e); }
-}
-
-async function idbGet(store, id){
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject)=>{
-      const tx = db.transaction(store, 'readonly');
-      const req = tx.objectStore(store).get(id);
-      req.onsuccess = ()=>resolve(req.result || null);
-      req.onerror = ()=>reject(req.error);
-    });
-  } catch(e) { return null; }
-}
-
-async function idbGetAll(store){
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject)=>{
-      const tx = db.transaction(store, 'readonly');
-      const req = tx.objectStore(store).getAll();
-      req.onsuccess = ()=>resolve(req.result || []);
-      req.onerror = ()=>reject(req.error);
-    });
-  } catch(e) { return []; }
-}
-
-async function idbDelete(store, id){
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject)=>{
-      const tx = db.transaction(store, 'readwrite');
-      tx.objectStore(store).delete(id);
-      tx.oncomplete = ()=>resolve();
-      tx.onerror = ()=>reject(tx.error);
-    });
-  } catch(e) { console.error(e); }
-}
-
 let session = null;
 let currentPin = '';
 let pendingRole = 'agent';
@@ -217,14 +152,18 @@ function fileToResizedBase64(file, maxWidth){
   });
 }
 
+// Récupération dynamique des règles de planning depuis Firestore
 async function getPointsForToday(zoneId, dateIso){
   const d = new Date(dateIso);
   const currentDay = d.getDay();
   const currentDate = d.getDate();
   const allPoints = POINTS[zoneId] || [];
-  const schedules = await idbGetAll('task_schedule');
-  const schedMap = {};
-  schedules.forEach(s => { schedMap[s.taskId] = s; });
+  
+  let schedMap = {};
+  try {
+    const snap = await db.collection('task_schedule').get();
+    snap.docs.forEach(doc => { schedMap[doc.id] = doc.data(); });
+  } catch(e) {}
 
   return allPoints.filter(p=>{
     if(p.freq === 'J') return true;
@@ -255,17 +194,8 @@ function topbarHtml(title, sub){
     </div>
   `;
 }
-async function syncAgentsFromCloud(){
-  if(!navigator.onLine) return;
-  try {
-    const snap = await db.collection('agents').get();
-    for(const doc of snap.docs){
-      await idbPut('agents', Object.assign({ id: doc.id }, doc.data()));
-    }
-  } catch(e) { console.error('Erreur de synchro des profils:', e); }
-}
+
 function renderLogin(){
-  syncAgentsFromCloud(); // Synchro automatique des identifiants au chargement de l'écran
   root.innerHTML = `
     <div id="screen-login">
       <div class="login-card">
@@ -279,20 +209,20 @@ function renderLogin(){
         <div class="pin-dots" id="pinDots"></div>
         <div class="pin-pad" id="pinPad"></div>
         <div class="pin-error" id="pinError"></div>
-        <button class="btn ghost small block" id="bypassBtn" style="margin-top:15px;background:#C7791B;color:#fff;">🔓 Accès Direct Admin Contrôleur</button>
+        <button class="btn amber small block" id="bypassBtn" style="margin-top:15px;">🔓 Accès Direct Admin Contrôleur</button>
       </div>
     </div>
   `;
   root.querySelectorAll('.role-btn').forEach(b=>{
-    b.addEventListener('click', ()=>{ pendingRole=b.dataset.role; currentPin=''; renderLogin(); });
+    b.onclick = ()=>{ pendingRole=b.dataset.role; currentPin=''; renderLogin(); };
   });
   renderPinDots();
   renderPinPad();
 
-  document.getElementById('bypassBtn').addEventListener('click', ()=>{
+  document.getElementById('bypassBtn').onclick = ()=>{
     session = { role: 'controleur', agentId: 'admin_temp', nom: 'Admin Secours' };
     goToZones();
-  });
+  };
 }
 
 function renderPinDots(){
@@ -309,7 +239,7 @@ function renderPinPad(){
     return `<button class="pin-key ${k==='⌫'?'wide':''}" data-key="${k}">${k}</button>`;
   }).join('');
   el.querySelectorAll('[data-key]').forEach(btn=>{
-    btn.addEventListener('click', ()=>onPinKey(btn.dataset.key));
+    btn.onclick = ()=>onPinKey(btn.dataset.key);
   });
 }
 
@@ -323,14 +253,18 @@ function onPinKey(k){
 }
 
 async function checkPin(){
-  const agents = await idbGetAll('agents');
-  const match = agents.find(a=>a.pin===currentPin && a.role===pendingRole && a.actif!==false);
-  if(match){
-    session = { role:pendingRole, agentId:match.id, nom:match.nom };
-    currentPin=''; goToZones();
-  } else {
-    const errEl = document.getElementById('pinError');
-    if(errEl) errEl.textContent = 'Code incorrect'; currentPin=''; setTimeout(renderPinDots,150);
+  try {
+    const snap = await db.collection('agents').where('pin', '==', currentPin).get();
+    const match = snap.docs.map(d=>d.data()).find(a=>a.role===pendingRole && a.actif!==false);
+    if(match){
+      session = { role:pendingRole, agentId:match.id, nom:match.nom };
+      currentPin=''; goToZones();
+    } else {
+      const errEl = document.getElementById('pinError');
+      if(errEl) errEl.textContent = 'Code incorrect'; currentPin=''; setTimeout(renderPinDots,150);
+    }
+  } catch(e) {
+    toast('Erreur de connexion cloud');
   }
 }
 
@@ -372,15 +306,15 @@ async function renderZones(){
   grid.innerHTML = html;
 
   grid.querySelectorAll('.zone-card').forEach(card=>{
-    card.addEventListener('click', ()=>{
+    card.onclick = ()=>{
       activeZoneId = card.dataset.zone;
       activeControleId = `${date}__${activeZoneId}`;
       activeMode = session.role==='agent' ? 'equipe' : 'contreVisite';
       renderControle();
-    });
+    };
   });
 
-  document.getElementById('logoutBtn').addEventListener('click', ()=>{ session=null; currentPin=''; renderLogin(); });
+  document.getElementById('logoutBtn').onclick = ()=>{ session=null; currentPin=''; renderLogin(); };
   
   const tasksBtn = document.getElementById('adminTasksBtn');
   if(tasksBtn) tasksBtn.onclick = () => renderTaskAdmin();
@@ -391,11 +325,16 @@ async function renderZones(){
 
 async function renderControle(){
   const date = todayISO();
-  let c = await idbGet('controles', activeControleId) || {
+  let c = {
     id: activeControleId, zoneId: activeZoneId, date,
     passageEquipe: { agentNom:null, heure:null, reponses:{} },
     contreVisite:  { controleurNom:null, heure:null, reponses:{} }
   };
+
+  try {
+    const doc = await db.collection('controles').doc(activeControleId).get();
+    if(doc.exists) c = doc.data();
+  } catch(e) {}
 
   const zone = ZONES.find(z=>z.id===activeZoneId);
   const activePoints = await getPointsForToday(activeZoneId, date);
@@ -408,7 +347,7 @@ async function renderControle(){
       <div class="back-link" id="backBtn">← Retour aux zones</div>
       <div class="section">
         <div id="pointsList"></div>
-        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">Enregistrer le rapport</button>
+        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">Enregistrer le rapport en ligne</button>
         <button class="btn ghost block" id="pdfBtn" style="margin-top:8px;">📄 Générer Rapport de Prestation PDF</button>
       </div>
     </div>
@@ -478,16 +417,25 @@ async function renderControle(){
     if(isContreVisite) branch.controleurNom = session.nom;
     else branch.agentNom = session.nom;
 
-    await idbPut('controles', c);
-    toast('Prestation enregistrée avec succès !');
+    try {
+      await db.collection('controles').doc(c.id).set(c, { merge: true });
+      toast('Rapport synchronisé en ligne !');
+    } catch(e) {
+      toast('Erreur de synchro cloud');
+    }
     goToZones();
   };
 }
 
+/* =========================================================================
+   PLANNING TÂCHES EN TEMPS RÉEL (FIRESTORE)
+   ========================================================================= */
 async function renderTaskAdmin(){
-  const schedules = await idbGetAll('task_schedule');
-  const schedMap = {};
-  schedules.forEach(s => { schedMap[s.taskId] = s; });
+  let schedMap = {};
+  try {
+    const snap = await db.collection('task_schedule').get();
+    snap.docs.forEach(doc => { schedMap[doc.id] = doc.data(); });
+  } catch(e) {}
 
   let tasksHtml = '';
   ZONES.forEach(z => {
@@ -525,52 +473,65 @@ async function renderTaskAdmin(){
 
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Planning des Tâches', 'Administration')}
+      ${topbarHtml('Planning des Tâches', 'Administration Cloud')}
       <div class="back-link" id="backBtn">← Retour aux zones</div>
       <div class="section">
-        <div class="section-note">Définissez précisément le jour de réalisation de chaque tâche périodique.</div>
+        <div class="section-note">Les modifications s'appliqueront instantanément sur tous les téléphones.</div>
         ${tasksHtml}
-        <button class="btn amber block" id="saveTasksBtn" style="margin-top:20px;">Enregistrer le planning</button>
+        <button class="btn amber block" id="saveTasksBtn" style="margin-top:20px;">Sauvegarder et Synchroniser</button>
       </div>
     </div>
   `;
 
   document.getElementById('backBtn').onclick = goToZones;
   document.getElementById('saveTasksBtn').onclick = async ()=>{
-    const selects = document.querySelectorAll('.task-sched-select');
-    for(const sel of selects){
-      await idbPut('task_schedule', { taskId: sel.dataset.task, freq: sel.dataset.freq, targetValue: parseInt(sel.value) });
-    }
-    const inputs = document.querySelectorAll('.task-sched-input');
-    for(const inp of inputs){
-      await idbPut('task_schedule', { taskId: inp.dataset.task, freq: inp.dataset.freq, targetValue: parseInt(inp.value) || 1 });
-    }
-    toast('Planning des tâches sauvegardé');
+    const batch = db.batch();
+    
+    document.querySelectorAll('.task-sched-select').forEach(sel => {
+      const ref = db.collection('task_schedule').doc(sel.dataset.task);
+      batch.set(ref, { taskId: sel.dataset.task, freq: sel.dataset.freq, targetValue: parseInt(sel.value) }, { merge: true });
+    });
+
+    document.querySelectorAll('.task-sched-input').forEach(inp => {
+      const ref = db.collection('task_schedule').doc(inp.dataset.task);
+      batch.set(ref, { taskId: inp.dataset.task, freq: inp.dataset.freq, targetValue: parseInt(inp.value)||1 }, { merge: true });
+    });
+
+    await batch.commit();
+    toast('Planning global mis à jour !');
     goToZones();
   };
 }
 
+/* =========================================================================
+   GESTION DES UTILISATEURS EN TEMPS RÉEL (FIRESTORE)
+   ========================================================================= */
 async function renderAgentsAdmin(){
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Gestion Utilisateurs', 'Administration')}
+      ${topbarHtml('Gestion Utilisateurs', 'Cloud Multi-appareils')}
       <div class="back-link" id="backBtn">← Retour aux zones</div>
       <div class="section">
-        <div id="agentsList"><div class="section-note">Chargement…</div></div>
+        <div id="agentsList"><div class="section-note">Chargement des comptes en ligne…</div></div>
         <button class="btn amber block" id="addAgentBtn" style="margin-top:15px;">+ Ajouter un profil</button>
       </div>
     </div>
   `;
   document.getElementById('backBtn').onclick = goToZones;
   document.getElementById('addAgentBtn').onclick = ()=>openAgentModal();
-  await refreshAgentsList();
+  
+  // Écouteur Firestore en temps réel
+  db.collection('agents').onSnapshot(snap => {
+    const agents = snap.docs.map(d=>Object.assign({ id: d.id }, d.data()));
+    refreshAgentsList(agents);
+  });
 }
 
-async function refreshAgentsList(){
+function refreshAgentsList(agents){
   const el = document.getElementById('agentsList');
-  const agents = await idbGetAll('agents');
+  if(!el) return;
   if(!agents.length){
-    el.innerHTML = '<div class="section-note">Aucun utilisateur enregistré localement. Créez votre premier profil ci-dessous.</div>';
+    el.innerHTML = '<div class="section-note">Aucun profil enregistré dans le cloud. Créez votre premier compte ci-dessous.</div>';
     return;
   }
   el.innerHTML = agents.map(a=>`
@@ -588,16 +549,15 @@ async function refreshAgentsList(){
 
   el.querySelectorAll('[data-edit]').forEach(btn=>{
     btn.onclick = async ()=>{
-      const a = await idbGet('agents', btn.dataset.edit);
-      openAgentModal(a);
+      const doc = await db.collection('agents').doc(btn.dataset.edit).get();
+      if(doc.exists) openAgentModal(Object.assign({ id: doc.id }, doc.data()));
     };
   });
   el.querySelectorAll('[data-del]').forEach(btn=>{
     btn.onclick = async ()=>{
-      if(!confirm('Supprimer ce profil utilisateur ?')) return;
-      await idbDelete('agents', btn.dataset.del);
-      toast('Profil supprimé');
-      refreshAgentsList();
+      if(!confirm('Supprimer définitivement ce profil de tous les appareils ?')) return;
+      await db.collection('agents').doc(btn.dataset.del).delete();
+      toast('Profil supprimé du cloud');
     };
   });
 }
@@ -629,22 +589,12 @@ function openAgentModal(existing){
     const pin = document.getElementById('am_pin').value.trim();
     const role = document.getElementById('am_role').value;
     if(!nom || !/^\d{4}$/.test(pin)){ toast('Saisissez un nom et un PIN à 4 chiffres'); return; }
-    const id = existing ? existing.id : uid('agent');
-    const agentData = { id, nom, pin, role, actif:true };
     
-    // Sauvegarde en local
-    await idbPut('agents', agentData);
-
-    // Envoi en ligne dans Firestore pour synchroniser les autres téléphones
-    try {
-      await db.collection('agents').doc(id).set(agentData, { merge: true });
-      toast('Profil sauvegardé et synchronisé en ligne !');
-    } catch(err) {
-      toast('Sauvegardé en local (hors-ligne)');
-    }
-
+    const id = existing ? existing.id : uid('agent');
+    await db.collection('agents').doc(id).set({ nom, pin, role, actif:true }, { merge: true });
+    
     backdrop.remove();
-    refreshAgentsList();
+    toast('Profil synchronisé en ligne !');
   };
 }
 
@@ -676,8 +626,18 @@ function generateControlePDF(c, points){
   docPdf.save(`Rapport_SOAN_${c.zoneId}_${c.date}.pdf`);
 }
 
+// Mise à jour automatique si un nouveau Service Worker est prêt
 if('serviceWorker' in navigator){
-  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('service-worker.js').catch(()=>{}); });
+  navigator.serviceWorker.register('service-worker.js').then(reg => {
+    reg.onupdatefound = () => {
+      const installingWorker = reg.installing;
+      installingWorker.onstatechange = () => {
+        if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          window.location.reload();
+        }
+      };
+    };
+  });
 }
 
 (function init(){
