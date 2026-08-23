@@ -135,7 +135,7 @@ const DEFAULT_POINTS = {
    MOTEUR DE STOCKAGE HYBRIDE
    ========================================================================= */
 const DB_NAME = 'soan-hybrid-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incrementation version
 let dbPromise = null;
 
 function openDB(){
@@ -494,7 +494,7 @@ async function checkPin(){
 async function goToZones(){ activeZoneId=null; await renderZones(); }
 
 /* =========================================================================
-   MENU PRINCIPAL
+   MENU PRINCIPAL (BOUTONS EXACTS + ACTION MAIL GARANTIE)
    ========================================================================= */
 async function renderZones(){
   resetInactivityTimer();
@@ -590,18 +590,11 @@ async function renderZones(){
     });
   }
 
+  // Liaison directe des événements
   document.getElementById('historyBtn').onclick = () => renderHistory();
   document.getElementById('statsBtn').onclick = () => renderStats();
   document.getElementById('globalPdfBtn').onclick = () => generateGlobalPDF();
-
-  const mailBtn = document.getElementById('mailScheduleBtn');
-  if(mailBtn){
-    mailBtn.onclick = (evt) => {
-      evt.preventDefault();
-      renderMailScheduleAdmin();
-    };
-  }
-
+  document.getElementById('mailScheduleBtn').onclick = () => renderMailScheduleAdmin();
   document.getElementById('logoutBtn').onclick = ()=>{ session=null; clearTimeout(inactivityTimer); currentPin=''; renderLogin(); };
   
   const tasksBtn = document.getElementById('adminTasksBtn');
@@ -1807,8 +1800,15 @@ function openAgentModal(existing){
   };
 }
 
+/* =========================================================================
+   DESENREGISTREMENT ET NETTOYAGE DU CACHE PWA POUR MISE À JOUR IMMÉDIATE
+   ========================================================================= */
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+  navigator.serviceWorker.getRegistrations().then(registrations => {
+    for(let registration of registrations) {
+      registration.unregister();
+    }
+  }).catch(()=>{});
 }
 
 (function init(){
