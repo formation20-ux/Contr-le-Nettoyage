@@ -54,6 +54,18 @@ styleFix.innerHTML = `
     word-break: break-word !important;
     margin-bottom: 25px !important;
   }
+  .loading-spinner {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    border: 3px solid rgba(199, 121, 27, 0.2);
+    border-radius: 50%;
+    border-top-color: #C7791B;
+    animation: spin 0.8s ease-in-out infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
 `;
 document.head.appendChild(styleFix);
 
@@ -70,116 +82,68 @@ window.addEventListener('keydown', (e) => {
 });
 
 /* =========================================================================
-   TRADUCTION EN LIGNE AUTO (INTERFACE + TÂCHES DYNAMIQUES VIA API MYMEMORY)
+   MOTEUR DE TRADUCTION MULTILINGUE ÉLARGI (i18n DYNAMIQUE)
    ========================================================================= */
+const SUPPORTED_LANGUAGES = {
+  fr: '🇫🇷 Français',
+  en: '🇬🇧 English',
+  es: '🇪🇸 Español',
+  ar: '🇸🇦 العربية',
+  pt: '🇵🇹 Português',
+  de: '🇩🇪 Deutsch',
+  it: '🇮🇹 Italiano',
+  pl: '🇵🇱 Polski',
+  ro: '🇷🇴 Română',
+  tr: '🇹🇷 Türkçe',
+  zh: '🇨🇳 中文',
+  hi: '🇮🇳 हिन्दी'
+};
+
 const STATIC_TRANSLATIONS = {
   en: {
-    'Zones de Prestation': 'Service Areas',
-    '📜 Historique': '📜 History',
-    '📊 Dashboard': '📊 Dashboard',
-    '📄 Rapport PDF': '📄 PDF Report',
-    '✉️ Envois Mails': '✉️ Email Schedule',
-    '📅 Gestion des Tâches': '📅 Task Management',
-    '👤 Gestion des Utilisateurs': '👤 User Management',
-    'Déconnexion': 'Logout',
-    '✓ Complété': '✓ Completed',
-    'restant(s)': 'remaining',
-    'tâche': 'task',
-    'tâches': 'tasks',
-    'au planning': 'scheduled',
-    '← Retour aux zones': '← Back to areas',
-    'Photo obligatoire pour activer la réponse :': 'Photo required to enable answer:',
+    'Lobby': 'Lobby', 'Cuisine': 'Kitchen', 'Arrière-cuisine': 'Back Kitchen', 'Comptoir': 'Counter',
+    'Zones de Prestation': 'Service Areas', '📜 Historique': '📜 History', '📊 Dashboard': '📊 Dashboard',
+    '📄 Rapport PDF': '📄 PDF Report', '✉️ Envois Mails': '✉️ Email Schedule', '📅 Gestion des Tâches': '📅 Task Management',
+    '👤 Gestion des Utilisateurs': '👤 User Management', 'Déconnexion': 'Logout', '✓ Complété': '✓ Completed',
+    'restant(s)': 'remaining', 'tâche': 'task', 'tâches': 'tasks', 'au planning': 'scheduled',
+    '← Retour aux zones': '← Back to areas', 'Photo obligatoire pour activer la réponse :': 'Photo required to enable answer:',
     'Tes photos contrôleur (exigée si passage en NOK) :': 'Inspector photos (required if set to NOK):',
-    'Terminer et Retourner aux Zones': 'Finish & Return to Areas',
-    'Enregistré': 'Saved',
-    'Photo supprimée': 'Photo deleted',
-    'Photo ajoutée': 'Photo added',
-    'Non réalisé avant 10h': 'Not completed before 10 AM',
-    'Équipe': 'Team',
-    'Contrôleur': 'Inspector',
-    'Session expirée suite à 3 min d’inactivité': 'Session expired due to 3 min inactivity',
-    'Contre-visite Contrôleur': 'Inspector Review',
-    'Réalisation Prestation': 'Service Execution',
-    '📸 Photos transmises par l\'Équipe :': '📸 Photos sent by Team:',
-    '💬 Obs. Équipe': '💬 Team Notes',
-    'Remarques Contrôleur (optionnel)': 'Inspector comments (optional)',
-    'Remarques Équipe (optionnel)': 'Team comments (optional)',
-    '📷 + Photo': '📷 + Photo',
-    'Jour': 'Daily',
-    'Hebdo': 'Weekly',
-    'Mensuel': 'Monthly'
+    'Terminer et Retourner aux Zones': 'Finish & Return to Areas', 'Enregistré': 'Saved', 'Photo supprimée': 'Photo deleted',
+    'Photo ajoutée': 'Photo added', 'Non réalisé avant 10h': 'Not completed before 10 AM', 'Équipe': 'Team', 'Contrôleur': 'Inspector',
+    'Session expirée suite à 3 min d’inactivité': 'Session expired due to 3 min inactivity', 'Contre-visite Contrôleur': 'Inspector Review',
+    'Réalisation Prestation': 'Service Execution', '📸 Photos transmises par l\'Équipe :': '📸 Photos sent by Team:',
+    '💬 Obs. Équipe': '💬 Team Notes', 'Remarques Contrôleur (optionnel)': 'Inspector comments (optional)',
+    'Remarques Équipe (optionnel)': 'Team comments (optional)', '📷 + Photo': '📷 + Photo', 'Jour': 'Daily', 'Hebdo': 'Weekly', 'Mensuel': 'Monthly'
   },
   es: {
-    'Zones de Prestation': 'Áreas de Servicio',
-    '📜 Historique': '📜 Historial',
-    '📊 Dashboard': '📊 Panel',
-    '📄 Rapport PDF': '📄 Informe PDF',
-    '✉️ Envois Mails': '✉️ Envíos Correo',
-    '📅 Gestion des Tâches': '📅 Gestión de Tareas',
-    '👤 Gestion des Utilisateurs': '👤 Gestión de Usuarios',
-    'Déconnexion': 'Cerrar sesión',
-    '✓ Complété': '✓ Completado',
-    'restant(s)': 'restante(s)',
-    'tâche': 'tarea',
-    'tâches': 'tareas',
-    'au planning': 'programada(s)',
-    '← Retour aux zones': '← Volver a las áreas',
-    'Photo obligatoire pour activer la réponse :': 'Foto obligatoria para responder:',
+    'Lobby': 'Vestíbulo', 'Cuisine': 'Cocina', 'Arrière-cuisine': 'Trascocina', 'Comptoir': 'Mostrador',
+    'Zones de Prestation': 'Áreas de Servicio', '📜 Historique': '📜 Historial', '📊 Dashboard': '📊 Panel',
+    '📄 Rapport PDF': '📄 Informe PDF', '✉️ Envois Mails': '✉️ Envíos Correo', '📅 Gestion des Tâches': '📅 Gestión de Tareas',
+    '👤 Gestion des Utilisateurs': '👤 Gestión de Usuarios', 'Déconnexion': 'Cerrar sesión', '✓ Complété': '✓ Completado',
+    'restant(s)': 'restante(s)', 'tâche': 'tarea', 'tâches': 'tareas', 'au planning': 'programada(s)',
+    '← Retour aux zones': '← Volver a las áreas', 'Photo obligatoire pour activer la réponse :': 'Foto obligatoria para responder:',
     'Tes photos contrôleur (exigée si passage en NOK) :': 'Fotos de inspector (obligatoria si NOK):',
-    'Terminer et Retourner aux Zones': 'Finalizar y Volver',
-    'Enregistré': 'Guardado',
-    'Photo supprimée': 'Foto eliminada',
-    'Photo ajoutée': 'Foto añadida',
-    'Non réalisé avant 10h': 'No realizado antes de las 10h',
-    'Équipe': 'Equipo',
-    'Contrôleur': 'Inspector',
-    'Session expirée suite à 3 min d’inactivité': 'Sesión expirada por 3 min de inactividad',
-    'Contre-visite Contrôleur': 'Revisión del Inspector',
-    'Réalisation Prestation': 'Ejecución del Servicio',
-    '📸 Photos transmises par l\'Équipe :': '📸 Fotos enviadas por el Equipo:',
-    '💬 Obs. Équipe': '💬 Obs. Equipo',
-    'Remarques Contrôleur (optionnel)': 'Comentarios del Inspector (opcional)',
-    'Remarques Équipe (optionnel)': 'Comentarios del Equipo (opcional)',
-    '📷 + Photo': '📷 + Foto',
-    'Jour': 'Diario',
-    'Hebdo': 'Semanal',
-    'Mensuel': 'Mensual'
+    'Terminer et Retourner aux Zones': 'Finalizar y Volver', 'Enregistré': 'Guardado', 'Photo supprimée': 'Foto eliminada',
+    'Photo ajoutée': 'Foto añadida', 'Non réalisé avant 10h': 'No realizado antes de las 10h', 'Équipe': 'Equipo', 'Contrôleur': 'Inspector',
+    'Session expirée suite à 3 min d’inactivité': 'Sesión expirada por 3 min de inactividad', 'Contre-visite Contrôleur': 'Revisión del Inspector',
+    'Réalisation Prestation': 'Ejecución del Servicio', '📸 Photos transmises par l\'Équipe :': '📸 Fotos enviadas por el Equipo:',
+    '💬 Obs. Équipe': '💬 Obs. Equipo', 'Remarques Contrôleur (optionnel)': 'Comentarios del Inspector (opcional)',
+    'Remarques Équipe (optionnel)': 'Comentarios del Equipo (opcional)', '📷 + Photo': '📷 + Foto', 'Jour': 'Diario', 'Hebdo': 'Semanal', 'Mensuel': 'Mensual'
   },
   ar: {
-    'Zones de Prestation': 'مناطق الخدمة',
-    '📜 Historique': '📜 السجل',
-    '📊 Dashboard': '📊 لوحة التحكم',
-    '📄 Rapport PDF': '📄 تقرير PDF',
-    '✉️ Envois Mails': '✉️ إرسال البريد',
-    '📅 Gestion des Tâches': '📅 إدارة المهام',
-    '👤 Gestion des Utilisateurs': '👤 إدارة المستخدمين',
-    'Déconnexion': 'تسجيل الخروج',
-    '✓ Complété': '✓ مكتمل',
-    'restant(s)': 'متبقي',
-    'tâche': 'مهمة',
-    'tâches': 'مهام',
-    'au planning': 'في الجدول',
-    '← Retour aux zones': '← العودة للمناطق',
-    'Photo obligatoire pour activer la réponse :': 'الصورة إجبارية للتفعيل:',
+    'Lobby': 'الردهة', 'Cuisine': 'المطبخ', 'Arrière-cuisine': 'المطبخ الخلفي', 'Comptoir': 'الشباك',
+    'Zones de Prestation': 'مناطق الخدمة', '📜 Historique': '📜 السجل', '📊 Dashboard': '📊 لوحة التحكم',
+    '📄 Rapport PDF': '📄 تقرير PDF', '✉️ Envois Mails': '✉️ إرسال البريد', '📅 Gestion des Tâches': '📅 إدارة المهام',
+    '👤 Gestion des Utilisateurs': '👤 إدارة المستخدمين', 'Déconnexion': 'تسجيل الخروج', '✓ Complété': '✓ مكتمل',
+    'restant(s)': 'متبقي', 'tâche': 'مهمة', 'tâches': 'مهام', 'au planning': 'في الجدول',
+    '← Retour aux zones': '← العودة للمناطق', 'Photo obligatoire pour activer la réponse :': 'الصورة إجبارية للتفعيل:',
     'Tes photos contrôleur (exigée si passage en NOK) :': 'صور المراقب (مطلوبة عند الرفض):',
-    'Terminer et Retourner aux Zones': 'إنهاء والعودة',
-    'Enregistré': 'تم الحفظ',
-    'Photo supprimée': 'تم حذف الصورة',
-    'Photo ajoutée': 'تمت إضافة الصورة',
-    'Non réalisé avant 10h': 'لم يتم قبل 10 صباحًا',
-    'Équipe': 'الفريق',
-    'Contrôleur': 'المراقب',
-    'Session expirée suite à 3 min d’inactivité': 'انتهت الجلسة لعدم النشاط',
-    'Contre-visite Contrôleur': 'مراجعة المراقب',
-    'Réalisation Prestation': 'تنفيذ الخدمة',
-    '📸 Photos transmises par l\'Équipe :': '📸 الصور المرسلة من الفريق:',
-    '💬 Obs. Équipe': '💬 ملاحظات الفريق',
-    'Remarques Contrôleur (optionnel)': 'ملاحظات المراقب (اختياري)',
-    'Remarques Équipe (optionnel)': 'ملاحظات الفريق (اختياري)',
-    '📷 + Photo': '📷 + صورة',
-    'Jour': 'يومي',
-    'Hebdo': 'أسبوعي',
-    'Mensuel': 'شهري'
+    'Terminer et Retourner aux Zones': 'إنهاء والعودة', 'Enregistré': 'تم الحفظ', 'Photo supprimée': 'تم حذف الصورة',
+    'Photo ajoutée': 'تمت إضافة الصورة', 'Non réalisé avant 10h': 'لم يتم قبل 10 صباحًا', 'Équipe': 'الفريق', 'Contrôleur': 'المراقب',
+    'Session expirée suite à 3 min d’inactivité': 'انتهت الجلسة لعدم النشاط', 'Contre-visite Contrôleur': 'مراجعة المراقب',
+    'Réalisation Prestation': 'تنفيذ الخدمة', '📸 Photos transmises par l\'Équipe :': '📸 الصور المرسلة من الفريق:',
+    '💬 Obs. Équipe': '💬 ملاحظات الفريق', 'Remarques Contrôleur (optionnel)': 'ملاحظات المراقب (اختياري)',
+    'Remarques Équipe (optionnel)': 'ملاحظات الفريق (اختياري)', '📷 + Photo': '📷 + صورة', 'Jour': 'يومي', 'Hebdo': 'أسبوعي', 'Mensuel': 'شهري'
   }
 };
 
@@ -194,9 +158,13 @@ function t(text){
   return translationCache[`${lang}_${text}`] || text;
 }
 
-// Fonction asynchrone qui traduit n'importe quel texte personnalisé via l'API en ligne MyMemory
 async function translateDynamicText(text, targetLang){
   if(!text || targetLang === 'fr') return text;
+  
+  if(STATIC_TRANSLATIONS[targetLang] && STATIC_TRANSLATIONS[targetLang][text]){
+    return STATIC_TRANSLATIONS[targetLang][text];
+  }
+
   const cacheKey = `${targetLang}_${text}`;
   if(translationCache[cacheKey]) return translationCache[cacheKey];
 
@@ -214,7 +182,7 @@ async function translateDynamicText(text, targetLang){
 }
 
 /* =========================================================================
-   CONFIGURATION EMAILJS
+   CONFIGURATION EMAILJS & FIREBASE
    ========================================================================= */
 const EMAILJS_CONFIG = {
   serviceId: "service_oxp40jn",
@@ -226,9 +194,6 @@ if(typeof emailjs !== 'undefined'){
   emailjs.init(EMAILJS_CONFIG.publicKey);
 }
 
-/* =========================================================================
-   CONFIGURATION FIREBASE
-   ========================================================================= */
 const firebaseConfig = {
   apiKey: "AIzaSyA4pQGdFIgDtt1GxfohxexgHauc4wXM4sk",
   authDomain: "controle-nettoyage.firebaseapp.com",
@@ -242,7 +207,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 /* =========================================================================
-   RÉFÉRENTIEL TÂCHES PAR DÉFAUT (SASU SOAN)
+   RÉFÉRENTIEL TÂCHES PAR DÉFAUT
    ========================================================================= */
 const ZONES = [
   { id:'lobby',           nom:'Lobby' },
@@ -719,13 +684,14 @@ async function checkPin(){
 async function goToZones(){ activeZoneId=null; await renderZones(); }
 
 /* =========================================================================
-   MENU PRINCIPAL
+   MENU PRINCIPAL (AVEC TRADUCTION DES NOMS DE ZONES)
    ========================================================================= */
 async function renderZones(){
   resetInactivityTimer();
   const date = todayISO();
   const roleTitle = session.role==='agent' ? t('Équipe') : t('Contrôleur');
   const roleLabel = `${roleTitle} · ${session.nom}`;
+  const userLang = (session && session.lang) ? session.lang : 'fr';
 
   root.innerHTML = `
     <div class="wrap">
@@ -756,6 +722,14 @@ async function renderZones(){
   const grid = document.getElementById('zoneGrid');
   const isAgent = session.role === 'agent';
 
+  // Affichage immédiat de l'indicateur de chargement
+  grid.innerHTML = `
+    <div style="text-align:center;padding:30px;grid-column:1/-1;">
+      <div class="loading-spinner"></div>
+      <div style="font-size:12px;color:#6B655C;margin-top:10px;">Chargement et traduction des zones…</div>
+    </div>
+  `;
+
   const updateGridUI = async () => {
     let html = '';
     for(const z of ZONES){
@@ -784,10 +758,13 @@ async function renderZones(){
       const nbTasks = activePoints.length;
       const taskLabelPlural = nbTasks <= 1 ? t('tâche') : t('tâches');
 
+      // Traduction dynamique du nom de la zone
+      const translatedZoneName = await translateDynamicText(z.nom, userLang);
+
       html += `
         <div class="zone-card" data-zone="${z.id}" style="cursor:pointer;">
           <div>
-            <div class="zone-name">${z.nom}</div>
+            <div class="zone-name">${translatedZoneName}</div>
             <div class="zone-meta">${nbTasks} ${taskLabelPlural} ${t('au planning')}</div>
           </div>
           <span class="zone-badge" style="background:${badgeBg};color:#fff;font-weight:700;padding:4px 8px;border-radius:6px;font-size:11px;">${badgeText}</span>
@@ -1052,7 +1029,7 @@ async function renderMailScheduleAdmin(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE (AVEC TRADUCTION DYNAMIQUE EN TEMPS RÉEL)
+   SAISIE CONTRÔLE / PRESTATION ZONE (TRADUCTION COMPLÈTE)
    ========================================================================= */
 async function renderControle(){
   resetInactivityTimer();
@@ -1103,13 +1080,19 @@ async function renderControle(){
   });
 
   const viewSubtitle = isContreVisite ? t('Contre-visite Contrôleur') : t('Réalisation Prestation');
+  const translatedZoneName = await translateDynamicText(zone.nom, userLang);
 
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml(zone.nom, viewSubtitle)}
+      ${topbarHtml(translatedZoneName, viewSubtitle)}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section">
-        <div id="pointsList"></div>
+        <div id="pointsList">
+          <div style="text-align:center;padding:30px;">
+            <div class="loading-spinner"></div>
+            <div style="font-size:12px;color:#6B655C;margin-top:10px;">Traduction des tâches…</div>
+          </div>
+        </div>
         <button class="btn amber block" id="saveBtn" style="margin-top:12px;">${t('Terminer et Retourner aux Zones')}</button>
       </div>
     </div>
@@ -1155,8 +1138,6 @@ async function renderControle(){
       const isCtrlNokLocked = isContreVisite && eqWasOk && myPhotos.length === 0;
 
       const freqLabel = p.freq==='J' ? t('Jour') : (p.freq==='H' ? t('Hebdo') : t('Mensuel'));
-      
-      // Traduction automatique du libellé de la tâche
       const displayLabel = await translateDynamicText(p.label, userLang);
 
       pointsHtml += `
@@ -2034,7 +2015,7 @@ async function renderTaskAdmin(){
 }
 
 /* =========================================================================
-   ADMINISTRATION UTILISATEURS
+   ADMINISTRATION UTILISATEURS (LISTE ÉLARGIE DES LANGUES)
    ========================================================================= */
 async function renderAgentsAdmin(){
   resetInactivityTimer();
@@ -2074,14 +2055,12 @@ function refreshAgentsList(agents){
     el.innerHTML = '<div class="section-note">Aucun profil enregistré. Créez votre premier compte ci-dessous.</div>';
     return;
   }
-  
-  const langNames = { fr: '🇫🇷 Français', en: '🇬🇧 English', es: '🇪🇸 Español', ar: '🇸🇦 العربية' };
 
   el.innerHTML = agents.map(a=>`
     <div class="agent-row" style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #E7E1D6;">
       <div>
         <div class="agent-name" style="font-weight:600;">${a.nom} ${a.role==='controleur'?'<span class="badge-role">Contrôleur</span>':''}</div>
-        <div class="agent-meta" style="font-size:12px;color:#6B655C;">PIN : <strong>${a.pin}</strong> · Langue : <strong>${langNames[a.lang||'fr']||'Français'}</strong></div>
+        <div class="agent-meta" style="font-size:12px;color:#6B655C;">PIN : <strong>${a.pin}</strong> · Langue : <strong>${SUPPORTED_LANGUAGES[a.lang||'fr']||'🇫🇷 Français'}</strong></div>
       </div>
       <div class="agent-actions" style="display:flex;gap:6px;">
         <button class="btn ghost small" data-edit="${a.id}">Modifier</button>
@@ -2114,6 +2093,11 @@ function refreshAgentsList(agents){
 function openAgentModal(existing){
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
+
+  const langOptions = Object.keys(SUPPORTED_LANGUAGES).map(code => `
+    <option value="${code}" ${(!existing && code==='fr') || (existing && existing.lang===code) ? 'selected' : ''}>${SUPPORTED_LANGUAGES[code]}</option>
+  `).join('');
+
   backdrop.innerHTML = `
     <div class="modal">
       <h3>${existing?'Modifier':'Nouveau'} profil</h3>
@@ -2127,10 +2111,7 @@ function openAgentModal(existing){
       </div>
       <div class="field" style="margin-top:10px;"><label>Langue de l'interface</label>
         <select id="am_lang">
-          <option value="fr" ${!existing || existing.lang==='fr'?'selected':''}>🇫🇷 Français</option>
-          <option value="en" ${existing && existing.lang==='en'?'selected':''}>🇬🇧 English</option>
-          <option value="es" ${existing && existing.lang==='es'?'selected':''}>🇪🇸 Español</option>
-          <option value="ar" ${existing && existing.lang==='ar'?'selected':''}>🇸🇦 العربية</option>
+          ${langOptions}
         </select>
       </div>
       <div style="display:flex;gap:10px;margin-top:15px;">
