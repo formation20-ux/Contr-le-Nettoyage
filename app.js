@@ -2,7 +2,7 @@
 'use strict';
 
 /* =========================================================================
-   CORRECTIFS MOBILE & CLAVIER PHYSIQUE PC (Saisie des codes au clavier)
+   CORRECTIFS MOBILE & CLAVIER PHYSIQUE PC
    ========================================================================= */
 if(!document.querySelector('meta[name="format-detection"]')){
   const metaTel = document.createElement('meta');
@@ -52,6 +52,7 @@ styleFix.innerHTML = `
     gap: 8px !important;
     flex-wrap: wrap !important;
     word-break: break-word !important;
+    margin-bottom: 25px !important;
   }
 `;
 document.head.appendChild(styleFix);
@@ -59,7 +60,7 @@ document.head.appendChild(styleFix);
 /* Écouteur global pour la saisie clavier physique (PC/Mac) */
 window.addEventListener('keydown', (e) => {
   const loginScreen = document.getElementById('screen-login');
-  if(!loginScreen) return; // Uniquement actif sur l'écran de connexion PIN
+  if(!loginScreen) return;
 
   if(e.key >= '0' && e.key <= '9'){
     onPinKey(e.key);
@@ -565,7 +566,7 @@ async function checkPin(){
 async function goToZones(){ activeZoneId=null; await renderZones(); }
 
 /* =========================================================================
-   MENU PRINCIPAL
+   MENU PRINCIPAL (GESTION ACCORD DU PLURIEL)
    ========================================================================= */
 async function renderZones(){
   resetInactivityTimer();
@@ -626,11 +627,15 @@ async function renderZones(){
       const badgeText = remaining === 0 ? '✓ Complété' : `${remaining} restant(s)`;
       const badgeBg = remaining === 0 ? '#2B6E68' : '#C7791B';
 
+      // Gestion dynamique du pluriel (tâche / tâches)
+      const nbTasks = activePoints.length;
+      const taskLabelPlural = nbTasks <= 1 ? 'tâche' : 'tâches';
+
       html += `
         <div class="zone-card" data-zone="${z.id}" style="cursor:pointer;">
           <div>
             <div class="zone-name">${z.nom}</div>
-            <div class="zone-meta">${activePoints.length} tâche(s) au planning</div>
+            <div class="zone-meta">${nbTasks} ${taskLabelPlural} au planning</div>
           </div>
           <span class="zone-badge" style="background:${badgeBg};color:#fff;font-weight:700;padding:4px 8px;border-radius:6px;font-size:11px;">${badgeText}</span>
         </div>
@@ -1277,7 +1282,7 @@ async function renderHistory(){
 }
 
 /* =========================================================================
-   ÉCRAN STATISTIQUES & SUIVI CENTRÉ SUR LES NOK
+   ÉCRAN STATISTIQUES & SUIVI CENTRÉ SUR LES NOK (RESOLUTION NOMS ANOMALIES)
    ========================================================================= */
 async function renderStats(){
   resetInactivityTimer();
@@ -1367,14 +1372,14 @@ async function renderStats(){
     let topNokItems = Object.keys(currentStats.itemNokMap).map(id => {
       let label = id;
       
-      // Recherche du nom complet dans les tâches par défaut
+      // Recherche dans le référentiel par défaut
       Object.keys(DEFAULT_POINTS).forEach(zk => {
         const found = DEFAULT_POINTS[zk].find(pt => pt.id === id);
-        if(found) label = found.label;
+        if(found && found.label) label = found.label;
       });
 
-      // Si non trouvé, recherche dans les tâches créées dynamiquement
-      const dynFound = dynamicTasks.find(dt => dt.taskId === id);
+      // Recherche dans les tâches dynamiques
+      const dynFound = dynamicTasks.find(dt => dt.taskId === id || dt.id === id);
       if(dynFound && dynFound.label) label = dynFound.label;
 
       return { id, label, count: currentStats.itemNokMap[id] };
@@ -1398,17 +1403,17 @@ async function renderStats(){
       </div>
 
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
-        <div class="dash-chart-title" style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:12px;">📊 Analyse Comparative des Défauts (NOK)</div>
+        <div class="dash-chart-title" style="font-weight:700;font-size:13px;color:#211E1A;">📊 Analyse Comparative des Défauts (NOK)</div>
         <div style="display:flex;align-items:flex-end;justify-style:space-around;height:120px;border-bottom:2px solid #E7E1D6;padding-bottom:5px;">
           <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
             <span style="font-size:11px;font-weight:700;color:#B23A34;margin-bottom:4px;">${currentStats.nokRate}% NOK</span>
-            <div style="width:100%;max-width:50px;background:#B23A34;height:${Math.max(10, currentStats.nokRate * 1.2)}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
+            <div style="width:100%;max-width:50px;background:#B23A34;height:${Math.min(80, Math.max(10, currentStats.nokRate * 0.8))}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
             <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">7j Actuels</span>
           </div>
 
           <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
             <span style="font-size:11px;font-weight:700;color:#C7791B;margin-bottom:4px;">${refNokRate}% NOK</span>
-            <div style="width:100%;max-width:50px;background:#C7791B;height:${Math.max(10, refNokRate * 1.2)}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
+            <div style="width:100%;max-width:50px;background:#C7791B;height:${Math.min(80, Math.max(10, refNokRate * 0.8))}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
             <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">${mode==='target'?'Seuil Cible':'7j Précédents'}</span>
           </div>
         </div>
