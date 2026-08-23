@@ -135,7 +135,7 @@ const DEFAULT_POINTS = {
    MOTEUR DE STOCKAGE HYBRIDE
    ========================================================================= */
 const DB_NAME = 'soan-hybrid-db';
-const DB_VERSION = 2; // Incrementation version
+const DB_VERSION = 2;
 let dbPromise = null;
 
 function openDB(){
@@ -281,7 +281,7 @@ async function getPointsForToday(zoneId, dateIso){
 }
 
 /* =========================================================================
-   DÉCONNEXION AUTOMATIQUE (3 MIN INACTIVITÉ) & AUTOMATISATION MAIL
+   DÉCONNEXION AUTOMATIQUE & AUTOMATISATION MAIL
    ========================================================================= */
 let session = null;
 let currentPin = '';
@@ -311,6 +311,7 @@ function resetInactivityTimer(){
   window.addEventListener(evt, resetInactivityTimer, { passive: true });
 });
 
+// Vérificateur automatique d'envoi unique quotidien
 setInterval(async () => {
   const config = await idbGet('mail_schedule', 'global_config');
   if(!config || !config.active || !config.emails || config.emails.length === 0) return;
@@ -319,10 +320,11 @@ setInterval(async () => {
   const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const todayKey = todayISO();
 
-  if((config.time1 === currentTime || config.time2 === currentTime) && config.lastSentDate !== `${todayKey}_${currentTime}`){
+  if(config.time1 === currentTime && config.lastSentDate !== `${todayKey}_${currentTime}`){
     config.lastSentDate = `${todayKey}_${currentTime}`;
     await pushToCloud('mail_schedule', 'global_config', config);
-    toast(`✉️ Envoi automatique du rapport aux destinataires (${currentTime})`);
+    toast(`✉️ Heure atteinte : Lancement de la procédure d'envoi (${currentTime})`);
+    triggerMailSending(config.emails);
   }
 }, 60000);
 
@@ -494,7 +496,7 @@ async function checkPin(){
 async function goToZones(){ activeZoneId=null; await renderZones(); }
 
 /* =========================================================================
-   MENU PRINCIPAL (BOUTONS EXACTS + ACTION MAIL GARANTIE)
+   MENU PRINCIPAL
    ========================================================================= */
 async function renderZones(){
   resetInactivityTimer();
@@ -590,11 +592,18 @@ async function renderZones(){
     });
   }
 
-  // Liaison directe des événements
   document.getElementById('historyBtn').onclick = () => renderHistory();
   document.getElementById('statsBtn').onclick = () => renderStats();
   document.getElementById('globalPdfBtn').onclick = () => generateGlobalPDF();
-  document.getElementById('mailScheduleBtn').onclick = () => renderMailScheduleAdmin();
+
+  const mailBtn = document.getElementById('mailScheduleBtn');
+  if(mailBtn){
+    mailBtn.onclick = (evt) => {
+      evt.preventDefault();
+      renderMailScheduleAdmin();
+    };
+  }
+
   document.getElementById('logoutBtn').onclick = ()=>{ session=null; clearTimeout(inactivityTimer); currentPin=''; renderLogin(); };
   
   const tasksBtn = document.getElementById('adminTasksBtn');
@@ -605,16 +614,32 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   PROGRAMMATION & GESTION DES ENVOIS DE PDF PAR MAIL
+   PROGRAMMATION & TEST DES ENVOIS PAR MAIL (UN SEUL ENVOI HEBDOMADAIRE/QUOTIDIEN)
    ========================================================================= */
+async function triggerMailSending(emails){
+  if(!emails || emails.length === 0){
+    toast('Inscrivez au moins un e-mail destinataire');
+    return;
+  }
+  
+  // 1. Génère et télécharge la pièce jointe PDF
+  await generateGlobalPDF();
+
+  // 2. Déclenche l'ouverture du client mail avec message pré-rempli
+  const subject = encodeURIComponent(`SASU SOAN — Rapport de Prestation du ${fmtDate(todayISO())}`);
+  const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le rapport de prestation de nettoyage SASU SOAN pour la journée du ${fmtDate(todayISO())}.\n\n(Le rapport PDF vient d'être téléchargé sur votre appareil, merci de l'attacher à cet e-mail avant envoi).\n\nCordialement,\nSASU SOAN`);
+  const recipients = emails.join(',');
+
+  window.location.href = `mailto:${recipients}?subject=${subject}&body=${body}`;
+}
+
 async function renderMailScheduleAdmin(){
   resetInactivityTimer();
   
   let mailConfig = await idbGet('mail_schedule', 'global_config') || {
     id: 'global_config',
     active: true,
-    time1: '10:00',
-    time2: '18:00',
+    time1: '18:00',
     emails: []
   };
 
@@ -633,23 +658,17 @@ async function renderMailScheduleAdmin(){
       ${topbarHtml('Programmation Mails', 'Rapports Automatiques')}
       <div class="back-link" id="backBtn">← Retour aux zones</div>
       <div class="section" style="padding:16px;">
-        <div class="section-note">Inscrivez les adresses destinataires et définissez les heures quotidiennes d'envoi automatique du PDF.</div>
+        <div class="section-note">Inscrivez les adresses destinataires et définissez l'heure quotidienne d'envoi du PDF.</div>
 
         <div style="background:#fff;border:1px solid #E7E1D6;padding:14px;border-radius:10px;margin-bottom:15px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <span style="font-weight:700;font-size:13px;color:#211E1A;">État des Envois Automatiques</span>
+            <span style="font-weight:700;font-size:13px;color:#211E1A;">État de la programmation</span>
             <input type="checkbox" id="mailActiveCheck" ${mailConfig.active?'checked':''} style="width:20px;height:20px;accent-color:#2B6E68;cursor:pointer;">
           </div>
 
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
-            <div>
-              <label style="font-size:11px;color:#6B655C;display:block;margin-bottom:2px;">1er Envoi (ex: Matin) :</label>
-              <input type="time" id="mailTime1" value="${mailConfig.time1||'10:00'}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #E7E1D6;font-size:13px;">
-            </div>
-            <div>
-              <label style="font-size:11px;color:#6B655C;display:block;margin-bottom:2px;">2nd Envoi (ex: Soir) :</label>
-              <input type="time" id="mailTime2" value="${mailConfig.time2||'18:00'}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #E7E1D6;font-size:13px;">
-            </div>
+          <div style="margin-top:10px;">
+            <label style="font-size:11px;color:#6B655C;display:block;margin-bottom:2px;">Heure d'envoi quotidien :</label>
+            <input type="time" id="mailTime1" value="${mailConfig.time1||'18:00'}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #E7E1D6;font-size:13px;">
           </div>
         </div>
 
@@ -663,8 +682,8 @@ async function renderMailScheduleAdmin(){
           </div>
         </div>
 
-        <button class="btn amber block" id="saveMailConfigBtn" style="margin-bottom:10px;">Enregistrer la Configuration Mail</button>
-        <button class="btn ghost block" id="sendNowBtn" style="border-color:#2B6E68;color:#2B6E68;">✉️ Envoyer le Rapport Maintenant par Mail</button>
+        <button class="btn amber block" id="saveMailConfigBtn" style="margin-bottom:10px;">Enregistrer la Configuration</button>
+        <button class="btn ghost block" id="sendTestNowBtn" style="border-color:#2B6E68;color:#2B6E68;">🧪 Tester l'envoi du Mail</button>
       </div>
     </div>
   `;
@@ -711,20 +730,20 @@ async function renderMailScheduleAdmin(){
   document.getElementById('saveMailConfigBtn').onclick = async () => {
     mailConfig.active = document.getElementById('mailActiveCheck').checked;
     mailConfig.time1 = document.getElementById('mailTime1').value;
-    mailConfig.time2 = document.getElementById('mailTime2').value;
 
     await pushToCloud('mail_schedule', 'global_config', mailConfig);
     toast('Configuration mail sauvegardée !');
     goToZones();
   };
 
-  document.getElementById('sendNowBtn').onclick = async () => {
+  // Bouton de Test réel d'envoi Mail + PDF
+  document.getElementById('sendTestNowBtn').onclick = async () => {
     if(!mailConfig.emails || mailConfig.emails.length === 0){
       toast('Inscrivez au moins un e-mail destinataire');
       return;
     }
-    await generateGlobalPDF();
-    toast(`✉️ Rapport du jour transmis à ${mailConfig.emails.length} destinataire(s)`);
+    toast("Préparation du mail de test...");
+    await triggerMailSending(mailConfig.emails);
   };
 }
 
@@ -1801,7 +1820,7 @@ function openAgentModal(existing){
 }
 
 /* =========================================================================
-   DESENREGISTREMENT ET NETTOYAGE DU CACHE PWA POUR MISE À JOUR IMMÉDIATE
+   NETTOYAGE DU CACHE SERVICE WORKER AU DEPLOIEMENT
    ========================================================================= */
 if('serviceWorker' in navigator){
   navigator.serviceWorker.getRegistrations().then(registrations => {
