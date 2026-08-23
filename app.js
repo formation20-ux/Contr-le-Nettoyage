@@ -262,6 +262,7 @@ function renderLogin(){
         <div class="pin-dots" id="pinDots"></div>
         <div class="pin-pad" id="pinPad"></div>
         <div class="pin-error" id="pinError"></div>
+        <button class="btn ghost small block" id="bypassBtn" style="margin-top:15px;">🔓 Connexion Secours Admin</button>
       </div>
     </div>
   `;
@@ -270,6 +271,12 @@ function renderLogin(){
   });
   renderPinDots();
   renderPinPad();
+
+  // Bouton de secours pour débloquer l'accès
+  document.getElementById('bypassBtn').addEventListener('click', ()=>{
+    session = { role: 'controleur', agentId: 'admin_temp', nom: 'Admin Temp' };
+    goToZones();
+  });
 }
 
 function renderPinDots(){
