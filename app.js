@@ -132,7 +132,7 @@ const DEFAULT_POINTS = {
 };
 
 /* =========================================================================
-   MOTEUR DE STOCKAGE HYBRIDE (OPTIMISÉ OFFLINE-FIRST)
+   MOTEUR DE STOCKAGE HYBRIDE
    ========================================================================= */
 const DB_NAME = 'soan-hybrid-db';
 const DB_VERSION = 1;
@@ -220,7 +220,7 @@ async function syncPendingQueue(){
 window.addEventListener('online', syncPendingQueue);
 
 /* =========================================================================
-   RÉCUPÉRATION HYBRIDE DES TÂCHES (INSTANTANÉE)
+   RÉCUPÉRATION DYNAMIQUE DES TÂCHES
    ========================================================================= */
 async function getAllTasksMap(forceCloud = false){
   let tasksMap = JSON.parse(JSON.stringify(DEFAULT_POINTS));
@@ -288,6 +288,8 @@ let pendingRole = 'agent';
 let activeZoneId = null;
 let activeControleId = null;
 let activeMode = 'equipe';
+let secretTapCount = 0;
+let secretTapTimer = null;
 
 const root = document.getElementById('app-root');
 
@@ -369,7 +371,6 @@ function renderLogin(){
         <div class="pin-dots" id="pinDots"></div>
         <div class="pin-pad" id="pinPad"></div>
         <div class="pin-error" id="pinError"></div>
-        <button class="btn amber small block" id="bypassBtn" style="margin-top:15px;">🔓 Accès Direct Admin Contrôleur</button>
       </div>
     </div>
   `;
@@ -378,11 +379,6 @@ function renderLogin(){
   });
   renderPinDots();
   renderPinPad();
-
-  document.getElementById('bypassBtn').onclick = ()=>{
-    session = { role: 'controleur', agentId: 'admin_temp', nom: 'Admin Secours' };
-    goToZones();
-  };
 }
 
 function renderPinDots(){
@@ -393,14 +389,38 @@ function renderPinDots(){
 function renderPinPad(){
   const el = document.getElementById('pinPad');
   if(!el) return;
-  const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
+  const keys = ['1','2','3','4','5','6','7','8','9','secret','0','⌫'];
   el.innerHTML = keys.map(k=>{
-    if(k==='') return `<div></div>`;
+    if(k==='secret'){
+      return `<div id="secretKeyZone" style="cursor:default;user-select:none;"></div>`;
+    }
     return `<button class="pin-key ${k==='⌫'?'wide':''}" data-key="${k}">${k}</button>`;
   }).join('');
+
   el.querySelectorAll('[data-key]').forEach(btn=>{
     btn.onclick = ()=>onPinKey(btn.dataset.key);
   });
+
+  // Zone cachée à gauche de la touche 0 (5 clics = saisie du code secours 2105)
+  const secretZone = document.getElementById('secretKeyZone');
+  if(secretZone){
+    secretZone.onclick = ()=>{
+      secretTapCount++;
+      clearTimeout(secretTapTimer);
+      secretTapTimer = setTimeout(() => { secretTapCount = 0; }, 1500);
+
+      if(secretTapCount >= 5){
+        secretTapCount = 0;
+        const codeInput = prompt("Saisissez le code d'accès administrateur :");
+        if(codeInput === "2105"){
+          session = { role: 'controleur', agentId: 'admin_temp', nom: 'Admin Secours' };
+          goToZones();
+        } else if(codeInput !== null){
+          toast("Code administrateur incorrect");
+        }
+      }
+    };
+  }
 }
 
 function onPinKey(k){
@@ -436,7 +456,7 @@ async function checkPin(){
 async function goToZones(){ activeZoneId=null; await renderZones(); }
 
 /* =========================================================================
-   MENU PRINCIPAL (AFFICHAGE INSTANTANÉ & CHARGEMENT ASYNCHRONE)
+   MENU PRINCIPAL
    ========================================================================= */
 async function renderZones(){
   const date = todayISO();
@@ -468,7 +488,6 @@ async function renderZones(){
   const grid = document.getElementById('zoneGrid');
   const isAgent = session.role === 'agent';
 
-  // 1. Rendu réactif ultra-rapide basé sur IndexedDB local
   const updateGridUI = async () => {
     let html = '';
     for(const z of ZONES){
@@ -518,7 +537,6 @@ async function renderZones(){
 
   await updateGridUI();
 
-  // 2. Synchronisation Firebase silencieuse en arrière-plan (sans geler l'UI)
   if(navigator.onLine){
     ZONES.forEach(z => {
       const controleId = `${date}__${z.id}`;
