@@ -15,6 +15,15 @@ const firebaseConfig = {
   messagingSenderId: "1032576632030",
   appId: "1:1032576632030:web:4650e2bce60a2c7b67ae4f"
 };
+
+/* =========================================================================
+   EMAILJS — à configurer (voir instructions fournies)
+   ========================================================================= */
+const EMAILJS_PUBLIC_KEY  = 'À_REMPLACER';
+const EMAILJS_SERVICE_ID  = 'À_REMPLACER';
+const EMAILJS_TEMPLATE_ID = 'À_REMPLACER';
+const RAPPORT_DESTINATAIRE = 'toi@mcdcaen.com'; // adresse qui reçoit les rapports
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 if(typeof emailjs !== 'undefined' && EMAILJS_PUBLIC_KEY!=='À_REMPLACER'){
@@ -63,14 +72,6 @@ const POINTS = {
    n'importe qui inspectant le réseau/la base voit les PIN. Suffisant pour un
    usage interne à faible enjeu, mais à remplacer par une Cloud Function
    (loginWithPin + Custom Token) si le besoin de sécurité augmente. */
-
-/* =========================================================================
-   EMAILJS — à configurer (voir instructions fournies)
-   ========================================================================= */
-const EMAILJS_PUBLIC_KEY  = 'À_REMPLACER';
-const EMAILJS_SERVICE_ID  = 'À_REMPLACER';
-const EMAILJS_TEMPLATE_ID = 'À_REMPLACER';
-const RAPPORT_DESTINATAIRE = 'toi@mcdcaen.com'; // adresse qui reçoit les rapports
 
 /* =========================================================================
    STOCKAGE HORS-LIGNE (IndexedDB)
