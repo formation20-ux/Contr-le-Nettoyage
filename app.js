@@ -458,7 +458,7 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE (VERROUILLAGE OK SI PAS DE PHOTO)
+   SAISIE CONTRÔLE / PRESTATION ZONE (COMMENTAIRES DISTINCTS & AVERTISSEMENTS)
    ========================================================================= */
 async function renderControle(){
   const date = todayISO();
@@ -511,8 +511,6 @@ async function renderControle(){
     const eqPhotos = isContreVisite ? (eqR.photos || []) : [];
 
     const isEquipeNok = isContreVisite && (eqR.conforme === false || !eqR.photos || eqR.photos.length === 0);
-
-    // Blocage du bouton OK pour l'équipe s'il n'y a pas de photo
     const isOkLocked = !isContreVisite && myPhotos.length === 0;
 
     return `
@@ -535,6 +533,10 @@ async function renderControle(){
           </div>
         ` : ''}
 
+        ${isContreVisite && eqR.commentaire ? `
+          <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">💬 Obs. Équipe (${c.passageEquipe.agentNom||'Équipe'}) : "${eqR.commentaire}"</div>
+        ` : ''}
+
         <div style="font-size:11px;color:#6B655C;margin-top:8px;">
           ${isContreVisite ? 'Tes photos contrôleur (optionnel) :' : 'Photo obligatoire pour valider cet item :'}
         </div>
@@ -545,7 +547,8 @@ async function renderControle(){
             <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
           </label>
         </div>
-        <textarea class="point-comment" placeholder="Remarques / Observations" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6;">${r.commentaire||''}</textarea>
+        
+        <textarea class="point-comment" placeholder="${isContreVisite ? 'Remarques Contrôleur (optionnel)' : 'Remarques Équipe (optionnel)'}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6;">${r.commentaire||''}</textarea>
       </div>
     `;
   }).join('');
@@ -562,9 +565,10 @@ async function renderControle(){
     const r = currentBranch.reponses[pId];
 
     item.querySelectorAll('.toggle-btn').forEach(btn=>{
-      btn.onclick = ()=>{
+      btn.onclick = (e)=>{
         if(btn.hasAttribute('disabled')){
           toast('Photo obligatoire pour valider en OK !');
+          e.preventDefault();
           return;
         }
         r.conforme = btn.dataset.val==='true';
@@ -587,7 +591,6 @@ async function renderControle(){
       newImg.onclick = () => openPhotoViewer(dataUrl, `Nouvelle photo - ${pId}`);
       item.querySelector(`#photos_${pId}`).insertBefore(newImg, item.querySelector('.photo-btn'));
 
-      // Déverrouillage automatique du bouton OK à l'ajout de la photo (Équipe)
       if(!isContreVisite){
         const okBtn = item.querySelector('.toggle-btn.conforme');
         if(okBtn){
@@ -604,12 +607,16 @@ async function renderControle(){
   });
 
   document.getElementById('saveBtn').onclick = async ()=>{
+    const currentTime = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+    
     if(!isContreVisite){
       for(const p of activePoints){
         const r = currentBranch.reponses[p.id];
         if(!r || !r.photos || r.photos.length === 0){
           r.conforme = false; 
         }
+        r.agentNom = session.nom;
+        r.heure = currentTime;
       }
     } else {
       for(const p of activePoints){
@@ -617,10 +624,12 @@ async function renderControle(){
           currentBranch.reponses[p.id] = currentBranch.reponses[p.id] || { photos:[], commentaire:'' };
           currentBranch.reponses[p.id].conforme = true;
         }
+        currentBranch.reponses[p.id].controleurNom = session.nom;
+        currentBranch.reponses[p.id].heure = currentTime;
       }
     }
 
-    currentBranch.heure = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+    currentBranch.heure = currentTime;
     if(isContreVisite) currentBranch.controleurNom = session.nom;
     else currentBranch.agentNom = session.nom;
 
@@ -689,6 +698,8 @@ async function renderHistory(){
           html += `
             <div style="padding:6px 0;border-top:1px dashed #E7E1D6;font-size:12px;">
               <div><strong>${p.label}</strong> -> Équipe: [${eqOk?'OK':'NOK'}] | Ctrl: [${cvOk?'OK':'NOK'}]</div>
+              ${rEq.commentaire ? `<div style="font-size:11px;color:#6B655C;">• Obs. Équipe (${rEq.agentNom||'Agent'}) : ${rEq.commentaire}</div>` : ''}
+              ${rCv.commentaire ? `<div style="font-size:11px;color:#C7791B;">• Obs. Contrôleur (${rCv.controleurNom||'Ctrl'}) : ${rCv.commentaire}</div>` : ''}
               ${allPhotos.length ? `
                 <div style="display:flex;gap:6px;margin-top:4px;overflow-x:auto;">
                   ${allPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="${p.label}" style="width:45px;height:45px;object-fit:cover;border-radius:4px;cursor:pointer;">`).join('')}
@@ -760,7 +771,7 @@ async function renderStats(){
 
         const rCv = cv[pId];
         const cvOk = rCv ? (rCv.conforme !== false) : true;
-        if(eqOk !== cvOk) totalEcarts++;
+        if(eqOk && !cvOk) totalEcarts++;
       }
     });
   });
@@ -802,10 +813,7 @@ async function renderStats(){
 }
 
 /* =========================================================================
-   GÉNÉRATION DU RAPPORT PDF GLOBAL
-   ========================================================================= */
-/* =========================================================================
-   GÉNÉRATION DU RAPPORT PDF GLOBAL (CORRECTION COULEURS NOK)
+   GÉNÉRATION DU RAPPORT PDF GLOBAL (LÉGENDES INDIVIDUELLES ET OBSERVATIONS)
    ========================================================================= */
 async function generateGlobalPDF(){
   if(typeof window.jspdf === 'undefined'){ toast('Bibliothèque PDF indisponible'); return; }
@@ -816,9 +824,9 @@ async function generateGlobalPDF(){
   const C_INK = [33, 30, 26];
   const C_AMBER = [199, 121, 27];
   const C_TEAL = [43, 110, 104];
-  const C_TEAL_BG = [220, 238, 236]; // Fond vert pastel (OK / OK)
+  const C_TEAL_BG = [220, 238, 236];
   const C_RED = [178, 58, 52];
-  const C_RED_BG = [254, 242, 242]; // Fond rouge pastel (NOK)
+  const C_RED_BG = [254, 242, 242];
   const C_BG = [250, 248, 243];
   const C_LINE = [231, 225, 214];
 
@@ -875,7 +883,7 @@ async function generateGlobalPDF(){
     currentY += 16;
   }
 
-  // --- GENERATION DES PAGES DE ZONES ---
+  // --- PAGES DE DETAIL ---
   for(const z of ZONES){
     docPdf.addPage();
     const pageNum = docPdf.internal.getNumberOfPages();
@@ -907,32 +915,27 @@ async function generateGlobalPDF(){
     docPdf.setFont('helvetica', 'normal');
     docPdf.setFontSize(8.5);
     docPdf.setTextColor(...C_INK);
-    docPdf.text(`Passage Équipe : ${eq.agentNom || 'Non renseigné'} (${eq.heure||'--:--'})   |   Contrôleur : ${cv.controleurNom || 'Non effectué'} (${cv.heure||'--:--'})`, 14, y);
+    docPdf.text(`Prestation du ${fmtDate(date)}`, 14, y);
     y += 8;
 
     for(const p of activePoints){
-      const rEq = (eq.reponses && eq.reponses[p.id]) || { conforme: null, photos:[], commentaire:'' };
-      const rCv = (cv.reponses && cv.reponses[p.id]) || { conforme: null, photos:[], commentaire:'' };
+      const rEq = (eq.reponses && eq.reponses[p.id]) || { conforme: null, photos:[], commentaire:'', agentNom: eq.agentNom, heure: eq.heure };
+      const rCv = (cv.reponses && cv.reponses[p.id]) || { conforme: null, photos:[], commentaire:'', controleurNom: cv.controleurNom, heure: cv.heure };
 
-      // Règle Équipe : Sans photo -> NOK
       let eqConformeCalculated = (rEq.photos && rEq.photos.length > 0) ? (rEq.conforme !== false) : false;
-
-      // Règle Contrôleur : Si non mis en NOK -> OK
       let cvConformeCalculated = (rCv.conforme === false) ? false : true;
 
-      const isBothOk = (eqConformeCalculated === true && cvConformeCalculated === true);
-      const isEcart = (eqConformeCalculated !== cvConformeCalculated);
+      const isFinalOk = (cvConformeCalculated === true);
+      const isRealEcart = (eqConformeCalculated === true && cvConformeCalculated === false);
 
-      if(isEcart) totalEcarts++;
+      if(isRealEcart) totalEcarts++;
 
       if(y > 250){ docPdf.addPage(); y = 20; }
 
-      // Attribution exacte des fonds de couleur
-      if(isBothOk){
+      if(isFinalOk){
         docPdf.setFillColor(...C_TEAL_BG);
         docPdf.setDrawColor(...C_TEAL);
       } else {
-        // Tout cas contenant un NOK (Accord NOK/NOK ou Écart) -> Fond Rouge
         docPdf.setFillColor(...C_RED_BG);
         docPdf.setDrawColor(...C_RED);
       }
@@ -949,8 +952,7 @@ async function generateGlobalPDF(){
       docPdf.text(`Équipe: ${eqConformeCalculated?'OK':'NOK'}`, 125, y + 6);
       docPdf.text(`Contrôleur: ${cvConformeCalculated?'OK':'NOK'}`, 150, y + 6);
 
-      // Badge d'écart uniquement si désaccord
-      if(isEcart){
+      if(isRealEcart){
         docPdf.setFillColor(...C_RED);
         docPdf.rect(175, y + 2, 16, 10, 'F');
         docPdf.setTextColor(255, 255, 255);
@@ -961,11 +963,23 @@ async function generateGlobalPDF(){
 
       y += 18;
 
-      if(rEq.commentaire || rCv.commentaire){
+      // Détails nominatifs et horodatés par item
+      const eqAgent = rEq.agentNom || eq.agentNom || 'Agent';
+      const eqTime = rEq.heure || eq.heure || '--:--';
+      const cvCtrl = rCv.controleurNom || cv.controleurNom || 'Contrôleur';
+      const cvTime = rCv.heure || cv.heure || '--:--';
+
+      if(rEq.commentaire || rCv.commentaire || eqAgent || cvCtrl){
         docPdf.setFontSize(8);
-        docPdf.setTextColor(100, 100, 100);
-        if(rEq.commentaire){ docPdf.text(`• Obs. Équipe : ${rEq.commentaire}`, 18, y); y += 5; }
-        if(rCv.commentaire){ docPdf.text(`• Obs. Contrôleur : ${rCv.commentaire}`, 18, y); y += 5; }
+        docPdf.setTextColor(80, 80, 80);
+        if(rEq.commentaire){
+          docPdf.text(`• Obs. Équipe [${eqAgent} à ${eqTime}] : ${rEq.commentaire}`, 18, y);
+          y += 5;
+        }
+        if(rCv.commentaire){
+          docPdf.text(`• Obs. Contrôleur [${cvCtrl} à ${cvTime}] : ${rCv.commentaire}`, 18, y);
+          y += 5;
+        }
       }
 
       const allEqPhotos = rEq.photos || [];
@@ -981,8 +995,8 @@ async function generateGlobalPDF(){
             docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 38);
             docPdf.setFillColor(...C_TEAL);
             docPdf.rect(xPos, y + 38, 55, 6, 'F');
-            docPdf.setFontSize(7); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
-            docPdf.text('PHOTO ÉQUIPE', xPos + 15, y + 42.5);
+            docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
+            docPdf.text(`ÉQUIPE : ${eqAgent} (${eqTime})`, xPos + 2, y + 42.5);
 
             xPos += 58;
             if(xPos > 140){ xPos = 18; y += 48; }
@@ -994,8 +1008,8 @@ async function generateGlobalPDF(){
             docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 38);
             docPdf.setFillColor(...C_AMBER);
             docPdf.rect(xPos, y + 38, 55, 6, 'F');
-            docPdf.setFontSize(7); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
-            docPdf.text('PHOTO CONTRÔLEUR', xPos + 12, y + 42.5);
+            docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
+            docPdf.text(`CTRL : ${cvCtrl} (${cvTime})`, xPos + 2, y + 42.5);
 
             xPos += 58;
             if(xPos > 140){ xPos = 18; y += 48; }
