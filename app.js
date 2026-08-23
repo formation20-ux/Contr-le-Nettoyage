@@ -575,19 +575,26 @@ function openPhotoViewer(src, title){
 
 function fileToResizedBase64(file, maxWidth){
   return new Promise((resolve, reject)=>{
+    if(!file) return reject("Fichier introuvable");
     const img = new Image();
     const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = ()=>{
-      img.onerror = reject;
-      img.onload = ()=>{
-        const scale = Math.min(1, maxWidth / img.width);
-        const w = Math.round(img.width * scale);
-        const h = Math.round(img.height * scale);
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.5));
+    
+    reader.onerror = (e) => reject(e);
+    reader.onload = () => {
+      img.onerror = (e) => reject(e);
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, maxWidth / img.width);
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.6));
+        } catch(err) {
+          reject(err);
+        }
       };
       img.src = reader.result;
     };
@@ -1056,7 +1063,7 @@ async function renderMailScheduleAdmin(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE
+   SAISIE CONTRÔLE / PRESTATION ZONE (SECURISATION PRISES PHOTOS)
    ========================================================================= */
 async function renderControle(){
   resetInactivityTimer();
@@ -1255,15 +1262,29 @@ async function renderControle(){
       });
 
       const fileInput = item.querySelector('[data-photo-input]');
-      fileInput.onchange = async ()=>{
-        if(!fileInput.files.length) return;
-        const dataUrl = await fileToResizedBase64(fileInput.files[0], 600);
-        r.photos = r.photos || [];
-        r.photos.push(dataUrl);
+      fileInput.onchange = async () => {
+        if (!fileInput.files || !fileInput.files.length) return;
+        
+        try {
+          toast(t('Chargement…'));
+          const dataUrl = await fileToResizedBase64(fileInput.files[0], 600);
+          
+          if (!currentBranch.reponses[pId]) {
+            currentBranch.reponses[pId] = { conforme: null, photos: [], commentaire: '' };
+          }
+          if (!currentBranch.reponses[pId].photos) {
+            currentBranch.reponses[pId].photos = [];
+          }
+          
+          currentBranch.reponses[pId].photos.push(dataUrl);
 
-        await triggerAutoSave();
-        toast(t('Photo ajoutée'));
-        await refreshPointsListUI();
+          await triggerAutoSave();
+          toast(t('Photo ajoutée'));
+          await refreshPointsListUI();
+        } catch (err) {
+          console.error("Erreur capture photo :", err);
+          toast("Erreur d'enregistrement photo");
+        }
       };
 
       item.querySelector('.point-comment').oninput = (e)=>{
@@ -1395,9 +1416,7 @@ async function generatePDFForDate(targetDateIso){
       const rCv = (cv.reponses && cv.reponses[p.id]) || { conforme: null, photos:[], commentaire:'', controleurNom: cv.controleurNom, heure: cv.heure };
 
       let eqConformeCalculated = (rEq.photos && rEq.photos.length > 0) ? (rEq.conforme !== false) : false;
-      
-      // La décision finale du contrôleur (OK ou NOK) prévaut
-      let cvConformeCalculated = (rCv.conforme === false) ? false : (rCv.conforme === true ? true : true);
+      let cvConformeCalculated = (rCv.conforme === false) ? false : true;
 
       const isFinalOk = (cvConformeCalculated === true);
       const isRealEcart = (eqConformeCalculated === true && cvConformeCalculated === false);
@@ -1594,8 +1613,6 @@ async function renderHistory(){
         const rEq = (eq.reponses && eq.reponses[p.id]) || {};
         const rCv = (cv.reponses && cv.reponses[p.id]) || {};
         
-        let eqOk = (rEq.photos && rEq.photos.length > 0 && rEq.conforme !== false);
-        // Décision du contrôleur fait foi (OK par défaut si non renseigné à la fermeture)
         let cvOk = (rCv.conforme === false) ? false : true;
 
         if(rEq.conforme !== undefined || rCv.conforme !== undefined) zoneChecked++;
@@ -1930,7 +1947,6 @@ async function generateGlobalPDF(){
   let totalEcarts = 0;
   const zonePageMap = {};
 
-  // --- PAGE 1 : EN-TÊTE ET SOMMAIRE ---
   docPdf.setFillColor(...C_INK);
   docPdf.rect(0, 0, 210, 28, 'F');
   
@@ -1980,7 +1996,6 @@ async function generateGlobalPDF(){
     currentY += 16;
   }
 
-  // --- PAGES DE DETAIL ---
   for(const z of ZONES){
     docPdf.addPage();
     const pageNum = docPdf.internal.getNumberOfPages();
@@ -2314,7 +2329,7 @@ async function renderTaskAdmin(){
 }
 
 /* =========================================================================
-   ADMINISTRATION UTILISATEURS (LISTE ÉLARGIE DES LANGUES)
+   ADMINISTRATION UTILISATEURS
    ========================================================================= */
 async function renderAgentsAdmin(){
   resetInactivityTimer();
