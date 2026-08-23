@@ -265,6 +265,7 @@ async function syncAgentsFromCloud(){
   } catch(e) { console.error('Erreur de synchro des profils:', e); }
 }
 function renderLogin(){
+  syncAgentsFromCloud(); // Synchro automatique des identifiants au chargement de l'écran
   root.innerHTML = `
     <div id="screen-login">
       <div class="login-card">
