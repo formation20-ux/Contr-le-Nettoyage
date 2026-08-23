@@ -13,9 +13,6 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-// Activer la persistance hors-ligne native de Firebase
-db.enablePersistence().catch(()=>{});
-
 /* =========================================================================
    RÉFÉRENTIEL TÂCHES SASU SOAN
    ========================================================================= */
@@ -130,6 +127,7 @@ function toast(msg){
   window.__toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
 }
 
+// Redimensionnement optimisé des images (évite le rejet par Firestore)
 function fileToResizedBase64(file, maxWidth){
   return new Promise((resolve, reject)=>{
     const img = new Image();
@@ -144,7 +142,7 @@ function fileToResizedBase64(file, maxWidth){
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.65));
+        resolve(canvas.toDataURL('image/jpeg', 0.5));
       };
       img.src = reader.result;
     };
@@ -152,7 +150,6 @@ function fileToResizedBase64(file, maxWidth){
   });
 }
 
-// Récupération dynamique des règles de planning depuis Firestore
 async function getPointsForToday(zoneId, dateIso){
   const d = new Date(dateIso);
   const currentDay = d.getDay();
@@ -333,13 +330,22 @@ async function renderControle(){
 
   try {
     const doc = await db.collection('controles').doc(activeControleId).get();
-    if(doc.exists) c = doc.data();
+    if(doc.exists) {
+      c = doc.data();
+      if(!c.passageEquipe) c.passageEquipe = { agentNom:null, heure:null, reponses:{} };
+      if(!c.contreVisite) c.contreVisite = { controleurNom:null, heure:null, reponses:{} };
+    }
   } catch(e) {}
 
   const zone = ZONES.find(z=>z.id===activeZoneId);
   const activePoints = await getPointsForToday(activeZoneId, date);
   const isContreVisite = activeMode==='contreVisite';
-  const branch = isContreVisite ? c.contreVisite : c.passageEquipe;
+  
+  // Branche d'écriture en cours (Équipe ou Contrôleur)
+  const currentBranch = isContreVisite ? c.contreVisite : c.passageEquipe;
+  
+  // Branche de lecture complémentaire (pour afficher les photos saisies par l'Équipe)
+  const equipeReponses = (c.passageEquipe && c.passageEquipe.reponses) || {};
 
   root.innerHTML = `
     <div class="wrap">
@@ -358,8 +364,13 @@ async function renderControle(){
 
   const listEl = document.getElementById('pointsList');
   listEl.innerHTML = activePoints.map(p=>{
-    const r = branch.reponses[p.id] || { conforme:null, photos:[], commentaire:'' };
-    const photos = r.photos || [];
+    const r = currentBranch.reponses[p.id] || { conforme:null, photos:[], commentaire:'' };
+    const myPhotos = r.photos || [];
+    
+    // Si on est contrôleur, on va chercher aussi les photos prises par l'équipe
+    const eqR = equipeReponses[p.id] || {};
+    const eqPhotos = isContreVisite ? (eqR.photos || []) : [];
+
     return `
       <div class="point-item" data-point="${p.id}">
         <div class="point-head">
@@ -369,8 +380,17 @@ async function renderControle(){
             <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false">✕ NOK</button>
           </div>
         </div>
+
+        ${isContreVisite && eqPhotos.length ? `
+          <div style="font-size:11px;color:#6B655C;margin-top:4px;">Photos saisies par l'Équipe :</div>
+          <div class="point-photo-row" style="margin-bottom:8px;">
+            ${eqPhotos.map(pSrc=>`<img class="photo-thumb" src="${pSrc}" style="border:2px solid #2B6E68;">`).join('')}
+          </div>
+        ` : ''}
+
+        <div style="font-size:11px;color:#6B655C;">${isContreVisite?'Tes photos :':'Photos :'}</div>
         <div class="point-photo-row" id="photos_${p.id}">
-          ${photos.map(pSrc=>`<img class="photo-thumb" src="${pSrc}">`).join('')}
+          ${myPhotos.map(pSrc=>`<img class="photo-thumb" src="${pSrc}">`).join('')}
           <label class="photo-btn">
             📷 + Ajouter photo
             <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
@@ -383,8 +403,8 @@ async function renderControle(){
 
   listEl.querySelectorAll('.point-item').forEach(item=>{
     const pId = item.dataset.point;
-    if(!branch.reponses[pId]) branch.reponses[pId] = { conforme:null, photos:[], commentaire:'' };
-    const r = branch.reponses[pId];
+    if(!currentBranch.reponses[pId]) currentBranch.reponses[pId] = { conforme:null, photos:[], commentaire:'' };
+    const r = currentBranch.reponses[pId];
 
     item.querySelectorAll('.toggle-btn').forEach(btn=>{
       btn.onclick = ()=>{
@@ -397,7 +417,7 @@ async function renderControle(){
     const fileInput = item.querySelector('[data-photo-input]');
     fileInput.onchange = async ()=>{
       if(!fileInput.files.length) return;
-      const dataUrl = await fileToResizedBase64(fileInput.files[0], 800);
+      const dataUrl = await fileToResizedBase64(fileInput.files[0], 600);
       r.photos = r.photos || [];
       r.photos.push(dataUrl);
       
@@ -413,15 +433,15 @@ async function renderControle(){
   });
 
   document.getElementById('saveBtn').onclick = async ()=>{
-    branch.heure = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
-    if(isContreVisite) branch.controleurNom = session.nom;
-    else branch.agentNom = session.nom;
+    currentBranch.heure = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+    if(isContreVisite) currentBranch.controleurNom = session.nom;
+    else currentBranch.agentNom = session.nom;
 
     try {
       await db.collection('controles').doc(c.id).set(c, { merge: true });
-      toast('Rapport synchronisé en ligne !');
+      toast('Rapport et photos synchronisés !');
     } catch(e) {
-      toast('Erreur de synchro cloud');
+      toast('Erreur d\'envoi cloud');
     }
     goToZones();
   };
@@ -506,6 +526,8 @@ async function renderTaskAdmin(){
 /* =========================================================================
    GESTION DES UTILISATEURS EN TEMPS RÉEL (FIRESTORE)
    ========================================================================= */
+let unsubscribeAgents = null;
+
 async function renderAgentsAdmin(){
   root.innerHTML = `
     <div class="wrap">
@@ -517,11 +539,14 @@ async function renderAgentsAdmin(){
       </div>
     </div>
   `;
-  document.getElementById('backBtn').onclick = goToZones;
+  document.getElementById('backBtn').onclick = ()=>{
+    if(unsubscribeAgents) unsubscribeAgents();
+    goToZones();
+  };
   document.getElementById('addAgentBtn').onclick = ()=>openAgentModal();
   
-  // Écouteur Firestore en temps réel
-  db.collection('agents').onSnapshot(snap => {
+  if(unsubscribeAgents) unsubscribeAgents();
+  unsubscribeAgents = db.collection('agents').onSnapshot(snap => {
     const agents = snap.docs.map(d=>Object.assign({ id: d.id }, d.data()));
     refreshAgentsList(agents);
   });
@@ -555,9 +580,9 @@ function refreshAgentsList(agents){
   });
   el.querySelectorAll('[data-del]').forEach(btn=>{
     btn.onclick = async ()=>{
-      if(!confirm('Supprimer définitivement ce profil de tous les appareils ?')) return;
+      if(!confirm('Supprimer définitivement ce profil ?')) return;
       await db.collection('agents').doc(btn.dataset.del).delete();
-      toast('Profil supprimé du cloud');
+      toast('Profil supprimé !');
     };
   });
 }
@@ -626,18 +651,8 @@ function generateControlePDF(c, points){
   docPdf.save(`Rapport_SOAN_${c.zoneId}_${c.date}.pdf`);
 }
 
-// Mise à jour automatique si un nouveau Service Worker est prêt
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('service-worker.js').then(reg => {
-    reg.onupdatefound = () => {
-      const installingWorker = reg.installing;
-      installingWorker.onstatechange = () => {
-        if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-          window.location.reload();
-        }
-      };
-    };
-  });
+  navigator.serviceWorker.register('service-worker.js').catch(()=>{});
 }
 
 (function init(){
