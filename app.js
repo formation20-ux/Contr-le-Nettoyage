@@ -311,7 +311,6 @@ function resetInactivityTimer(){
   window.addEventListener(evt, resetInactivityTimer, { passive: true });
 });
 
-// Vérificateur automatique d'envoi mail en arrière-plan (Chaque minute)
 setInterval(async () => {
   const config = await idbGet('mail_schedule', 'global_config');
   if(!config || !config.active || !config.emails || config.emails.length === 0) return;
@@ -512,17 +511,17 @@ async function renderZones(){
       
       <div style="display:flex;gap:10px;margin-bottom:12px;">
         <button class="btn ghost block" id="historyBtn" style="flex:1;">📜 Historique</button>
-        <button class="btn ghost block" id="statsBtn" style="flex:1;">📊 Suivi NOK & Stats</button>
+        <button class="btn ghost block" id="statsBtn" style="flex:1;">📊 Dashboard</button>
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:15px;">
-        <button class="btn ghost block" id="globalPdfBtn" style="flex:1;border-color:#C7791B;color:#C7791B;">📄 Rapport PDF</button>
+        <button class="btn ghost block" id="globalPdfBtn" style="flex:1;border-color:#C7791B;color:#C7791B;">📄 Rapport PDF de la Journée</button>
         <button class="btn ghost block" id="mailScheduleBtn" style="flex:1;border-color:#2B6E68;color:#2B6E68;">✉️ Envois Mails</button>
       </div>
 
       ${session.role==='controleur' ? `
-        <button class="btn amber block" id="adminTasksBtn" style="margin-bottom:10px;">📅 Planning & Gestion des Tâches</button>
-        <button class="btn amber block" id="adminUsersBtn" style="margin-bottom:10px;">👤 Gestion des Utilisateurs / Accès</button>
+        <button class="btn amber block" id="adminTasksBtn" style="margin-bottom:10px;">📅 Gestion des Tâches</button>
+        <button class="btn amber block" id="adminUsersBtn" style="margin-bottom:10px;">👤 Gestion des Utilisateurs</button>
       ` : ''}
       <button class="btn ghost block" id="logoutBtn">Déconnexion</button>
     </div>
