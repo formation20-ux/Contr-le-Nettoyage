@@ -458,7 +458,7 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE (VERROUILLAGE SÉCURISÉ & SUPPRESSION PHOTOS)
+   SAISIE CONTRÔLE / PRESTATION ZONE
    ========================================================================= */
 async function renderControle(){
   const date = todayISO();
@@ -524,7 +524,6 @@ async function renderControle(){
       const eqWasOk = (eqR.conforme === true && eqR.photos && eqR.photos.length > 0);
       const isEquipeNok = isContreVisite && !eqWasOk;
 
-      // Verrouillages
       const isEquipeLocked = !isContreVisite && myPhotos.length === 0;
       const isCtrlNokLocked = isContreVisite && eqWasOk && myPhotos.length === 0;
 
@@ -568,7 +567,6 @@ async function renderControle(){
       `;
     }).join('');
 
-    // Attach click events
     listEl.querySelectorAll('.click-zoom').forEach(img => {
       img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
     });
@@ -671,7 +669,7 @@ async function renderControle(){
 }
 
 /* =========================================================================
-   ÉCRAN HISTORIQUE (ALIGNÉ À 100% SUR LES RÈGLES ET COULEURS DU PDF)
+   ÉCRAN HISTORIQUE (AVEC SOMMAIRE DE NAVIGATION PAR ZONE ET HARMONISATION PDF)
    ========================================================================= */
 async function renderHistory(){
   root.innerHTML = `
@@ -683,6 +681,7 @@ async function renderHistory(){
           <label style="font-weight:600;font-size:13px;color:#211E1A;display:block;margin-bottom:6px;">Sélectionner une date d'archive :</label>
           <input type="date" id="histDateSelect" value="${todayISO()}" style="width:100%;padding:10px;border-radius:8px;border:1px solid #E7E1D6;font-size:14px;background:#fff;">
         </div>
+        <div id="histSummary" style="margin-bottom:20px;"></div>
         <div id="histContent">Chargement…</div>
       </div>
     </div>
@@ -692,10 +691,20 @@ async function renderHistory(){
   const dateInput = document.getElementById('histDateSelect');
   
   const loadHistoryDate = async (selectedDate) => {
+    const summaryEl = document.getElementById('histSummary');
     const content = document.getElementById('histContent');
     content.innerHTML = '<div class="section-note">Chargement des données...</div>';
+    summaryEl.innerHTML = '';
     
-    let html = '';
+    let htmlContent = '';
+    let summaryHtml = `
+      <div style="background:#FAF8F3;border:1px solid #E7E1D6;border-radius:10px;padding:12px;margin-bottom:15px;">
+        <div style="font-weight:700;font-size:12px;color:#C7791B;text-transform:uppercase;margin-bottom:8px;">Sommaire par Zone (${fmtDate(selectedDate)})</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+    `;
+
+    let hasDataForDate = false;
+
     for(const z of ZONES){
       const controleId = `${selectedDate}__${z.id}`;
       let c = await idbGet('controles', controleId);
@@ -706,22 +715,46 @@ async function renderHistory(){
         } catch(e){}
       }
 
+      const activePoints = await getPointsForToday(z.id, selectedDate);
+      const eq = (c && c.passageEquipe) || {};
+      const cv = (c && c.contreVisite) || {};
+
+      let zoneEcarts = 0;
+      let zoneChecked = 0;
+
+      activePoints.forEach(p => {
+        const rEq = (eq.reponses && eq.reponses[p.id]) || {};
+        const rCv = (cv.reponses && cv.reponses[p.id]) || {};
+        const eqOk = ((rEq.photos && rEq.photos.length > 0) && rEq.conforme !== false);
+        const cvOk = (rCv.conforme !== false);
+
+        if(rEq.conforme !== undefined || rCv.conforme !== undefined) zoneChecked++;
+        if(eqOk === true && cvOk === false) zoneEcarts++;
+      });
+
+      if(c) hasDataForDate = true;
+
+      // Bouton du sommaire
+      summaryHtml += `
+        <a href="#hist_zone_${z.id}" style="text-decoration:none;display:flex;justify-content:space-between;align-items:center;background:#fff;padding:8px 10px;border-radius:6px;border:1px solid #E7E1D6;color:#211E1A;font-size:12px;font-weight:600;">
+          <span>• ${z.nom}</span>
+          <span style="font-size:10px;padding:2px 6px;border-radius:4px;color:#fff;background:${zoneEcarts > 0 ? '#B23A34' : (zoneChecked > 0 ? '#2B6E68' : '#6B655C')};">
+            ${zoneEcarts > 0 ? `${zoneEcarts} Écart(s)` : (zoneChecked > 0 ? 'Conforme' : 'Non saisi')}
+          </span>
+        </a>
+      `;
+
       if(c){
-        const eq = c.passageEquipe || {};
-        const cv = c.contreVisite || {};
-        
-        html += `
-          <div style="border:1px solid #E7E1D6;border-radius:12px;margin-bottom:20px;background:#fff;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+        htmlContent += `
+          <div id="hist_zone_${z.id}" style="border:1px solid #E7E1D6;border-radius:12px;margin-bottom:20px;background:#fff;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
             <div style="background:#211E1A;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
-              <div style="font-weight:700;font-size:15px;color:#F3E2C6;">ZONE : ${z.nom.toUpperCase()}</div>
-              <div style="font-size:11px;color:#E7E1D6;">${fmtDate(selectedDate)}</div>
+              <div style="font-weight:700;font-size:14px;color:#F3E2C6;">ZONE : ${z.nom.toUpperCase()}</div>
+              <a href="#histSummary" style="color:#C7791B;font-size:11px;text-decoration:none;">↑ Sommaire</a>
             </div>
 
             <div style="padding:12px;">
         `;
 
-        const activePoints = await getPointsForToday(z.id, selectedDate);
-        
         activePoints.forEach(p => {
           const rEq = (eq.reponses && eq.reponses[p.id]) || {};
           const rCv = (cv.reponses && cv.reponses[p.id]) || {};
@@ -729,62 +762,52 @@ async function renderHistory(){
           const eqPhotos = rEq.photos || [];
           const cvPhotos = rCv.photos || [];
 
-          // Règle 1 : Équipe sans photo -> NOK
           const eqOk = (eqPhotos.length > 0 && rEq.conforme !== false);
-          
-          // Règle 2 : Contrôleur sans mise en NOK -> OK
           const cvOk = (rCv.conforme !== false);
 
-          // Règle 3 : Seul l'arbitrage du Contrôleur décide si le fond est vert (Final OK)
           const isFinalOk = (cvOk === true);
-
-          // Règle 4 : Vrai Écart (Équipe OK mais Contrôleur NOK)
           const isRealEcart = (eqOk === true && cvOk === false);
 
-          // Noms et Horodatages spécifiques à l'item
           const eqAgent = rEq.agentNom || eq.agentNom || 'Agent';
           const eqTime = rEq.heure || eq.heure || '--:--';
           const cvCtrl = rCv.controleurNom || cv.controleurNom || 'Contrôleur';
           const cvTime = rCv.heure || cv.heure || '--:--';
 
-          html += `
+          htmlContent += `
             <div style="border:1px solid ${isFinalOk ? '#2B6E68' : '#B23A34'};background:${isFinalOk ? '#DCEEEC' : '#FEF2F2'};padding:12px;border-radius:8px;margin-bottom:10px;">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
                 <div style="font-weight:600;font-size:13.5px;color:#211E1A;flex:1;">${p.label}</div>
                 ${isRealEcart ? `<span style="background:#B23A34;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap;">ÉCART</span>` : ''}
               </div>
 
-              <!-- Badges de Statuts -->
               <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
                 <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${eqOk?'#2B6E68':'#B23A34'};color:#fff;">
-                  <span>Équipe (${eqAgent} à ${eqTime}) :</span>
+                  <span>Équipe (${eqAgent} ${eqTime}) :</span>
                   <strong>${eqOk?'✓ OK':'✕ NOK'}</strong>
                 </div>
 
                 <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${cvOk?'#2B6E68':'#B23A34'};color:#fff;">
-                  <span>Contrôleur (${cvCtrl} à ${cvTime}) :</span>
+                  <span>Contrôleur (${cvCtrl} ${cvTime}) :</span>
                   <strong>${cvOk?'✓ OK':'✕ NOK'}</strong>
                 </div>
               </div>
 
-              <!-- Observations avec Horodatage individuel -->
               ${rEq.commentaire ? `<div style="font-size:11px;color:#4A453E;margin-top:4px;">💬 <em>Obs. Équipe [${eqAgent} à ${eqTime}] :</em> "${rEq.commentaire}"</div>` : ''}
               ${rCv.commentaire ? `<div style="font-size:11px;color:#C7791B;margin-top:4px;">💬 <em>Obs. Contrôleur [${cvCtrl} à ${cvTime}] :</em> "${rCv.commentaire}"</div>` : ''}
 
-              <!-- Photos avec Légendes Individuelles -->
               ${(eqPhotos.length || cvPhotos.length) ? `
                 <div style="display:flex;gap:8px;margin-top:10px;overflow-x:auto;padding-bottom:4px;">
                   ${eqPhotos.map(pSrc => `
                     <div style="position:relative;flex-shrink:0;">
                       <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe (${eqAgent} ${eqTime}) - ${p.label}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
-                      <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">ÉQUIPE: ${eqAgent}</span>
+                      <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${eqAgent} (${eqTime})</span>
                     </div>
                   `).join('')}
 
                   ${cvPhotos.map(pSrc => `
                     <div style="position:relative;flex-shrink:0;">
                       <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Contrôleur (${cvCtrl} ${cvTime}) - ${p.label}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
-                      <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">CTRL: ${cvCtrl}</span>
+                      <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">CTRL: ${cvCtrl} (${cvTime})</span>
                     </div>
                   `).join('')}
                 </div>
@@ -792,12 +815,20 @@ async function renderHistory(){
             </div>
           `;
         });
-        html += `</div></div>`;
+        htmlContent += `</div></div>`;
       }
     }
 
-    content.innerHTML = html || '<div class="section-note" style="text-align:center;padding:20px;">Aucun rapport enregistré pour cette date.</div>';
+    summaryHtml += `</div></div>`;
     
+    if(hasDataForDate){
+      summaryEl.innerHTML = summaryHtml;
+      content.innerHTML = htmlContent;
+    } else {
+      summaryEl.innerHTML = '';
+      content.innerHTML = '<div class="section-note" style="text-align:center;padding:20px;">Aucun rapport enregistré pour cette date.</div>';
+    }
+
     content.querySelectorAll('.click-zoom').forEach(img => {
       img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
     });
@@ -806,21 +837,30 @@ async function renderHistory(){
   dateInput.onchange = (e) => loadHistoryDate(e.target.value);
   loadHistoryDate(todayISO());
 }
+
 /* =========================================================================
-   ÉCRAN STATISTIQUES
+   ÉCRAN STATISTIQUES AVANCÉES & COMPARAISONS INTERACTIVES
    ========================================================================= */
 async function renderStats(){
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Statistiques & Conformité', 'Suivi de Prestation')}
+      ${topbarHtml('Statistiques & Analytics', 'Tableau de Bord')}
       <div class="back-link" id="backBtn">← Retour aux zones</div>
-      <div class="section">
-        <div id="statsContent">Chargement des données statistiques…</div>
+      <div class="section" style="padding:16px;">
+        <div class="field" style="margin-bottom:15px;">
+          <label style="font-weight:600;font-size:13px;color:#211E1A;display:block;margin-bottom:6px;">Contexte de comparaison :</label>
+          <select id="statsContextSelect" style="width:100%;padding:10px;border-radius:8px;border:1px solid #E7E1D6;font-size:14px;background:#fff;">
+            <option value="prev_week">7 derniers jours vs 7 jours précédents</option>
+            <option value="target">7 derniers jours vs Objectif Qualité (95%)</option>
+          </select>
+        </div>
+        <div id="statsDashboard">Chargement du dashboard…</div>
       </div>
     </div>
   `;
 
   document.getElementById('backBtn').onclick = goToZones;
+  const contextSelect = document.getElementById('statsContextSelect');
 
   let allControles = await idbGetAll('controles');
   if(navigator.onLine){
@@ -830,69 +870,148 @@ async function renderStats(){
     } catch(e){}
   }
 
-  let totalPointsChecked = 0;
-  let totalConformes = 0;
-  let totalEcarts = 0;
-  let zoneStats = {};
+  const computePeriodStats = (startDateIso, endDateIso) => {
+    let checked = 0, conformes = 0, ecarts = 0, photosCount = 0;
+    let zoneBreakdown = {};
+    let itemEcartsMap = {};
 
-  ZONES.forEach(z => { zoneStats[z.id] = { total:0, ok:0, nom:z.nom }; });
+    ZONES.forEach(z => { zoneBreakdown[z.id] = { total:0, ok:0, nom:z.nom }; });
 
-  allControles.forEach(c => {
-    const eq = (c.passageEquipe && c.passageEquipe.reponses) || {};
-    const cv = (c.contreVisite && c.contreVisite.reponses) || {};
+    allControles.filter(c => c.date >= startDateIso && c.date <= endDateIso).forEach(c => {
+      const eq = (c.passageEquipe && c.passageEquipe.reponses) || {};
+      const cv = (c.contreVisite && c.contreVisite.reponses) || {};
 
-    Object.keys(eq).forEach(pId => {
-      const rEq = eq[pId];
-      if(rEq){
-        totalPointsChecked++;
-        const eqOk = rEq.conforme === true && rEq.photos && rEq.photos.length > 0;
-        if(eqOk) {
-          totalConformes++;
-          if(zoneStats[c.zoneId]) zoneStats[c.zoneId].ok++;
-        }
-        if(zoneStats[c.zoneId]) zoneStats[c.zoneId].total++;
-
+      Object.keys(eq).forEach(pId => {
+        const rEq = eq[pId];
         const rCv = cv[pId];
-        const cvOk = rCv ? (rCv.conforme !== false) : true;
-        if(eqOk && !cvOk) totalEcarts++;
-      }
+        if(rEq){
+          checked++;
+          const eqOk = (rEq.photos && rEq.photos.length > 0 && rEq.conforme !== false);
+          const cvOk = (rCv ? rCv.conforme !== false : true);
+
+          if(rEq.photos && rEq.photos.length > 0) photosCount++;
+
+          if(cvOk) {
+            conformes++;
+            if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].ok++;
+          }
+          if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].total++;
+
+          if(eqOk === true && cvOk === false){
+            ecarts++;
+            itemEcartsMap[pId] = (itemEcartsMap[pId] || 0) + 1;
+          }
+        }
+      });
     });
-  });
 
-  const tauxGlobal = totalPointsChecked ? Math.round((totalConformes / totalPointsChecked) * 100) : 0;
+    const rate = checked ? Math.round((conformes / checked) * 100) : 0;
+    const photoRate = checked ? Math.round((photosCount / checked) * 100) : 0;
 
-  let html = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:15px;">
-      <div style="background:#FAF8F3;padding:12px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
-        <div style="font-size:11px;color:#6B655C;text-transform:uppercase;">Conformité Globale</div>
-        <div style="font-size:24px;font-weight:700;color:#2B6E68;margin-top:4px;">${tauxGlobal}%</div>
+    return { checked, conformes, ecarts, rate, photoRate, zoneBreakdown, itemEcartsMap };
+  };
+
+  const updateStatsUI = () => {
+    const today = new Date();
+    const d7 = new Date(today); d7.setDate(d7.getDate() - 6);
+    const d14 = new Date(today); d14.setDate(d14.getDate() - 13);
+
+    const currentStats = computePeriodStats(d7.toISOString().slice(0,10), todayISO());
+    const prevStats = computePeriodStats(d14.toISOString().slice(0,10), d7.toISOString().slice(0,10));
+
+    const mode = contextSelect.value;
+    const refRate = mode === 'target' ? 95 : prevStats.rate;
+    const refLabel = mode === 'target' ? 'vs Cible (95%)' : 'vs Semaine précédente';
+
+    const deltaRate = currentStats.rate - refRate;
+
+    // Top 3 tâches problématiques
+    let topEcarts = Object.keys(currentStats.itemEcartsMap).map(id => {
+      let label = id;
+      Object.keys(POINTS).forEach(zk => {
+        const found = POINTS[zk].find(pt => pt.id === id);
+        if(found) label = found.label;
+      });
+      return { id, label, count: currentStats.itemEcartsMap[id] };
+    }).sort((a,b) => b.count - a.count).slice(0,3);
+
+    let html = `
+      <!-- KPIS PRINCIPAUX -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:15px;">
+        <div style="background:#FAF8F3;padding:14px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
+          <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">Taux Conformité (7j)</div>
+          <div style="font-size:26px;font-weight:800;color:#2B6E68;margin-top:2px;">${currentStats.rate}%</div>
+          <div style="font-size:11px;font-weight:600;margin-top:2px;color:${deltaRate>=0?'#2B6E68':'#B23A34'};">
+            ${deltaRate>=0?'▲ +':'▼ '}${deltaRate}% ${refLabel}
+          </div>
+        </div>
+
+        <div style="background:#FAF8F3;padding:14px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
+          <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">Écarts Pénalisants</div>
+          <div style="font-size:26px;font-weight:800;color:#B23A34;margin-top:2px;">${currentStats.ecarts}</div>
+          <div style="font-size:11px;color:#6B655C;margin-top:2px;">sur ${currentStats.checked} contrôles</div>
+        </div>
       </div>
-      <div style="background:#FAF8F3;padding:12px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
-        <div style="font-size:11px;color:#6B655C;text-transform:uppercase;">Écarts Détectés</div>
-        <div style="font-size:24px;font-weight:700;color:#B23A34;margin-top:4px;">${totalEcarts}</div>
+
+      <!-- COMPARAISON GRAPHIQUE BARRES SVG -->
+      <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
+        <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:12px;">📊 Analyse Comparative de Conformité</div>
+        <div style="display:flex;align-items:flex-end;justify-content:space-around;height:120px;border-bottom:2px solid #E7E1D6;padding-bottom:5px;">
+          <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
+            <span style="font-size:11px;font-weight:700;color:#2B6E68;margin-bottom:4px;">${currentStats.rate}%</span>
+            <div style="width:100%;max-width:50px;background:#2B6E68;height:${Math.max(10, currentStats.rate)}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
+            <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">7j Actuels</span>
+          </div>
+
+          <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
+            <span style="font-size:11px;font-weight:700;color:#C7791B;margin-bottom:4px;">${refRate}%</span>
+            <div style="width:100%;max-width:50px;background:#C7791B;height:${Math.max(10, refRate)}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
+            <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">${mode==='target'?'Objectif':'7j Précédents'}</span>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <div style="font-weight:600;margin-bottom:10px;font-size:14px;">Taux de Conformité par Zone :</div>
-  `;
+      <!-- PERFORMANCE PAR ZONE -->
+      <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
+        <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">Répartition par Zone (7 derniers jours)</div>
+    `;
 
-  ZONES.forEach(z => {
-    const zs = zoneStats[z.id];
-    const pct = zs.total ? Math.round((zs.ok / zs.total) * 100) : 0;
+    ZONES.forEach(z => {
+      const zb = currentStats.zoneBreakdown[z.id];
+      const zRate = zb.total ? Math.round((zb.ok / zb.total) * 100) : 0;
+      html += `
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+            <span style="font-weight:600;color:#211E1A;">${z.nom}</span>
+            <strong style="color:${zRate>=90?'#2B6E68':'#B23A34'};">${zRate}% (${zb.ok}/${zb.total})</strong>
+          </div>
+          <div style="background:#E7E1D6;height:8px;border-radius:4px;overflow:hidden;">
+            <div style="background:${zRate>=90?'#2B6E68':'#B23A34'};width:${zRate}%;height:100%;"></div>
+          </div>
+        </div>
+      `;
+    });
+
     html += `
-      <div style="margin-bottom:10px;">
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
-          <span>${z.nom}</span>
-          <strong>${pct}% (${zs.ok}/${zs.total})</strong>
-        </div>
-        <div style="background:#E7E1D6;height:8px;border-radius:4px;overflow:hidden;">
-          <div style="background:#2B6E68;width:${pct}%;height:100%;"></div>
-        </div>
+      </div>
+
+      <!-- TOP ÉCARTS & POINTS NOIRS -->
+      <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;">
+        <div style="font-weight:700;font-size:13px;color:#B23A34;margin-bottom:10px;">⚠️ Top Points de Vigilance (Écarts récurrents)</div>
+        ${topEcarts.length > 0 ? topEcarts.map(te => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #E7E1D6;font-size:12px;">
+            <span style="color:#211E1A;font-weight:500;">${te.label}</span>
+            <span style="background:#FEF2F2;color:#B23A34;font-weight:700;padding:2px 8px;border-radius:4px;font-size:11px;border:1px solid #B23A34;">${te.count} écart(s)</span>
+          </div>
+        `).join('') : '<div style="font-size:12px;color:#2B6E68;font-weight:600;">Aucun écart récurrent sur cette période ! 🎉</div>'}
       </div>
     `;
-  });
 
-  document.getElementById('statsContent').innerHTML = html;
+    document.getElementById('statsDashboard').innerHTML = html;
+  };
+
+  contextSelect.onchange = updateStatsUI;
+  updateStatsUI();
 }
 
 /* =========================================================================
