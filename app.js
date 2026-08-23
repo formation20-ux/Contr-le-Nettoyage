@@ -70,6 +70,96 @@ window.addEventListener('keydown', (e) => {
 });
 
 /* =========================================================================
+   MOTEUR DE TRADUCTION MULTILINGUE (i18n)
+   ========================================================================= */
+const TRANSLATIONS = {
+  en: {
+    'Zones de Prestation': 'Service Areas',
+    '📜 Historique': '📜 History',
+    '📊 Dashboard': '📊 Dashboard',
+    '📄 Rapport PDF': '📄 PDF Report',
+    '✉️ Envois Mails': '✉️ Email Schedule',
+    '📅 Gestion des Tâches': '📅 Task Management',
+    '👤 Gestion des Utilisateurs': '👤 User Management',
+    'Déconnexion': 'Logout',
+    '✓ Complété': '✓ Completed',
+    'restant(s)': 'remaining',
+    'tâche': 'task',
+    'tâches': 'tasks',
+    'au planning': 'scheduled',
+    '← Retour aux zones': '← Back to areas',
+    'Photo obligatoire pour activer la réponse :': 'Photo required to enable answer:',
+    'Tes photos contrôleur (exigée si passage en NOK) :': 'Inspector photos (required if set to NOK):',
+    'Terminer et Retourner aux Zones': 'Finish & Return to Areas',
+    'Enregistré': 'Saved',
+    'Photo supprimée': 'Photo deleted',
+    'Photo ajoutée': 'Photo added',
+    'Non réalisé avant 10h': 'Not completed before 10 AM',
+    'Équipe': 'Team',
+    'Contrôleur': 'Inspector',
+    'Session expirée suite à 3 min d’inactivité': 'Session expired due to 3 min inactivity'
+  },
+  es: {
+    'Zones de Prestation': 'Áreas de Servicio',
+    '📜 Historique': '📜 Historial',
+    '📊 Dashboard': '📊 Panel',
+    '📄 Rapport PDF': '📄 Informe PDF',
+    '✉️ Envois Mails': '✉️ Envíos Correo',
+    '📅 Gestion des Tâches': '📅 Gestión de Tareas',
+    '👤 Gestion des Utilisateurs': '👤 Gestión de Usuarios',
+    'Déconnexion': 'Cerrar sesión',
+    '✓ Complété': '✓ Completado',
+    'restant(s)': 'restante(s)',
+    'tâche': 'tarea',
+    'tâches': 'tareas',
+    'au planning': 'programada(s)',
+    '← Retour aux zones': '← Volver a las áreas',
+    'Photo obligatoire pour activer la réponse :': 'Foto obligatoria para responder:',
+    'Tes photos contrôleur (exigée si passage en NOK) :': 'Fotos de inspector (obligatoria si NOK):',
+    'Terminer et Retourner aux Zones': 'Finalizar y Volver',
+    'Enregistré': 'Guardado',
+    'Photo supprimée': 'Foto eliminada',
+    'Photo ajoutée': 'Foto añadida',
+    'Non réalisé avant 10h': 'No realizado antes de las 10h',
+    'Équipe': 'Equipo',
+    'Contrôleur': 'Inspector',
+    'Session expirée suite à 3 min d’inactivité': 'Sesión expirada por 3 min de inactividad'
+  },
+  ar: {
+    'Zones de Prestation': 'مناطق الخدمة',
+    '📜 Historique': '📜 السجل',
+    '📊 Dashboard': '📊 لوحة التحكم',
+    '📄 Rapport PDF': '📄 تقرير PDF',
+    '✉️ Envois Mails': '✉️ إرسال البريد',
+    '📅 Gestion des Tâches': '📅 إدارة المهام',
+    '👤 Gestion des Utilisateurs': '👤 إدارة المستخدمين',
+    'Déconnexion': 'تسجيل الخروج',
+    '✓ Complété': '✓ مكتمل',
+    'restant(s)': 'متبقي',
+    'tâche': 'مهمة',
+    'tâches': 'مهام',
+    'au planning': 'في الجدول',
+    '← Retour aux zones': '← العودة للمناطق',
+    'Photo obligatoire pour activer la réponse :': 'الصورة إجبارية للتفعيل:',
+    'Tes photos contrôleur (exigée si passage en NOK) :': 'صور المراقب (مطلوبة عند الرفض):',
+    'Terminer et Retourner aux Zones': 'إنهاء والعودة',
+    'Enregistré': 'تم الحفظ',
+    'Photo supprimée': 'تم حذف الصورة',
+    'Photo ajoutée': 'تمت إضافة الصورة',
+    'Non réalisé avant 10h': 'لم يتم قبل 10 صباحًا',
+    'Équipe': 'الفريق',
+    'Contrôleur': 'المراقب',
+    'Session expirée suite à 3 min d’inactivité': 'انتهت الجلسة لعدم النشاط'
+  }
+};
+
+function t(text){
+  const lang = (session && session.lang) ? session.lang : 'fr';
+  if(lang === 'fr' || !TRANSLATIONS[lang]) return text;
+  return TRANSLATIONS[lang][text] || text;
+}
+
+/* =========================================================================
    CONFIGURATION EMAILJS
    ========================================================================= */
 const EMAILJS_CONFIG = {
@@ -189,7 +279,6 @@ const DEFAULT_POINTS = {
   ]
 };
 
-// Dictionnaire de correspondance pour rattraper les anciens IDs de sauvegarde
 const LEGACY_TASKS_MAP = {
   'cui_sol': 'Nettoyage des sols cuisine',
   'cui_plans': 'Nettoyage des plans de travail',
@@ -382,7 +471,7 @@ function resetInactivityTimer(){
     inactivityTimer = setTimeout(() => {
       session = null;
       currentPin = '';
-      toast('Session expirée suite à 3 min d’inactivité');
+      toast(t('Session expirée suite à 3 min d’inactivité'));
       renderLogin();
     }, INACTIVITY_TIMEOUT);
   }
@@ -415,12 +504,12 @@ function fmtDate(iso){ return iso.split('-').reverse().join('/'); }
 function uid(prefix){ return (prefix||'id')+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,8); }
 
 function toast(msg){
-  let t = document.getElementById('toastEl');
-  if(!t){ t=document.createElement('div'); t.id='toastEl'; t.className='toast'; document.body.appendChild(t); }
-  t.textContent = msg;
-  t.classList.add('show');
+  let tEl = document.getElementById('toastEl');
+  if(!tEl){ tEl=document.createElement('div'); tEl.id='toastEl'; tEl.className='toast'; document.body.appendChild(tEl); }
+  tEl.textContent = msg;
+  tEl.classList.add('show');
   clearTimeout(window.__toastTimer);
-  window.__toastTimer = setTimeout(()=>t.classList.remove('show'), 3500);
+  window.__toastTimer = setTimeout(()=>tEl.classList.remove('show'), 3500);
 }
 
 function openPhotoViewer(src, title){
@@ -530,7 +619,7 @@ function renderPinPad(){
         secretTapCount = 0;
         const codeInput = prompt("Saisissez le code d'accès administrateur :");
         if(codeInput === "2105"){
-          session = { role: 'controleur', agentId: 'admin_temp', nom: 'Admin Secours' };
+          session = { role: 'controleur', agentId: 'admin_temp', nom: 'Admin Secours', lang: 'fr' };
           resetInactivityTimer();
           goToZones();
         } else if(codeInput !== null){
@@ -563,7 +652,7 @@ async function checkPin(){
   }
 
   if(match){
-    session = { role:pendingRole, agentId:match.id, nom:match.nom };
+    session = { role:pendingRole, agentId:match.id, nom:match.nom, lang: match.lang || 'fr' };
     currentPin='';
     resetInactivityTimer();
     goToZones();
@@ -581,31 +670,32 @@ async function goToZones(){ activeZoneId=null; await renderZones(); }
 async function renderZones(){
   resetInactivityTimer();
   const date = todayISO();
-  const roleLabel = session.role==='agent' ? `Équipe · ${session.nom}` : `Contrôleur · ${session.nom}`;
+  const roleTitle = session.role==='agent' ? t('Équipe') : t('Contrôleur');
+  const roleLabel = `${roleTitle} · ${session.nom}`;
 
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml(roleLabel, fmtDate(date))}
       <div class="section">
-        <div class="section-title">Zones de Prestation</div>
+        <div class="section-title">${t('Zones de Prestation')}</div>
         <div class="zone-grid" id="zoneGrid"></div>
       </div>
       
       <div style="display:flex;gap:10px;margin-bottom:12px;">
-        <button class="btn ghost block" id="historyBtn" style="flex:1;">📜 Historique</button>
-        <button class="btn ghost block" id="statsBtn" style="flex:1;">📊 Dashboard</button>
+        <button class="btn ghost block" id="historyBtn" style="flex:1;">${t('📜 Historique')}</button>
+        <button class="btn ghost block" id="statsBtn" style="flex:1;">${t('📊 Dashboard')}</button>
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:15px;">
-        <button class="btn ghost block" id="globalPdfBtn" style="flex:1;border-color:#C7791B;color:#C7791B;">📄 Rapport PDF</button>
-        <button class="btn ghost block" id="mailScheduleBtn" style="flex:1;border-color:#2B6E68;color:#2B6E68;">✉️ Envois Mails</button>
+        <button class="btn ghost block" id="globalPdfBtn" style="flex:1;border-color:#C7791B;color:#C7791B;">${t('📄 Rapport PDF')}</button>
+        <button class="btn ghost block" id="mailScheduleBtn" style="flex:1;border-color:#2B6E68;color:#2B6E68;">${t('✉️ Envois Mails')}</button>
       </div>
 
       ${session.role==='controleur' ? `
-        <button class="btn amber block" id="adminTasksBtn" style="margin-bottom:10px;">📅 Gestion des Tâches</button>
-        <button class="btn amber block" id="adminUsersBtn" style="margin-bottom:10px;">👤 Gestion des Utilisateurs</button>
+        <button class="btn amber block" id="adminTasksBtn" style="margin-bottom:10px;">${t('📅 Gestion des Tâches')}</button>
+        <button class="btn amber block" id="adminUsersBtn" style="margin-bottom:10px;">${t('👤 Gestion des Utilisateurs')}</button>
       ` : ''}
-      <button class="btn ghost block" id="logoutBtn">Déconnexion</button>
+      <button class="btn ghost block" id="logoutBtn">${t('Déconnexion')}</button>
     </div>
   `;
 
@@ -634,17 +724,17 @@ async function renderZones(){
         });
       }
 
-      const badgeText = remaining === 0 ? '✓ Complété' : `${remaining} restant(s)`;
+      const badgeText = remaining === 0 ? t('✓ Complété') : `${remaining} ${t('restant(s)')}`;
       const badgeBg = remaining === 0 ? '#2B6E68' : '#C7791B';
 
       const nbTasks = activePoints.length;
-      const taskLabelPlural = nbTasks <= 1 ? 'tâche' : 'tâches';
+      const taskLabelPlural = nbTasks <= 1 ? t('tâche') : t('tâches');
 
       html += `
         <div class="zone-card" data-zone="${z.id}" style="cursor:pointer;">
           <div>
             <div class="zone-name">${z.nom}</div>
-            <div class="zone-meta">${nbTasks} ${taskLabelPlural} au planning</div>
+            <div class="zone-meta">${nbTasks} ${taskLabelPlural} ${t('au planning')}</div>
           </div>
           <span class="zone-badge" style="background:${badgeBg};color:#fff;font-weight:700;padding:4px 8px;border-radius:6px;font-size:11px;">${badgeText}</span>
         </div>
@@ -818,7 +908,7 @@ async function renderMailScheduleAdmin(){
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml('Programmation Mails', 'Rapports Automatiques')}
-      <div class="back-link" id="backBtn">← Retour aux zones</div>
+      <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section" style="padding:16px;">
         <div class="section-note">Inscrivez les adresses destinataires et définissez l'heure quotidienne d'envoi du PDF.</div>
 
@@ -942,7 +1032,7 @@ async function renderControle(){
     if(!isContreVisite){
       if(currentHour >= 10){
         if(!currentBranch.reponses[p.id]){
-          currentBranch.reponses[p.id] = { conforme: false, photos:[], commentaire:'Non réalisé avant 10h' };
+          currentBranch.reponses[p.id] = { conforme: false, photos:[], commentaire: t('Non réalisé avant 10h') };
         } else if(!currentBranch.reponses[p.id].photos || currentBranch.reponses[p.id].photos.length === 0){
           currentBranch.reponses[p.id].conforme = false;
         }
@@ -960,10 +1050,10 @@ async function renderControle(){
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml(zone.nom, isContreVisite ? 'Contre-visite Contrôleur' : 'Réalisation Prestation')}
-      <div class="back-link" id="backBtn">← Retour aux zones</div>
+      <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section">
         <div id="pointsList"></div>
-        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">Terminer et Retourner aux Zones</button>
+        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">${t('Terminer et Retourner aux Zones')}</button>
       </div>
     </div>
   `;
@@ -1030,7 +1120,7 @@ async function renderControle(){
           ` : ''}
 
           <div style="font-size:11px;color:#6B655C;margin-top:8px;">
-            ${isContreVisite ? 'Tes photos contrôleur (exigée si passage en NOK) :' : 'Photo obligatoire pour activer la réponse :'}
+            ${isContreVisite ? t('Tes photos contrôleur (exigée si passage en NOK) :') : t('Photo obligatoire pour activer la réponse :')}
           </div>
           <div class="point-photo-row" id="photos_${p.id}" style="display:flex;align-items:center;overflow-x:auto;margin-top:4px;">
             ${renderPhotosHtml(myPhotos, true, p.id)}
@@ -1057,7 +1147,7 @@ async function renderControle(){
         if(currentBranch.reponses[pId] && currentBranch.reponses[pId].photos){
           currentBranch.reponses[pId].photos.splice(idx, 1);
           await triggerAutoSave();
-          toast('Photo supprimée');
+          toast(t('Photo supprimée'));
           refreshPointsListUI();
         }
       };
@@ -1086,7 +1176,7 @@ async function renderControle(){
           btn.classList.add('active');
           
           await triggerAutoSave();
-          toast('Enregistré');
+          toast(t('Enregistré'));
         };
       });
 
@@ -1098,7 +1188,7 @@ async function renderControle(){
         r.photos.push(dataUrl);
 
         await triggerAutoSave();
-        toast('Photo ajoutée');
+        toast(t('Photo ajoutée'));
         refreshPointsListUI();
       };
 
@@ -1128,7 +1218,7 @@ async function renderHistory(){
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml('Historique des Prestations', 'Consultation Archives')}
-      <div class="back-link" id="backBtn">← Retour aux zones</div>
+      <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section" style="padding:16px;">
         <div class="field" style="margin-bottom:15px;">
           <label style="font-weight:600;font-size:13px;color:#211E1A;display:block;margin-bottom:6px;">Sélectionner une date d'archive :</label>
@@ -1298,7 +1388,7 @@ async function renderStats(){
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml('Suivi des Anomalies (NOK)', 'Tableau de Bord')}
-      <div class="back-link" id="backBtn">← Retour aux zones</div>
+      <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section" style="padding:16px;">
         <div class="field" style="margin-bottom:15px;">
           <label style="font-weight:600;font-size:13px;color:#211E1A;display:block;margin-bottom:6px;">Contexte de comparaison :</label>
@@ -1381,17 +1471,14 @@ async function renderStats(){
     let topNokItems = Object.keys(currentStats.itemNokMap).map(id => {
       let label = id;
       
-      // 1. Recherche dans le dictionnaire de correspondance historique
       if(LEGACY_TASKS_MAP[id]){
         label = LEGACY_TASKS_MAP[id];
       } else {
-        // 2. Recherche dans le référentiel par défaut
         Object.keys(DEFAULT_POINTS).forEach(zk => {
           const found = DEFAULT_POINTS[zk].find(pt => pt.id === id);
           if(found && found.label) label = found.label;
         });
 
-        // 3. Recherche dans les tâches créées dynamiquement
         const dynFound = dynamicTasks.find(dt => dt.taskId === id || dt.id === id);
         if(dynFound && dynFound.label) label = dynFound.label;
       }
@@ -1881,7 +1968,7 @@ async function renderTaskAdmin(){
 }
 
 /* =========================================================================
-   ADMINISTRATION UTILISATEURS
+   ADMINISTRATION UTILISATEURS (AVEC CHOIX DE LA LANGUE D'INTERFACE)
    ========================================================================= */
 async function renderAgentsAdmin(){
   resetInactivityTimer();
@@ -1921,11 +2008,14 @@ function refreshAgentsList(agents){
     el.innerHTML = '<div class="section-note">Aucun profil enregistré. Créez votre premier compte ci-dessous.</div>';
     return;
   }
+  
+  const langNames = { fr: '🇫🇷 Français', en: '🇬🇧 English', es: '🇪🇸 Español', ar: '🇸🇦 العربية' };
+
   el.innerHTML = agents.map(a=>`
     <div class="agent-row" style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #E7E1D6;">
       <div>
         <div class="agent-name" style="font-weight:600;">${a.nom} ${a.role==='controleur'?'<span class="badge-role">Contrôleur</span>':''}</div>
-        <div class="agent-meta" style="font-size:12px;color:#6B655C;">Code PIN : <strong>${a.pin}</strong></div>
+        <div class="agent-meta" style="font-size:12px;color:#6B655C;">PIN : <strong>${a.pin}</strong> · Langue : <strong>${langNames[a.lang||'fr']||'Français'}</strong></div>
       </div>
       <div class="agent-actions" style="display:flex;gap:6px;">
         <button class="btn ghost small" data-edit="${a.id}">Modifier</button>
@@ -1969,6 +2059,14 @@ function openAgentModal(existing){
           <option value="controleur" ${existing && existing.role==='controleur'?'selected':''}>Contrôleur</option>
         </select>
       </div>
+      <div class="field" style="margin-top:10px;"><label>Langue de l'interface</label>
+        <select id="am_lang">
+          <option value="fr" ${!existing || existing.lang==='fr'?'selected':''}>🇫🇷 Français</option>
+          <option value="en" ${existing && existing.lang==='en'?'selected':''}>🇬🇧 English</option>
+          <option value="es" ${existing && existing.lang==='es'?'selected':''}>🇪🇸 Español</option>
+          <option value="ar" ${existing && existing.lang==='ar'?'selected':''}>🇸🇦 العربية</option>
+        </select>
+      </div>
       <div style="display:flex;gap:10px;margin-top:15px;">
         <button class="btn amber" id="am_save" style="flex:1;">Enregistrer</button>
         <button class="btn ghost" id="am_cancel" style="flex:1;">Annuler</button>
@@ -1981,10 +2079,12 @@ function openAgentModal(existing){
     const nom = document.getElementById('am_nom').value.trim();
     const pin = document.getElementById('am_pin').value.trim();
     const role = document.getElementById('am_role').value;
+    const lang = document.getElementById('am_lang').value;
+
     if(!nom || !/^\d{4}$/.test(pin)){ toast('Saisissez un nom et un PIN à 4 chiffres'); return; }
     
     const id = existing ? existing.id : uid('agent');
-    const agentData = { id, nom, pin, role, actif:true };
+    const agentData = { id, nom, pin, role, lang, actif:true };
     
     await pushToCloud('agents', id, agentData);
     backdrop.remove();
