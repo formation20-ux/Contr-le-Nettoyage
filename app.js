@@ -673,17 +673,20 @@ async function renderControle(){
 /* =========================================================================
    ÉCRAN HISTORIQUE
    ========================================================================= */
+/* =========================================================================
+   ÉCRAN HISTORIQUE (DESIGN CARTE ÉLÉGANT & DÉTAILLÉ)
+   ========================================================================= */
 async function renderHistory(){
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml('Historique des Prestations', 'Consultation Archives')}
       <div class="back-link" id="backBtn">← Retour aux zones</div>
-      <div class="section">
-        <div class="field">
-          <label>Sélectionner une date d'archive :</label>
-          <input type="date" id="histDateSelect" value="${todayISO()}">
+      <div class="section" style="padding:16px;">
+        <div class="field" style="margin-bottom:15px;">
+          <label style="font-weight:600;font-size:13px;color:#211E1A;display:block;margin-bottom:6px;">Sélectionner une date d'archive :</label>
+          <input type="date" id="histDateSelect" value="${todayISO()}" style="width:100%;padding:10px;border-radius:8px;border:1px solid #E7E1D6;font-size:14px;background:#fff;">
         </div>
-        <div id="histContent" style="margin-top:15px;">Chargement…</div>
+        <div id="histContent">Chargement…</div>
       </div>
     </div>
   `;
@@ -709,41 +712,83 @@ async function renderHistory(){
       if(c){
         const eq = c.passageEquipe || {};
         const cv = c.contreVisite || {};
+        
         html += `
-          <div style="border:1px solid #E7E1D6;padding:12px;border-radius:10px;margin-bottom:12px;background:#fff;">
-            <div style="font-weight:600;color:#C7791B;font-size:15px;">ZONE : ${z.nom}</div>
-            <div style="font-size:11px;color:#6B655C;margin-bottom:8px;">
-              Équipe : ${eq.agentNom||'N/A'} (${eq.heure||'--:--'}) | Contrôleur : ${cv.controleurNom||'N/A'} (${cv.heure||'--:--'})
+          <div style="border:1px solid #E7E1D6;border-radius:12px;margin-bottom:20px;background:#fff;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+            <div style="background:#211E1A;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+              <div style="font-weight:700;font-size:15px;color:#F3E2C6;">ZONE : ${z.nom.toUpperCase()}</div>
+              <div style="font-size:11px;color:#E7E1D6;">${fmtDate(selectedDate)}</div>
             </div>
+            
+            <div style="background:#FAF8F3;padding:10px 16px;border-bottom:1px solid #E7E1D6;font-size:12px;color:#6B655C;display:flex;gap:15px;">
+              <div>👥 <strong>Équipe :</strong> ${eq.agentNom||'N/A'} <small>(${eq.heure||'--:--'})</small></div>
+              <div>🕵️ <strong>Contrôleur :</strong> ${cv.controleurNom||'N/A'} <small>(${cv.heure||'--:--'})</small></div>
+            </div>
+
+            <div style="padding:12px;">
         `;
 
         const activePoints = await getPointsForToday(z.id, selectedDate);
+        
         activePoints.forEach(p => {
           const rEq = (eq.reponses && eq.reponses[p.id]) || {};
           const rCv = (cv.reponses && cv.reponses[p.id]) || {};
-          const allPhotos = [...(rEq.photos||[]), ...(rCv.photos||[])];
+          
+          const eqPhotos = rEq.photos || [];
+          const cvPhotos = rCv.photos || [];
 
-          const eqOk = rEq.conforme === true && rEq.photos && rEq.photos.length > 0;
-          const cvOk = rCv.conforme !== false;
+          const eqOk = (eqPhotos.length > 0 && rEq.conforme !== false);
+          const cvOk = (rCv.conforme !== false);
+
+          const isEcart = (eqOk !== cvOk);
 
           html += `
-            <div style="padding:6px 0;border-top:1px dashed #E7E1D6;font-size:12px;">
-              <div><strong>${p.label}</strong> -> Équipe: [${eqOk?'OK':'NOK'}] | Ctrl: [${cvOk?'OK':'NOK'}]</div>
-              ${rEq.commentaire ? `<div style="font-size:11px;color:#6B655C;">• Obs. Équipe (${rEq.agentNom||'Agent'}) : ${rEq.commentaire}</div>` : ''}
-              ${rCv.commentaire ? `<div style="font-size:11px;color:#C7791B;">• Obs. Contrôleur (${rCv.controleurNom||'Ctrl'}) : ${rCv.commentaire}</div>` : ''}
-              ${allPhotos.length ? `
-                <div style="display:flex;gap:6px;margin-top:4px;overflow-x:auto;">
-                  ${allPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="${p.label}" style="width:45px;height:45px;object-fit:cover;border-radius:4px;cursor:pointer;">`).join('')}
+            <div style="border:1px solid ${isEcart?'#B23A34':'#E7E1D6'};background:${isEcart?'#FEF2F2':'#FAF8F3'};padding:12px;border-radius:8px;margin-bottom:10px;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
+                <div style="font-weight:600;font-size:13px;color:#211E1A;flex:1;">${p.label}</div>
+                ${isEcart ? `<span style="background:#B23A34;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap;">ÉCART</span>` : ''}
+              </div>
+
+              <!-- Badges de Statuts -->
+              <div style="display:flex;gap:8px;margin-bottom:8px;">
+                <span style="font-size:11px;padding:3px 8px;border-radius:6px;font-weight:600;background:${eqOk?'#DCEEEC':'#F6DEDC'};color:${eqOk?'#2B6E68':'#B23A34'};">
+                  Équipe: ${eqOk?'✓ OK':'✕ NOK'}
+                </span>
+                <span style="font-size:11px;padding:3px 8px;border-radius:6px;font-weight:600;background:${cvOk?'#DCEEEC':'#F6DEDC'};color:${cvOk?'#2B6E68':'#B23A34'};">
+                  Contrôleur: ${cvOk?'✓ OK':'✕ NOK'}
+                </span>
+              </div>
+
+              <!-- Remarques -->
+              ${rEq.commentaire ? `<div style="font-size:11px;color:#6B655C;margin-top:4px;">💬 <em>Obs. Équipe (${rEq.agentNom||'Agent'}) :</em> ${rEq.commentaire}</div>` : ''}
+              ${rCv.commentaire ? `<div style="font-size:11px;color:#C7791B;margin-top:4px;">💬 <em>Obs. Contrôleur (${rCv.controleurNom||'Ctrl'}) :</em> ${rCv.commentaire}</div>` : ''}
+
+              <!-- Galerie Photos -->
+              ${(eqPhotos.length || cvPhotos.length) ? `
+                <div style="display:flex;gap:8px;margin-top:10px;overflow-x:auto;padding-bottom:4px;">
+                  ${eqPhotos.map(pSrc => `
+                    <div style="position:relative;flex-shrink:0;">
+                      <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe - ${p.label}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
+                      <span style="position:absolute;bottom:2px;left:2px;background:#2B6E68;color:#fff;font-size:7px;padding:1px 3px;border-radius:2px;font-weight:bold;">ÉQUIPE</span>
+                    </div>
+                  `).join('')}
+
+                  ${cvPhotos.map(pSrc => `
+                    <div style="position:relative;flex-shrink:0;">
+                      <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Contrôleur - ${p.label}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
+                      <span style="position:absolute;bottom:2px;left:2px;background:#C7791B;color:#fff;font-size:7px;padding:1px 3px;border-radius:2px;font-weight:bold;">CTRL</span>
+                    </div>
+                  `).join('')}
                 </div>
               ` : ''}
             </div>
           `;
         });
-        html += `</div>`;
+        html += `</div></div>`;
       }
     }
 
-    content.innerHTML = html || '<div class="section-note">Aucun rapport enregistré pour cette date.</div>';
+    content.innerHTML = html || '<div class="section-note" style="text-align:center;padding:20px;">Aucun rapport enregistré pour cette date.</div>';
     
     content.querySelectorAll('.click-zoom').forEach(img => {
       img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
@@ -753,7 +798,6 @@ async function renderHistory(){
   dateInput.onchange = (e) => loadHistoryDate(e.target.value);
   loadHistoryDate(todayISO());
 }
-
 /* =========================================================================
    ÉCRAN STATISTIQUES
    ========================================================================= */
