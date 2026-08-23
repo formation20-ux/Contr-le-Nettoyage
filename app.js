@@ -200,21 +200,18 @@ async function syncPendingQueue(){
 window.addEventListener('online', syncPendingQueue);
 
 /* =========================================================================
-   RÉCUPÉRATION DYNAMIQUE DE TOUTES LES TÂCHES (DEFAULT + CLOUD)
+   RÉCUPÉRATION DYNAMIQUE DES TÂCHES
    ========================================================================= */
 async function getAllTasksMap(){
   let tasksMap = JSON.parse(JSON.stringify(DEFAULT_POINTS));
   
-  // Appliquer les surcharges / ajouts du stockage local
   const localTasks = await idbGetAll('task_schedule');
   localTasks.forEach(item => {
     if(item.deleted) {
-      // Tâche supprimée
       if(tasksMap[item.zoneId]) {
         tasksMap[item.zoneId] = tasksMap[item.zoneId].filter(p => p.id !== item.taskId);
       }
     } else {
-      // Mise à jour ou ajout
       const zId = item.zoneId || 'lobby';
       if(!tasksMap[zId]) tasksMap[zId] = [];
       const existingIdx = tasksMap[zId].findIndex(p => p.id === item.taskId);
@@ -548,7 +545,7 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE
+   SAISIE CONTRÔLE / PRESTATION ZONE (ENREGISTREMENT AUTOMATIQUE INSTANTANÉ)
    ========================================================================= */
 async function renderControle(){
   const date = todayISO();
@@ -584,12 +581,23 @@ async function renderControle(){
       <div class="back-link" id="backBtn">← Retour aux zones</div>
       <div class="section">
         <div id="pointsList"></div>
-        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">Enregistrer la zone</button>
+        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">Terminer et Retourner aux Zones</button>
       </div>
     </div>
   `;
 
   document.getElementById('backBtn').onclick = goToZones;
+
+  // Moteur de sauvegarde instantanée en arrière-plan
+  const triggerAutoSave = async () => {
+    const currentTime = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+    currentBranch.heure = currentTime;
+    
+    if(isContreVisite) currentBranch.controleurNom = session.nom;
+    else currentBranch.agentNom = session.nom;
+
+    await pushToCloud('controles', c.id, c);
+  };
 
   const renderPhotosHtml = (photos, isMine, pId) => {
     return photos.map((pSrc, idx) => `
@@ -661,13 +669,16 @@ async function renderControle(){
       img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
     });
 
+    // Suppression de photo -> Sauvegarde instantanée
     listEl.querySelectorAll('.del-photo-btn').forEach(btn => {
-      btn.onclick = (e) => {
+      btn.onclick = async (e) => {
         e.stopPropagation();
         const pId = btn.dataset.point;
         const idx = parseInt(btn.dataset.idx);
         if(currentBranch.reponses[pId] && currentBranch.reponses[pId].photos){
           currentBranch.reponses[pId].photos.splice(idx, 1);
+          await triggerAutoSave();
+          toast('Photo supprimée et sauvegardée');
           refreshPointsListUI();
         }
       };
@@ -680,8 +691,9 @@ async function renderControle(){
       }
       const r = currentBranch.reponses[pId];
 
+      // Clic OK / NOK -> Sauvegarde instantanée
       item.querySelectorAll('.toggle-btn').forEach(btn=>{
-        btn.onclick = (e)=>{
+        btn.onclick = async (e)=>{
           if(btn.hasAttribute('disabled')){
             if(!isContreVisite){
               toast('📷 Dépose au moins une photo pour déverrouiller cet item');
@@ -694,20 +706,36 @@ async function renderControle(){
           r.conforme = btn.dataset.val==='true';
           item.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active'));
           btn.classList.add('active');
+          
+          await triggerAutoSave();
+          toast('Modifications enregistrées');
         };
       });
 
+      // Dépose de photo -> Sauvegarde instantanée
       const fileInput = item.querySelector('[data-photo-input]');
       fileInput.onchange = async ()=>{
         if(!fileInput.files.length) return;
         const dataUrl = await fileToResizedBase64(fileInput.files[0], 600);
         r.photos = r.photos || [];
         r.photos.push(dataUrl);
+
+        if(!isContreVisite && r.conforme === null){
+          r.conforme = true; // Valide OK par défaut dès la première photo déposée
+        }
+
+        await triggerAutoSave();
+        toast('Photo ajoutée et sauvegardée');
         refreshPointsListUI();
       };
 
+      // Saisie commentaire avec temporisation -> Sauvegarde instantanée
       item.querySelector('.point-comment').oninput = (e)=>{
         r.commentaire = e.target.value;
+        clearTimeout(item.__commentTimer);
+        item.__commentTimer = setTimeout(async ()=>{
+          await triggerAutoSave();
+        }, 800);
       };
     });
   };
@@ -715,45 +743,8 @@ async function renderControle(){
   refreshPointsListUI();
 
   document.getElementById('saveBtn').onclick = async ()=>{
-    const currentTime = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
-    
-    if(!isContreVisite){
-      for(const p of activePoints){
-        const r = currentBranch.reponses[p.id];
-        if(!r || !r.photos || r.photos.length === 0){
-          r.conforme = false; 
-        }
-        r.agentNom = session.nom;
-        r.heure = currentTime;
-      }
-    } else {
-      for(const p of activePoints){
-        const eqR = equipeReponses[p.id] || {};
-        const cvR = currentBranch.reponses[p.id] || {};
-        
-        const eqWasOk = (eqR.conforme === true && eqR.photos && eqR.photos.length > 0);
-        const cvIsNok = (cvR.conforme === false);
-
-        if(eqWasOk && cvIsNok && (!cvR.photos || cvR.photos.length === 0)){
-          toast(`Photo contrôleur obligatoire pour passer "${p.label}" en NOK !`);
-          return;
-        }
-
-        if(!currentBranch.reponses[p.id] || currentBranch.reponses[p.id].conforme === null){
-          currentBranch.reponses[p.id] = currentBranch.reponses[p.id] || { photos:[], commentaire:'' };
-          currentBranch.reponses[p.id].conforme = true;
-        }
-        currentBranch.reponses[p.id].controleurNom = session.nom;
-        currentBranch.reponses[p.id].heure = currentTime;
-      }
-    }
-
-    currentBranch.heure = currentTime;
-    if(isContreVisite) currentBranch.controleurNom = session.nom;
-    else currentBranch.agentNom = session.nom;
-
-    const synced = await pushToCloud('controles', c.id, c);
-    toast(synced ? 'Zone sauvegardée et synchronisée !' : 'Sauvegardé en local');
+    await triggerAutoSave();
+    toast('Zone complètement enregistrée !');
     goToZones();
   };
 }
@@ -1042,7 +1033,7 @@ async function renderStats(){
 
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
         <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:12px;">📊 Analyse Comparative de Conformité</div>
-        <div style="display:flex;align-items:flex-end;justify-content:space-around;height:120px;border-bottom:2px solid #E7E1D6;padding-bottom:5px;">
+        <div style="display:flex;align-items:flex-end;justify-style:space-around;height:120px;border-bottom:2px solid #E7E1D6;padding-bottom:5px;">
           <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
             <span style="font-size:11px;font-weight:700;color:#2B6E68;margin-bottom:4px;">${currentStats.rate}%</span>
             <div style="width:100%;max-width:50px;background:#2B6E68;height:${Math.max(10, currentStats.rate)}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
@@ -1326,7 +1317,7 @@ async function generateGlobalPDF(){
 }
 
 /* =========================================================================
-   ADMINISTRATION DU PLANNING & DE L'ÉDITION DES TÂCHES (CRUD COMPLET)
+   ADMINISTRATION DU PLANNING & DE L'ÉDITION DES TÂCHES
    ========================================================================= */
 async function renderTaskAdmin(){
   const allMap = await getAllTasksMap();
@@ -1403,7 +1394,6 @@ async function renderTaskAdmin(){
 
   document.getElementById('backBtn').onclick = goToZones;
 
-  // Gestion du basculement Quotidien / Hebdo / Mensuel
   document.querySelectorAll('.freq-select').forEach(sel => {
     sel.onchange = () => {
       const taskId = sel.dataset.task;
@@ -1426,7 +1416,6 @@ async function renderTaskAdmin(){
     };
   });
 
-  // Ajouter une tâche
   document.querySelectorAll('.add-task-btn').forEach(btn => {
     btn.onclick = async () => {
       const zoneId = btn.dataset.zone;
@@ -1449,7 +1438,6 @@ async function renderTaskAdmin(){
     };
   });
 
-  // Supprimer une tâche
   document.querySelectorAll('.delete-task-btn').forEach(btn => {
     btn.onclick = async () => {
       if(!confirm("Supprimer définitivement cette tâche ?")) return;
@@ -1468,7 +1456,6 @@ async function renderTaskAdmin(){
     };
   });
 
-  // Sauvegarder les modifications de texte et de fréquence
   document.getElementById('saveTasksBtn').onclick = async ()=>{
     const cards = document.querySelectorAll('.task-admin-card');
     for(const card of cards){
