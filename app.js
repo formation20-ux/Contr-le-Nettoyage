@@ -593,7 +593,10 @@ async function renderZones(){
   document.getElementById('historyBtn').onclick = () => renderHistory();
   document.getElementById('statsBtn').onclick = () => renderStats();
   document.getElementById('globalPdfBtn').onclick = () => generateGlobalPDF();
-  document.getElementById('mailScheduleBtn').onclick = () => renderMailScheduleAdmin();
+
+  const mailBtn = document.getElementById('mailScheduleBtn');
+  if(mailBtn) mailBtn.onclick = () => renderMailScheduleAdmin();
+
   document.getElementById('logoutBtn').onclick = ()=>{ session=null; clearTimeout(inactivityTimer); currentPin=''; renderLogin(); };
   
   const tasksBtn = document.getElementById('adminTasksBtn');
