@@ -2,9 +2,8 @@
 'use strict';
 
 /* =========================================================================
-   CORRECTIFS MOBILE : ANTI-ZOOM DOUBLE-TAP & ANTI-CHIFFRES BLEUS (iOS/Android)
+   CORRECTIFS MOBILE : ANTI-ZOOM DOUBLE-TAP & ANTI-CHIFFRES BLEUS
    ========================================================================= */
-// 1. Injection de la balise meta pour empêcher la détection des numéros de téléphone par Safari/Chrome
 if(!document.querySelector('meta[name="format-detection"]')){
   const metaTel = document.createElement('meta');
   metaTel.name = 'format-detection';
@@ -12,10 +11,9 @@ if(!document.querySelector('meta[name="format-detection"]')){
   document.head.appendChild(metaTel);
 }
 
-// 2. Injection du CSS de correctif tactile et couleur des touches
 const styleFix = document.createElement('style');
 styleFix.innerHTML = `
-  button, .pin-key, .role-btn {
+  button, .pin-key, .role-btn, .zone-card, .back-link {
     touch-action: manipulation !important;
     -webkit-tap-highlight-color: transparent !important;
   }
@@ -134,7 +132,7 @@ const DEFAULT_POINTS = {
 };
 
 /* =========================================================================
-   MOTEUR DE STOCKAGE HYBRIDE
+   MOTEUR DE STOCKAGE HYBRIDE (OPTIMISÉ OFFLINE-FIRST)
    ========================================================================= */
 const DB_NAME = 'soan-hybrid-db';
 const DB_VERSION = 1;
@@ -200,17 +198,11 @@ async function idbDelete(store, id){
 async function pushToCloud(collection, id, data){
   await idbPut(collection, data);
   if(navigator.onLine){
-    try {
-      await db.collection(collection).doc(id).set(data, { merge: true });
-      await idbDelete('sync_queue', `${collection}_${id}`);
-      return true;
-    } catch(e) {
-      await idbPut('sync_queue', { id: `${collection}_${id}`, collection, docId: id, data });
-      return false;
-    }
+    db.collection(collection).doc(id).set(data, { merge: true })
+      .then(() => idbDelete('sync_queue', `${collection}_${id}`))
+      .catch(() => idbPut('sync_queue', { id: `${collection}_${id}`, collection, docId: id, data }));
   } else {
     await idbPut('sync_queue', { id: `${collection}_${id}`, collection, docId: id, data });
-    return false;
   }
 }
 
@@ -228,9 +220,9 @@ async function syncPendingQueue(){
 window.addEventListener('online', syncPendingQueue);
 
 /* =========================================================================
-   RÉCUPÉRATION DYNAMIQUE DES TÂCHES
+   RÉCUPÉRATION HYBRIDE DES TÂCHES (INSTANTANÉE)
    ========================================================================= */
-async function getAllTasksMap(){
+async function getAllTasksMap(forceCloud = false){
   let tasksMap = JSON.parse(JSON.stringify(DEFAULT_POINTS));
   
   const localTasks = await idbGetAll('task_schedule');
@@ -259,35 +251,10 @@ async function getAllTasksMap(){
     }
   });
 
-  if(navigator.onLine){
-    try {
-      const snap = await db.collection('task_schedule').get();
-      snap.docs.forEach(doc => {
-        const item = doc.data();
-        idbPut('task_schedule', item);
-        
-        const zId = item.zoneId || 'lobby';
-        if(!tasksMap[zId]) tasksMap[zId] = [];
-
-        if(item.deleted){
-          tasksMap[zId] = tasksMap[zId].filter(p => p.id !== item.taskId);
-        } else {
-          const existingIdx = tasksMap[zId].findIndex(p => p.id === item.taskId);
-          const taskObj = {
-            id: item.taskId,
-            label: item.label,
-            freq: item.freq,
-            targetValue: item.targetValue
-          };
-
-          if(existingIdx >= 0){
-            tasksMap[zId][existingIdx] = Object.assign(tasksMap[zId][existingIdx], taskObj);
-          } else {
-            tasksMap[zId].push(taskObj);
-          }
-        }
-      });
-    } catch(e){}
+  if(navigator.onLine && forceCloud){
+    db.collection('task_schedule').get().then(snap => {
+      snap.docs.forEach(doc => idbPut('task_schedule', doc.data()));
+    }).catch(()=>{});
   }
 
   return tasksMap;
@@ -469,7 +436,7 @@ async function checkPin(){
 async function goToZones(){ activeZoneId=null; await renderZones(); }
 
 /* =========================================================================
-   MENU PRINCIPAL
+   MENU PRINCIPAL (AFFICHAGE INSTANTANÉ & CHARGEMENT ASYNCHRONE)
    ========================================================================= */
 async function renderZones(){
   const date = todayISO();
@@ -499,66 +466,69 @@ async function renderZones(){
   `;
 
   const grid = document.getElementById('zoneGrid');
-  let html = '';
+  const isAgent = session.role === 'agent';
 
-  for(const z of ZONES){
-    const activePoints = await getPointsForToday(z.id, date);
-    const controleId = `${date}__${z.id}`;
-    
-    let c = await idbGet('controles', controleId);
-    if(navigator.onLine && !c){
-      try {
-        const doc = await db.collection('controles').doc(controleId).get();
-        if(doc.exists) c = doc.data();
-      } catch(e){}
-    }
+  // 1. Rendu réactif ultra-rapide basé sur IndexedDB local
+  const updateGridUI = async () => {
+    let html = '';
+    for(const z of ZONES){
+      const activePoints = await getPointsForToday(z.id, date);
+      const controleId = `${date}__${z.id}`;
+      const c = await idbGet('controles', controleId);
 
-    let remaining = 0;
-    const isAgent = session.role === 'agent';
+      let remaining = 0;
+      if(isAgent){
+        const eqReponses = (c && c.passageEquipe && c.passageEquipe.reponses) || {};
+        activePoints.forEach(p => {
+          const r = eqReponses[p.id];
+          if(!r || r.conforme === null || r.conforme === undefined) remaining++;
+        });
+      } else {
+        const cvReponses = (c && c.contreVisite && c.contreVisite.reponses) || {};
+        activePoints.forEach(p => {
+          const r = cvReponses[p.id];
+          if(!r || r.conforme === undefined || r.conforme === null) remaining++;
+        });
+      }
 
-    if(isAgent){
-      const eqReponses = (c && c.passageEquipe && c.passageEquipe.reponses) || {};
-      activePoints.forEach(p => {
-        const r = eqReponses[p.id];
-        if(!r || r.conforme === null || r.conforme === undefined){
-          remaining++;
-        }
-      });
-    } else {
-      const cvReponses = (c && c.contreVisite && c.contreVisite.reponses) || {};
-      activePoints.forEach(p => {
-        const r = cvReponses[p.id];
-        if(!r || r.conforme === undefined || r.conforme === null){
-          remaining++;
-        }
-      });
-    }
+      const badgeText = remaining === 0 ? '✓ Complété' : `${remaining} restant(s)`;
+      const badgeBg = remaining === 0 ? '#2B6E68' : '#C7791B';
 
-    const badgeClass = remaining === 0 ? 'conforme' : 'a-faire';
-    const badgeText = remaining === 0 ? '✓ Complété' : `${remaining} restant(s)`;
-    const badgeBg = remaining === 0 ? '#2B6E68' : '#C7791B';
-
-    html += `
-      <div class="zone-card" data-zone="${z.id}" style="cursor:pointer;">
-        <div>
-          <div class="zone-name">${z.nom}</div>
-          <div class="zone-meta">${activePoints.length} tâche(s) au planning</div>
+      html += `
+        <div class="zone-card" data-zone="${z.id}" style="cursor:pointer;">
+          <div>
+            <div class="zone-name">${z.nom}</div>
+            <div class="zone-meta">${activePoints.length} tâche(s) au planning</div>
+          </div>
+          <span class="zone-badge" style="background:${badgeBg};color:#fff;font-weight:700;padding:4px 8px;border-radius:6px;font-size:11px;">${badgeText}</span>
         </div>
-        <span class="zone-badge ${badgeClass}" style="background:${badgeBg};color:#fff;font-weight:700;padding:4px 8px;border-radius:6px;font-size:11px;">${badgeText}</span>
-      </div>
-    `;
+      `;
+    }
+    grid.innerHTML = html;
+
+    grid.querySelectorAll('.zone-card').forEach(card=>{
+      card.onclick = ()=>{
+        activeZoneId = card.dataset.zone;
+        activeControleId = `${date}__${activeZoneId}`;
+        activeMode = isAgent ? 'equipe' : 'contreVisite';
+        renderControle();
+      };
+    });
+  };
+
+  await updateGridUI();
+
+  // 2. Synchronisation Firebase silencieuse en arrière-plan (sans geler l'UI)
+  if(navigator.onLine){
+    ZONES.forEach(z => {
+      const controleId = `${date}__${z.id}`;
+      db.collection('controles').doc(controleId).get().then(doc => {
+        if(doc.exists){
+          idbPut('controles', doc.data()).then(() => updateGridUI());
+        }
+      }).catch(()=>{});
+    });
   }
-
-  grid.innerHTML = html;
-
-  grid.querySelectorAll('.zone-card').forEach(card=>{
-    card.onclick = ()=>{
-      activeZoneId = card.dataset.zone;
-      activeControleId = `${date}__${activeZoneId}`;
-      activeMode = session.role==='agent' ? 'equipe' : 'contreVisite';
-      renderControle();
-    };
-  });
 
   document.getElementById('historyBtn').onclick = () => renderHistory();
   document.getElementById('statsBtn').onclick = () => renderStats();
@@ -586,15 +556,13 @@ async function renderControle(){
   };
 
   if(navigator.onLine){
-    try {
-      const doc = await db.collection('controles').doc(activeControleId).get();
+    db.collection('controles').doc(activeControleId).get().then(doc => {
       if(doc.exists) {
-        const cloudData = doc.data();
-        c.passageEquipe = cloudData.passageEquipe || c.passageEquipe;
-        c.contreVisite = cloudData.contreVisite || c.contreVisite;
-        await idbPut('controles', c);
+        c.passageEquipe = doc.data().passageEquipe || c.passageEquipe;
+        c.contreVisite = doc.data().contreVisite || c.contreVisite;
+        idbPut('controles', c);
       }
-    } catch(e){}
+    }).catch(()=>{});
   }
 
   const zone = ZONES.find(z=>z.id===activeZoneId);
@@ -723,7 +691,7 @@ async function renderControle(){
         if(currentBranch.reponses[pId] && currentBranch.reponses[pId].photos){
           currentBranch.reponses[pId].photos.splice(idx, 1);
           await triggerAutoSave();
-          toast('Photo supprimée et sauvegardée');
+          toast('Photo supprimée');
           refreshPointsListUI();
         }
       };
@@ -752,7 +720,7 @@ async function renderControle(){
           btn.classList.add('active');
           
           await triggerAutoSave();
-          toast('Modifications enregistrées');
+          toast('Enregistré');
         };
       });
 
@@ -764,7 +732,7 @@ async function renderControle(){
         r.photos.push(dataUrl);
 
         await triggerAutoSave();
-        toast('Photo ajoutée et sauvegardée');
+        toast('Photo ajoutée');
         refreshPointsListUI();
       };
 
@@ -782,7 +750,6 @@ async function renderControle(){
 
   document.getElementById('saveBtn').onclick = async ()=>{
     await triggerAutoSave();
-    toast('Zone complètement enregistrée !');
     goToZones();
   };
 }
@@ -1126,7 +1093,7 @@ async function renderStats(){
 }
 
 /* =========================================================================
-   GÉNÉRATION DU RAPPORT PDF GLOBAL (XXX NOK dont XX écarts)
+   GÉNÉRATION DU RAPPORT PDF GLOBAL
    ========================================================================= */
 async function generateGlobalPDF(){
   if(typeof window.jspdf === 'undefined'){ toast('Bibliothèque PDF indisponible'); return; }
@@ -1335,7 +1302,6 @@ async function generateGlobalPDF(){
     }
   }
 
-  // --- RETOUR PAGE 1 : LIENS CLIQUABLES ---
   docPdf.setPage(1);
   for(const z of ZONES){
     const info = zonePageMap[z.id];
