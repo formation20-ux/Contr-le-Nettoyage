@@ -458,7 +458,7 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE
+   SAISIE CONTRÔLE / PRESTATION ZONE (VERROUILLAGE OK SI PAS DE PHOTO)
    ========================================================================= */
 async function renderControle(){
   const date = todayISO();
@@ -504,7 +504,6 @@ async function renderControle(){
   const listEl = document.getElementById('pointsList');
   listEl.innerHTML = activePoints.map(p=>{
     const r = currentBranch.reponses[p.id] || { conforme: (isContreVisite ? true : null), photos:[], commentaire:'' };
-    
     if(isContreVisite && r.conforme === null) r.conforme = true;
 
     const myPhotos = r.photos || [];
@@ -512,6 +511,9 @@ async function renderControle(){
     const eqPhotos = isContreVisite ? (eqR.photos || []) : [];
 
     const isEquipeNok = isContreVisite && (eqR.conforme === false || !eqR.photos || eqR.photos.length === 0);
+
+    // Blocage du bouton OK pour l'équipe s'il n'y a pas de photo
+    const isOkLocked = !isContreVisite && myPhotos.length === 0;
 
     return `
       <div class="point-item" data-point="${p.id}" style="border:1px solid ${isEquipeNok?'#B23A34':'#E7E1D6'};padding:12px;border-radius:10px;margin-bottom:12px;background:${isEquipeNok?'#F6DEDC':'#fff'};">
@@ -521,7 +523,7 @@ async function renderControle(){
             ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">⚠️ ÉQUIPE : NOK</span>` : ''}
           </div>
           <div class="point-toggle" style="margin-top:6px;">
-            <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true">✓ OK</button>
+            <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" ${isOkLocked ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✓ OK</button>
             <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false">✕ NOK</button>
           </div>
         </div>
@@ -561,6 +563,10 @@ async function renderControle(){
 
     item.querySelectorAll('.toggle-btn').forEach(btn=>{
       btn.onclick = ()=>{
+        if(btn.hasAttribute('disabled')){
+          toast('Photo obligatoire pour valider en OK !');
+          return;
+        }
         r.conforme = btn.dataset.val==='true';
         item.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active'));
         btn.classList.add('active');
@@ -580,6 +586,16 @@ async function renderControle(){
       newImg.style.cssText = 'width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;';
       newImg.onclick = () => openPhotoViewer(dataUrl, `Nouvelle photo - ${pId}`);
       item.querySelector(`#photos_${pId}`).insertBefore(newImg, item.querySelector('.photo-btn'));
+
+      // Déverrouillage automatique du bouton OK à l'ajout de la photo (Équipe)
+      if(!isContreVisite){
+        const okBtn = item.querySelector('.toggle-btn.conforme');
+        if(okBtn){
+          okBtn.removeAttribute('disabled');
+          okBtn.style.opacity = '1';
+          okBtn.style.cursor = 'pointer';
+        }
+      }
     };
 
     item.querySelector('.point-comment').oninput = (e)=>{
@@ -786,7 +802,10 @@ async function renderStats(){
 }
 
 /* =========================================================================
-   GÉNÉRATION DU RAPPORT PDF GLOBAL (GESTION ACCORD NOK & FOND VERT)
+   GÉNÉRATION DU RAPPORT PDF GLOBAL
+   ========================================================================= */
+/* =========================================================================
+   GÉNÉRATION DU RAPPORT PDF GLOBAL (CORRECTION COULEURS NOK)
    ========================================================================= */
 async function generateGlobalPDF(){
   if(typeof window.jspdf === 'undefined'){ toast('Bibliothèque PDF indisponible'); return; }
@@ -797,9 +816,9 @@ async function generateGlobalPDF(){
   const C_INK = [33, 30, 26];
   const C_AMBER = [199, 121, 27];
   const C_TEAL = [43, 110, 104];
-  const C_TEAL_BG = [220, 238, 236]; // Fond vert pastel
+  const C_TEAL_BG = [220, 238, 236]; // Fond vert pastel (OK / OK)
   const C_RED = [178, 58, 52];
-  const C_RED_BG = [254, 242, 242]; // Fond rouge pastel
+  const C_RED_BG = [254, 242, 242]; // Fond rouge pastel (NOK)
   const C_BG = [250, 248, 243];
   const C_LINE = [231, 225, 214];
 
@@ -895,26 +914,25 @@ async function generateGlobalPDF(){
       const rEq = (eq.reponses && eq.reponses[p.id]) || { conforme: null, photos:[], commentaire:'' };
       const rCv = (cv.reponses && cv.reponses[p.id]) || { conforme: null, photos:[], commentaire:'' };
 
-      // Règle 1 : Équipe sans photo -> Force à NOK
+      // Règle Équipe : Sans photo -> NOK
       let eqConformeCalculated = (rEq.photos && rEq.photos.length > 0) ? (rEq.conforme !== false) : false;
 
-      // Règle 2 : Contrôleur sans mise en NOK -> OK par défaut
+      // Règle Contrôleur : Si non mis en NOK -> OK
       let cvConformeCalculated = (rCv.conforme === false) ? false : true;
 
       const isBothOk = (eqConformeCalculated === true && cvConformeCalculated === true);
-      const isBothNok = (eqConformeCalculated === false && cvConformeCalculated === false);
       const isEcart = (eqConformeCalculated !== cvConformeCalculated);
 
       if(isEcart) totalEcarts++;
 
       if(y > 250){ docPdf.addPage(); y = 20; }
 
-      // Logique de fond de l'encadré
+      // Attribution exacte des fonds de couleur
       if(isBothOk){
         docPdf.setFillColor(...C_TEAL_BG);
         docPdf.setDrawColor(...C_TEAL);
       } else {
-        // En cas de NOK (Accordé ou Écart) -> Fond rouge
+        // Tout cas contenant un NOK (Accord NOK/NOK ou Écart) -> Fond Rouge
         docPdf.setFillColor(...C_RED_BG);
         docPdf.setDrawColor(...C_RED);
       }
@@ -931,7 +949,7 @@ async function generateGlobalPDF(){
       docPdf.text(`Équipe: ${eqConformeCalculated?'OK':'NOK'}`, 125, y + 6);
       docPdf.text(`Contrôleur: ${cvConformeCalculated?'OK':'NOK'}`, 150, y + 6);
 
-      // On affiche le badge "ÉCART" SEULEMENT s'il y a désaccord
+      // Badge d'écart uniquement si désaccord
       if(isEcart){
         docPdf.setFillColor(...C_RED);
         docPdf.rect(175, y + 2, 16, 10, 'F');
