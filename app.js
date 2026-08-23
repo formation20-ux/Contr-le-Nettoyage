@@ -280,7 +280,7 @@ async function getPointsForToday(zoneId, dateIso){
 }
 
 /* =========================================================================
-   APPLICATION LOGIC & STATE
+   GESTION DE LA DÉCONNEXION AUTOMATIQUE APPRÈS 3 MINUTES D'INACTIVITÉ
    ========================================================================= */
 let session = null;
 let currentPin = '';
@@ -290,6 +290,26 @@ let activeControleId = null;
 let activeMode = 'equipe';
 let secretTapCount = 0;
 let secretTapTimer = null;
+
+let inactivityTimer = null;
+const INACTIVITY_TIMEOUT = 3 * 60 * 1000; // 3 minutes en millisecondes
+
+function resetInactivityTimer(){
+  clearTimeout(inactivityTimer);
+  if(session){
+    inactivityTimer = setTimeout(() => {
+      session = null;
+      currentPin = '';
+      toast('Session expirée suite à 3 min d’inactivité');
+      renderLogin();
+    }, INACTIVITY_TIMEOUT);
+  }
+}
+
+// Réinitialisation du timer sur toutes les interactions utilisateur
+['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'].forEach(evt => {
+  window.addEventListener(evt, resetInactivityTimer, { passive: true });
+});
 
 const root = document.getElementById('app-root');
 
@@ -357,6 +377,7 @@ function topbarHtml(title, sub){
 }
 
 function renderLogin(){
+  clearTimeout(inactivityTimer);
   syncPendingQueue();
   root.innerHTML = `
     <div id="screen-login">
@@ -401,7 +422,6 @@ function renderPinPad(){
     btn.onclick = ()=>onPinKey(btn.dataset.key);
   });
 
-  // Zone cachée à gauche de la touche 0 (5 clics = saisie du code secours 2105)
   const secretZone = document.getElementById('secretKeyZone');
   if(secretZone){
     secretZone.onclick = ()=>{
@@ -414,6 +434,7 @@ function renderPinPad(){
         const codeInput = prompt("Saisissez le code d'accès administrateur :");
         if(codeInput === "2105"){
           session = { role: 'controleur', agentId: 'admin_temp', nom: 'Admin Secours' };
+          resetInactivityTimer();
           goToZones();
         } else if(codeInput !== null){
           toast("Code administrateur incorrect");
@@ -446,7 +467,9 @@ async function checkPin(){
 
   if(match){
     session = { role:pendingRole, agentId:match.id, nom:match.nom };
-    currentPin=''; goToZones();
+    currentPin='';
+    resetInactivityTimer();
+    goToZones();
   } else {
     const errEl = document.getElementById('pinError');
     if(errEl) errEl.textContent = 'Code incorrect'; currentPin=''; setTimeout(renderPinDots,150);
@@ -459,6 +482,7 @@ async function goToZones(){ activeZoneId=null; await renderZones(); }
    MENU PRINCIPAL
    ========================================================================= */
 async function renderZones(){
+  resetInactivityTimer();
   const date = todayISO();
   const roleLabel = session.role==='agent' ? `Équipe · ${session.nom}` : `Contrôleur · ${session.nom}`;
 
@@ -475,11 +499,11 @@ async function renderZones(){
         <button class="btn ghost block" id="statsBtn" style="flex:1;">📊 Dashboard</button>
       </div>
 
-      <button class="btn ghost block" id="globalPdfBtn" style="margin-bottom:15px;border-color:#C7791B;color:#C7791B;">📄 Générer Rapport Global PDF de la Journée</button>
+      <button class="btn ghost block" id="globalPdfBtn" style="margin-bottom:15px;border-color:#C7791B;color:#C7791B;">📄 Rapport PDF de la Journée</button>
 
       ${session.role==='controleur' ? `
-        <button class="btn amber block" id="adminTasksBtn" style="margin-bottom:10px;">📅 Planning & Gestion des Tâches</button>
-        <button class="btn amber block" id="adminUsersBtn" style="margin-bottom:10px;">👤 Gestion des Utilisateurs / Accès</button>
+        <button class="btn amber block" id="adminTasksBtn" style="margin-bottom:10px;">📅 Gestion des Tâches</button>
+        <button class="btn amber block" id="adminUsersBtn" style="margin-bottom:10px;">👤 Gestion des Utilisateurs</button>
       ` : ''}
       <button class="btn ghost block" id="logoutBtn">Déconnexion</button>
     </div>
@@ -551,7 +575,7 @@ async function renderZones(){
   document.getElementById('historyBtn').onclick = () => renderHistory();
   document.getElementById('statsBtn').onclick = () => renderStats();
   document.getElementById('globalPdfBtn').onclick = () => generateGlobalPDF();
-  document.getElementById('logoutBtn').onclick = ()=>{ session=null; currentPin=''; renderLogin(); };
+  document.getElementById('logoutBtn').onclick = ()=>{ session=null; clearTimeout(inactivityTimer); currentPin=''; renderLogin(); };
   
   const tasksBtn = document.getElementById('adminTasksBtn');
   if(tasksBtn) tasksBtn.onclick = () => renderTaskAdmin();
@@ -564,6 +588,7 @@ async function renderZones(){
    SAISIE CONTRÔLE / PRESTATION ZONE
    ========================================================================= */
 async function renderControle(){
+  resetInactivityTimer();
   const date = todayISO();
   const currentHour = new Date().getHours();
   
@@ -776,6 +801,7 @@ async function renderControle(){
    ÉCRAN HISTORIQUE
    ========================================================================= */
 async function renderHistory(){
+  resetInactivityTimer();
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml('Historique des Prestations', 'Consultation Archives')}
@@ -945,6 +971,7 @@ async function renderHistory(){
    ÉCRAN STATISTIQUES & SUIVI CENTRÉ SUR LES NOK
    ========================================================================= */
 async function renderStats(){
+  resetInactivityTimer();
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml('Suivi des Anomalies (NOK)', 'Tableau de Bord')}
@@ -1114,6 +1141,7 @@ async function renderStats(){
    GÉNÉRATION DU RAPPORT PDF GLOBAL
    ========================================================================= */
 async function generateGlobalPDF(){
+  resetInactivityTimer();
   if(typeof window.jspdf === 'undefined'){ toast('Bibliothèque PDF indisponible'); return; }
   const { jsPDF } = window.jspdf;
   const docPdf = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -1347,6 +1375,7 @@ async function generateGlobalPDF(){
    ADMINISTRATION DU PLANNING & DE L'ÉDITION DES TÂCHES
    ========================================================================= */
 async function renderTaskAdmin(){
+  resetInactivityTimer();
   const allMap = await getAllTasksMap();
 
   let tasksHtml = '';
@@ -1518,6 +1547,7 @@ async function renderTaskAdmin(){
    ADMINISTRATION UTILISATEURS
    ========================================================================= */
 async function renderAgentsAdmin(){
+  resetInactivityTimer();
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml('Gestion Utilisateurs', 'Cloud & Local')}
