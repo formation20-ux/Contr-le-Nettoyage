@@ -145,7 +145,7 @@ const DEFAULT_POINTS = {
 };
 
 /* =========================================================================
-   MOTEUR DE STOCKAGE HYBRIDE (MIGRATION AUTO VERSION 3)
+   MOTEUR DE STOCKAGE HYBRIDE
    ========================================================================= */
 const DB_NAME = 'soan-hybrid-db';
 const DB_VERSION = 3;
@@ -639,7 +639,7 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   PROGRAMMATION & ENVOI DIRECT IN-APP DU MAIL
+   PROGRAMMATION & ENVOI DIRECT IN-APP DU MAIL (SANS DÉPASSEMENT EMAILJS 50KB)
    ========================================================================= */
 async function generateAndStorePDFData(){
   const date = todayISO();
