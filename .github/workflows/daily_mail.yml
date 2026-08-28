@@ -2,9 +2,8 @@ name: Envoi Mail Automatique SOAN
 
 on:
   schedule:
-    # Vérification toutes les 30 minutes
     - cron: '0,30 * * * *'
-  workflow_dispatch: # Permet le déclenchement manuel pour les tests
+  workflow_dispatch:
 
 jobs:
   check-and-send:
@@ -18,8 +17,5 @@ jobs:
         with:
           node-version: 18
 
-      - name: Installation des dépendances
-        run: npm install firebase-admin nodemailer
-
-      - name: Exécution du script d'envoi
+      - name: Exécution du script
         run: node .github/scripts/send_mail.js
