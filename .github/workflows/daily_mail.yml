@@ -1,0 +1,25 @@
+name: Envoi Mail Automatique SOAN
+
+on:
+  schedule:
+    # 18h00 heure de Paris (16h00 UTC en heure d'été)
+    - cron: '0 16 * * *'
+  workflow_dispatch: # Permet de tester manuellement depuis l'onglet Actions
+
+jobs:
+  send-email:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Déclenchement de l'envoi
+        run: |
+          curl -X POST "https://api.emailjs.com/api/v1.0/email/send" \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "service_id": "service_oxp40jn",
+              "template_id": "template_w9x0ucj",
+              "user_id": "WaGLuQh-wIKia0dGl",
+              "template_params": {
+                "to_email": "direction@soan.fr",
+                "message": "Rapport automatique quotidien généré par le serveur."
+              }
+            }'
