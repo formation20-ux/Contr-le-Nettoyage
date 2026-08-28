@@ -2,24 +2,24 @@ name: Envoi Mail Automatique SOAN
 
 on:
   schedule:
-    # 18h00 heure de Paris (16h00 UTC en heure d'été)
-    - cron: '0 16 * * *'
-  workflow_dispatch: # Permet de tester manuellement depuis l'onglet Actions
+    # Vérification toutes les 30 minutes
+    - cron: '0,30 * * * *'
+  workflow_dispatch: # Permet le déclenchement manuel pour les tests
 
 jobs:
-  send-email:
+  check-and-send:
     runs-on: ubuntu-latest
     steps:
-      - name: Déclenchement de l'envoi
-        run: |
-          curl -X POST "https://api.emailjs.com/api/v1.0/email/send" \
-            -H 'Content-Type: application/json' \
-            -d '{
-              "service_id": "service_oxp40jn",
-              "template_id": "template_w9x0ucj",
-              "user_id": "WaGLuQh-wIKia0dGl",
-              "template_params": {
-                "to_email": "direction@soan.fr",
-                "message": "Rapport automatique quotidien généré par le serveur."
-              }
-            }'
+      - name: Récupération du code
+        uses: actions/checkout@v3
+
+      - name: Configuration Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Installation des dépendances
+        run: npm install firebase-admin nodemailer
+
+      - name: Exécution du script d'envoi
+        run: node .github/scripts/send_mail.js
