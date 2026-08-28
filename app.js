@@ -575,28 +575,31 @@ function openPhotoViewer(src, title){
 
 function fileToResizedBase64(file, maxWidth){
   return new Promise((resolve, reject)=>{
-    if(!file) return reject("Fichier introuvable");
-    const img = new Image();
+    if(!file) return reject("Aucun fichier sélectionné");
     const reader = new FileReader();
     
-    reader.onerror = (e) => reject(e);
-    reader.onload = () => {
-      img.onerror = (e) => reject(e);
+    reader.onerror = (err) => reject(err);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = (err) => reject(err);
       img.onload = () => {
         try {
-          const scale = Math.min(1, maxWidth / img.width);
-          const w = Math.round(img.width * scale);
-          const h = Math.round(img.height * scale);
+          const targetW = Math.min(maxWidth, img.width);
+          const scale = targetW / img.width;
+          const targetH = Math.round(img.height * scale);
+
           const canvas = document.createElement('canvas');
-          canvas.width = w; canvas.height = h;
+          canvas.width = targetW;
+          canvas.height = targetH;
           const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.6));
+          ctx.drawImage(img, 0, 0, targetW, targetH);
+          
+          resolve(canvas.toDataURL('image/jpeg', 0.4));
         } catch(err) {
           reject(err);
         }
       };
-      img.src = reader.result;
+      img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   });
@@ -1063,7 +1066,7 @@ async function renderMailScheduleAdmin(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE (CORRECTION PERSISTANCE DES PHOTOS)
+   SAISIE CONTRÔLE / PRESTATION ZONE (SANS AUTO-VALIDATION À 18H)
    ========================================================================= */
 async function renderControle(){
   resetInactivityTimer();
@@ -1103,14 +1106,8 @@ async function renderControle(){
           currentBranch.reponses[p.id].conforme = false;
         }
       }
-    } else {
-      if(currentHour >= 18){
-        if(!currentBranch.reponses[p.id] || currentBranch.reponses[p.id].conforme === null || currentBranch.reponses[p.id].conforme === undefined){
-          currentBranch.reponses[p.id] = currentBranch.reponses[p.id] || { photos:[], commentaire:'' };
-          currentBranch.reponses[p.id].conforme = true;
-        }
-      }
     }
+    // CORRECTION : Pas d'auto-validation à true à 18h pour la contre-visite
   });
 
   const viewSubtitle = isContreVisite ? t('Contre-visite Contrôleur') : t('Réalisation Prestation');
@@ -1146,7 +1143,7 @@ async function renderControle(){
 
   const renderSinglePhotoHtml = (src, pId, idx) => {
     return `
-      <div style="position:relative;display:inline-block;margin-right:8px;margin-top:4px;">
+      <div class="photo-item-thumb" data-idx="${idx}" style="position:relative;display:inline-block;margin-right:8px;margin-top:4px;">
         <img class="photo-thumb click-zoom" src="${src}" data-title="Photo - ${pId}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;">
         <button class="del-photo-btn" data-point="${pId}" data-idx="${idx}">✕</button>
       </div>
@@ -1207,7 +1204,7 @@ async function renderControle(){
             </div>
             <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
               ${t('📷 + Photo')}
-              <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
+              <input type="file" accept="image/*" style="display:none;" data-photo-input>
             </label>
           </div>
           
@@ -1222,7 +1219,6 @@ async function renderControle(){
       img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
     });
 
-    // Attachement dynamique de la suppression de photo sans détruire le DOM
     const attachDelButtons = () => {
       listEl.querySelectorAll('.del-photo-btn').forEach(btn => {
         btn.onclick = async (e) => {
@@ -1231,9 +1227,10 @@ async function renderControle(){
           const idx = parseInt(btn.dataset.idx);
           if(currentBranch.reponses[pId] && currentBranch.reponses[pId].photos){
             currentBranch.reponses[pId].photos.splice(idx, 1);
-            btn.parentElement.remove();
             
-            // Verrouiller les boutons OK/NOK si la liste de photos devient vide pour l'équipe
+            const thumbItem = btn.closest('.photo-item-thumb');
+            if(thumbItem) thumbItem.remove();
+            
             if(!isContreVisite && currentBranch.reponses[pId].photos.length === 0){
               const parentCard = document.querySelector(`.point-item[data-point="${pId}"]`);
               if(parentCard){
@@ -1286,7 +1283,8 @@ async function renderControle(){
         
         try {
           toast(t('Chargement…'));
-          const dataUrl = await fileToResizedBase64(fileInput.files[0], 600);
+          const file = fileInput.files[0];
+          const dataUrl = await fileToResizedBase64(file, 400);
           
           if (!currentBranch.reponses[pId]) {
             currentBranch.reponses[pId] = { conforme: null, photos: [], commentaire: '' };
@@ -1297,7 +1295,6 @@ async function renderControle(){
           
           currentBranch.reponses[pId].photos.push(dataUrl);
 
-          // Injection DOM locale instantanée
           const myContainer = item.querySelector('.my-photos-container');
           if(myContainer){
             const newIdx = currentBranch.reponses[pId].photos.length - 1;
@@ -1309,7 +1306,6 @@ async function renderControle(){
             attachDelButtons();
           }
 
-          // Déverrouiller les boutons OK/NOK pour l'Équipe
           if(!isContreVisite){
             item.querySelectorAll('.toggle-btn').forEach(b => {
               b.removeAttribute('disabled');
