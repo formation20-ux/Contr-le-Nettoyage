@@ -1,6 +1,6 @@
 const https = require('https');
 
-// Fonction pour interroger l'API Firestore en HTTP
+// Fonction pour lire Firebase
 function fetchFirestore(docPath) {
   return new Promise((resolve, reject) => {
     const url = `https://firestore.googleapis.com/v1/projects/controle-nettoyage/databases/(default)/documents/${docPath}`;
@@ -22,13 +22,56 @@ function fetchFirestore(docPath) {
   });
 }
 
+// Fonction pour envoyer via l'API EmailJS
+function sendEmailJS(toEmail, statusSummary, dateIso) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify({
+      service_id: "service_oxp40jn",
+      template_id: "template_w9x0ucj",
+      user_id: "WaGLuQh-wIKia0dGl",
+      template_params: {
+        to_email: toEmail,
+        date: dateIso,
+        bilan: statusSummary,
+        message: `Rapport automatique quotidien généré par le serveur. Bilan : ${statusSummary}.\nOuvrez l'application web pour consulter les archives en détail.`
+      }
+    });
+
+    const options = {
+      hostname: 'api.emailjs.com',
+      path: '/api/v1.0/email/send',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': payload.length
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(data);
+        } else {
+          reject(new Error(`Erreur EmailJS (${res.statusCode}): ${data}`));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
 async function run() {
   try {
-    console.log("Consultation des paramètres Firestore...");
+    console.log("Lecture des paramètres Firestore...");
     const configDoc = await fetchFirestore('mail_schedule/global_config');
     
     if (!configDoc || !configDoc.fields) {
-      console.log("Aucune configuration trouvée ou envoi désactivé.");
+      console.log("Aucune configuration ou envoi désactivé.");
       return;
     }
 
@@ -42,11 +85,10 @@ async function run() {
     }
 
     if (!active || emails.length === 0) {
-      console.log("Envoi automatique désactivé ou aucun e-mail renseigné.");
+      console.log("Envoi automatique désactivé ou aucun destinataire.");
       return;
     }
 
-    // Heure de Paris
     const now = new Date();
     const parisTime = new Intl.DateTimeFormat('fr-FR', {
       timeZone: 'Europe/Paris',
@@ -55,7 +97,7 @@ async function run() {
       hour12: false
     }).format(now);
 
-    console.log(`Heure actuelle (Paris) : ${parisTime} | Heure cible : ${time1}`);
+    console.log(`Heure actuelle (Paris) : ${parisTime} | Heure programmée : ${time1}`);
 
     const [currentHour, currentMin] = parisTime.split(':').map(Number);
     const [targetHour, targetMin] = time1.split(':').map(Number);
@@ -67,7 +109,7 @@ async function run() {
     const isManualTest = process.env.GITHUB_EVENT_NAME === 'workflow_dispatch';
 
     if ((diff >= 0 && diff < 30) || isManualTest) {
-      console.log("Déclenchement validé ! Récupération du bilan...");
+      console.log("Déclenchement validé !");
 
       const todayISO = now.toISOString().slice(0, 10);
       const reportDoc = await fetchFirestore(`pdf_reports/report_${todayISO}`);
@@ -78,13 +120,21 @@ async function run() {
       }
 
       console.log(`Bilan du jour : ${statusSummary}`);
-      console.log(`Destinataires : ${emails.join(', ')}`);
-      console.log("Exécution réussie !");
+
+      // Envoi réel à chaque destinataire via EmailJS
+      for (const email of emails) {
+        try {
+          await sendEmailJS(email, statusSummary, todayISO);
+          console.log(`✓ E-mail envoyé avec succès à ${email}`);
+        } catch (error) {
+          console.error(`✕ Échec de l'envoi pour ${email} :`, error.message);
+        }
+      }
     } else {
       console.log("Ce n'est pas encore l'heure programmée.");
     }
   } catch (err) {
-    console.error("Erreur d'exécution :", err);
+    console.error("Erreur globale :", err);
     process.exit(1);
   }
 }
