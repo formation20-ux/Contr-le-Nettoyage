@@ -29,6 +29,7 @@ function sendEmailJS(toEmail, statusSummary, dateIso) {
       service_id: "service_oxp40jn",
       template_id: "template_w9x0ucj",
       user_id: "WaGLuQh-wIKia0dGl",
+      accessToken: "oMPyLjMFqKZdkAmKZtr0h", // <-- Ta Private Key est bien ici !
       template_params: {
         to_email: toEmail,
         date: dateIso,
@@ -43,7 +44,6 @@ function sendEmailJS(toEmail, statusSummary, dateIso) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // CORRECTION ICI : On calcule la taille en octets pour supporter les accents
         'Content-Length': Buffer.byteLength(payload) 
       }
     };
