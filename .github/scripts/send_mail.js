@@ -25,15 +25,19 @@ function fetchFirestore(docPath) {
 // Fonction pour envoyer via l'API EmailJS
 function sendEmailJS(toEmail, statusSummary, dateIso) {
   return new Promise((resolve, reject) => {
+    // Le lien vers ton application GitHub Pages
+    const appLink = "https://formation20-ux.github.io/Contr-le-Nettoyage/";
+
     const payload = JSON.stringify({
       service_id: "service_oxp40jn",
       template_id: "template_w9x0ucj",
       user_id: "WaGLuQh-wIKia0dGl",
-      accessToken: "oMPyLjMFqKZdkAmKZtr0h", // <-- Ta Private Key est bien ici !
+      accessToken: "oMPyLjMFqKZdkAmKZtr0h", 
       template_params: {
         to_email: toEmail,
         date: dateIso,
         bilan: statusSummary,
+        pdf_link: appLink, // <-- LE LIEN MANQUANT EST AJOUTÉ ICI
         message: `Rapport automatique quotidien généré par le serveur. Bilan : ${statusSummary}. Ouvrez l'application web pour consulter les archives en détail.`
       }
     });
