@@ -33,7 +33,7 @@ function sendEmailJS(toEmail, statusSummary, dateIso) {
         to_email: toEmail,
         date: dateIso,
         bilan: statusSummary,
-        message: `Rapport automatique quotidien généré par le serveur. Bilan : ${statusSummary}.\nOuvrez l'application web pour consulter les archives en détail.`
+        message: `Rapport automatique quotidien généré par le serveur. Bilan : ${statusSummary}. Ouvrez l'application web pour consulter les archives en détail.`
       }
     });
 
@@ -43,7 +43,8 @@ function sendEmailJS(toEmail, statusSummary, dateIso) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Content-Length': payload.length
+        // CORRECTION ICI : On calcule la taille en octets pour supporter les accents
+        'Content-Length': Buffer.byteLength(payload) 
       }
     };
 
