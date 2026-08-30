@@ -25,8 +25,8 @@ function fetchFirestore(docPath) {
 // Fonction pour envoyer via l'API EmailJS
 function sendEmailJS(toEmail, statusSummary, dateIso) {
   return new Promise((resolve, reject) => {
-    // Le lien vers ton application GitHub Pages
-    const appLink = "https://formation20-ux.github.io/Contr-le-Nettoyage/";
+    // Le lien court vers ton application
+    const appLink = "https://bit.ly/4wULf3O"; // <-- LE NOUVEAU LIEN EST ICI
 
     const payload = JSON.stringify({
       service_id: "service_oxp40jn",
@@ -37,7 +37,7 @@ function sendEmailJS(toEmail, statusSummary, dateIso) {
         to_email: toEmail,
         date: dateIso,
         bilan: statusSummary,
-        pdf_link: appLink, // <-- LE LIEN MANQUANT EST AJOUTÉ ICI
+        pdf_link: appLink, 
         message: `Rapport automatique quotidien généré par le serveur. Bilan : ${statusSummary}. Ouvrez l'application web pour consulter les archives en détail.`
       }
     });
