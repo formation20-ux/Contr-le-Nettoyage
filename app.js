@@ -99,81 +99,7 @@ const SUPPORTED_LANGUAGES = {
 };
 
 const STATIC_TRANSLATIONS = {
-  en: {
-    'En ligne': 'Online', 'Hors-ligne': 'Offline', 'SASU SOAN — Prestation Nettoyage': 'SASU SOAN — Cleaning Service',
-    'Lobby': 'Lobby', 'Cuisine': 'Kitchen', 'Arrière-cuisine': 'Back Kitchen', 'Comptoir': 'Counter',
-    'Zones de Prestation': 'Service Areas', '📜 Historique': '📜 History', '📊 Dashboard': '📊 Dashboard',
-    '📄 Rapport PDF': '📄 PDF Report', '✉️ Envois Mails': '✉️ Email Schedule', '📅 Gestion des Tâches': '📅 Task Management',
-    '👤 Gestion des Utilisateurs': '👤 User Management', 'Déconnexion': 'Logout', '✓ Complété': '✓ Completed',
-    'restant(s)': 'remaining', 'tâche': 'task', 'tâches': 'tasks', 'au planning': 'scheduled',
-    '← Retour aux zones': '← Back to areas', 'Photo obligatoire pour activer la réponse :': 'Photo required to enable answer:',
-    'Tes photos contrôleur (exigée si passage en NOK) :': 'Inspector photos (required if set to NOK):',
-    'Terminer et Retourner aux Zones': 'Finish & Return to Areas', 'Enregistré': 'Saved', 'Photo supprimée': 'Photo deleted',
-    'Photo ajoutée': 'Photo added', 'Non réalisé avant 10h': 'Not completed before 10 AM', 'Équipe': 'Team', 'Contrôleur': 'Inspector',
-    'Session expirée suite à 3 min d’inactivité': 'Session expired due to 3 min inactivity', 'Contre-visite Contrôleur': 'Inspector Review',
-    'Réalisation Prestation': 'Service Execution', '📸 Photos transmises par l\'Équipe :': '📸 Photos sent by Team:',
-    '💬 Obs. Équipe': '💬 Team Notes', 'Remarques Contrôleur (optionnel)': 'Inspector comments (optional)',
-    'Remarques Équipe (optionnel)': 'Team comments (optional)', '📷 + Photo': '📷 + Photo', 'Jour': 'Daily', 'Hebdo': 'Weekly', 'Mensuel': 'Monthly',
-    'Historique des Prestations': 'Service History', 'Consultation Archives': 'Archive Consultation', 'Sélectionner une date d\'archive :': 'Select an archive date:',
-    'Sommaire par Zone': 'Summary by Area', 'Conforme': 'Conform', 'Non saisi': 'Not entered', 'Suivi des Anomalies (NOK)': 'Anomaly Tracking (NOK)',
-    'Tableau de Bord': 'Dashboard', 'Contexte de comparaison :': 'Comparison context:', '7 derniers jours vs 7 jours précédents': 'Last 7 days vs previous 7 days',
-    '7 derniers jours vs Seuil Cible (Max 5% NOK)': 'Last 7 days vs Target (Max 5% NOK)', 'Taux d\'Anomalies (NOK)': 'Anomaly Rate (NOK)',
-    'Anomalies Relevées': 'Reported Anomalies', 'dont': 'including', 'écart(s)': 'gap(s)', 'Analyse Comparative des Défauts (NOK)': 'Defect Comparative Analysis (NOK)',
-    '7j Actuels': 'Current 7 days', 'vs Semaine précédente': 'vs Previous week', 'vs Cible Max (5%)': 'vs Target Max (5%)',
-    'Seuil Cible': 'Target Threshold', '7j Précédents': 'Previous 7 days', 'Répartition des NOK par Zone (7 derniers jours)': 'NOK Breakdown by Area (Last 7 days)',
-    'Classement des Tâches les plus souvent NOK': 'Top NOK Tasks Ranking', 'fois NOK': 'times NOK', 'Aucune anomalie NOK relevée sur cette période ! 🎉': 'No NOK anomalies recorded during this period! 🎉',
-    'Chargement…': 'Loading…', 'Chargement des données...': 'Loading data…', 'Sommaire': 'Summary'
-  },
-  es: {
-    'En ligne': 'En línea', 'Hors-ligne': 'Desconectado', 'SASU SOAN — Prestation Nettoyage': 'SASU SOAN — Servicio de Limpieza',
-    'Lobby': 'Vestíbulo', 'Cuisine': 'Cocina', 'Arrière-cuisine': 'Trascocina', 'Comptoir': 'Mostrador',
-    'Zones de Prestation': 'Áreas de Servicio', '📜 Historique': '📜 Historial', '📊 Dashboard': '📊 Panel',
-    '📄 Rapport PDF': '📄 Informe PDF', '✉️ Envois Mails': '✉️ Envíos Correo', '📅 Gestion des Tâches': '📅 Gestión de Tareas',
-    '👤 Gestion des Utilisateurs': '👤 Gestión de Usuarios', 'Déconnexion': 'Cerrar sesión', '✓ Complété': '✓ Completado',
-    'restant(s)': 'restante(s)', 'tâche': 'tarea', 'tâches': 'tareas', 'au planning': 'programada(s)',
-    '← Retour aux zones': '← Volver a las áreas', 'Photo obligatoire pour activer la réponse :': 'Foto obligatoria para responder:',
-    'Tes photos contrôleur (exigée si passage en NOK) :': 'Fotos de inspector (obligatoria si NOK):',
-    'Terminer et Retourner aux Zones': 'Finalizar y Volver', 'Enregistré': 'Guardado', 'Photo supprimée': 'Foto eliminada',
-    'Photo ajoutée': 'Foto añadida', 'Non réalisé avant 10h': 'No realizado antes de las 10h', 'Équipe': 'Equipo', 'Contrôleur': 'Inspector',
-    'Session expirée suite à 3 min d’inactivité': 'Sesión expirada por 3 min de inactividad', 'Contre-visite Contrôleur': 'Revisión del Inspector',
-    'Réalisation Prestation': 'Ejecución del Servicio', '📸 Photos transmises par l\'Équipe :': '📸 Fotos enviadas por el Equipo:',
-    '💬 Obs. Équipe': '💬 Obs. Equipo', 'Remarques Contrôleur (optionnel)': 'Comentarios del Inspector (opcional)',
-    'Remarques Équipe (optionnel)': 'Comentarios del Equipo (opcional)', '📷 + Photo': '📷 + Foto', 'Jour': 'Diario', 'Hebdo': 'Semanal', 'Mensuel': 'Mensual',
-    'Historique des Prestations': 'Historial de Servicios', 'Consultation Archives': 'Consulta de Archivos', 'Sélectionner une date d\'archive :': 'Seleccionar fecha de archivo:',
-    'Sommaire par Zone': 'Resumen por Área', 'Conforme': 'Conforme', 'Non saisi': 'No registrado', 'Suivi des Anomalies (NOK)': 'Seguimiento de Anomalías (NOK)',
-    'Tableau de Bord': 'Panel de Control', 'Contexte de comparaison :': 'Contexto de comparación:', '7 derniers jours vs 7 jours précédents': 'Últimos 7 días vs 7 días anteriores',
-    '7 derniers jours vs Seuil Cible (Max 5% NOK)': 'Últimos 7 días vs Objetivo (Máx 5% NOK)', 'Taux d\'Anomalies (NOK)': 'Tasa de Anomalías (NOK)',
-    'Anomalies Relevées': 'Anomalías Registradas', 'dont': 'incluyendo', 'écart(s)': 'desviación(es)', 'Analyse Comparative des Défauts (NOK)': 'Análisis Comparativo de Defectos (NOK)',
-    '7j Actuels': '7 días actuales', 'vs Semaine précédente': 'vs Semana anterior', 'vs Cible Max (5%)': 'vs Objetivo Máx (5%)',
-    'Seuil Cible': 'Umbral Cible', '7j Précédents': '7 días anteriores', 'Répartition des NOK par Zone (7 derniers jours)': 'Distribución de NOK por Área (Últimos 7 días)',
-    'Classement des Tâches les plus souvent NOK': 'Clasificación de Tareas más Frecuentes en NOK', 'fois NOK': 'veces NOK', 'Aucune anomalie NOK relevée sur cette période ! 🎉': '¡Sin anomalías NOK en este período! 🎉',
-    'Chargement…': 'Cargando…', 'Chargement des données...': 'Cargando datos…', 'Sommaire': 'Resumen'
-  },
-  ar: {
-    'En ligne': 'متصل', 'Hors-ligne': 'غير متصل', 'SASU SOAN — Prestation Nettoyage': 'SASU SOAN — خدمة التنظيف',
-    'Lobby': 'الردهة', 'Cuisine': 'المطبخ', 'Arrière-cuisine': 'المطبخ الخلفي', 'Comptoir': 'الشباك',
-    'Zones de Prestation': 'مناطق الخدمة', '📜 Historique': '📜 السجل', '📊 Dashboard': '📊 لوحة التحكم',
-    '📄 Rapport PDF': '📄 تقرير PDF', '✉️ Envois Mails': '✉️ إرسال البريد', '📅 Gestion des Tâches': '📅 إدارة المهام',
-    '👤 Gestion des Utilisateurs': '👤 إدارة المستخدمين', 'Déconnexion': 'تسجيل الخروج', '✓ Complété': '✓ مكتمل',
-    'restant(s)': 'متبقي', 'tâche': 'مهمة', 'tâches': 'مهام', 'au planning': 'في الجدول',
-    '← Retour aux zones': '← العودة للمناطق', 'Photo obligatoire pour activer la réponse :': 'الصورة إجبارية للتفعيل:',
-    'Tes photos contrôleur (exigée si passage en NOK) :': 'صور المراقب (مطلوبة عند الرفض):',
-    'Terminer et Retourner aux Zones': 'إنهاء والعودة', 'Enregistré': 'تم الحفظ', 'Photo supprimée': 'تم حذف الصورة',
-    'Photo ajoutée': 'تمت إضافة الصورة', 'Non réalisé avant 10h': 'لم يتم قبل 10 صباحًا', 'Équipe': 'الفريق', 'Contrôleur': 'المراقب',
-    'Session expirée suite à 3 min d’inactivité': 'انتهت الجلسة لعدم النشاط', 'Contre-visite Contrôleur': 'مراجعة المراقب',
-    'Réalisation Prestation': 'تنفيذ الخدمة', '📸 Photos transmises par l\'Équipe :': '📸 الصور المرسلة من الفريق:',
-    '💬 Obs. Équipe': '💬 ملاحظات الفريق', 'Remarques Contrôleur (optionnel)': 'ملاحظات المراقب (اختياري)',
-    'Remarques Équipe (optionnel)': 'ملاحظات الفريق (اختياري)', '📷 + Photo': '📷 + صورة', 'Jour': 'يومي', 'Hebdo': 'أسبوعي', 'Mensuel': 'شهري',
-    'Historique des Prestations': 'سجل الخدمات', 'Consultation Archives': 'تصفح الأرشيف', 'Sélectionner une date d\'archive :': 'اختر تاريخ الأرشيف:',
-    'Sommaire par Zone': 'ملخص حسب المنطقة', 'Conforme': 'مطابق', 'Non saisi': 'غير مدخل', 'Suivi des Anomalies (NOK)': 'متابعة الأخطاء (NOK)',
-    'Tableau de Bord': 'لوحة القيادة', 'Contexte de comparaison :': 'سياق المقارنة:', '7 derniers jours vs 7 jours précédents': 'آخر 7 أيام مقابل 7 أيام سابقة',
-    '7 derniers jours vs Seuil Cible (Max 5% NOK)': 'آخر 7 أيام مقابل الهدف (أقصى 5%)', 'Taux d\'Anomalies (NOK)': 'نسبة الأخطاء (NOK)',
-    'Anomalies Relevées': 'الأخطاء المسجلة', 'dont': 'منها', 'écart(s)': 'تفاوت', 'Analyse Comparative des Défauts (NOK)': 'تحليل مقارن للأخطاء (NOK)',
-    '7j Actuels': 'آخر 7 أيام', 'vs Semaine précédente': 'مقارنة بالأسبوع السابق', 'vs Cible Max (5%)': 'مقارنة بالهدف (5%)',
-    'Seuil Cible': 'الحد المستهدف', '7j Précédents': '7 أيام سابقة', 'Répartition des NOK par Zone (7 derniers jours)': 'توزيع الأخطاء حسب المنطقة (آخر 7 أيام)',
-    'Classement des Tâches les plus souvent NOK': 'ترتيب المهام الأكثر خطأ', 'fois NOK': 'مرات خطأ', 'Aucune anomalie NOK relevée sur cette période ! 🎉': 'لم يتم تسجيل أي أخطاء خلال هذه الفترة! 🎉',
-    'Chargement…': 'جاري التحميل…', 'Chargement des données...': 'جاري تحميل البيانات…', 'Sommaire': 'الفهرس'
-  }
+  // Les traductions dynamiques passent par l'API
 };
 
 const translationCache = {};
@@ -337,7 +263,7 @@ const LEGACY_TASKS_MAP = {
 };
 
 /* =========================================================================
-   MOTEUR DE STOCKAGE HYBRIDE
+   MOTEUR DE STOCKAGE HYBRIDE & CONFIG GLOBALE
    ========================================================================= */
 const DB_NAME = 'soan-hybrid-db';
 const DB_VERSION = 3;
@@ -438,6 +364,22 @@ async function syncPendingQueue(){
 
 window.addEventListener('online', syncPendingQueue);
 
+async function getGlobalConfig() {
+  let conf = await idbGet('mail_schedule', 'global_config');
+  if(navigator.onLine){
+    try {
+      const doc = await db.collection('mail_schedule').doc('global_config').get();
+      if(doc.exists) {
+        conf = doc.data();
+        await idbPut('mail_schedule', conf);
+      }
+    } catch(e){}
+  }
+  if (!conf) conf = { active: true, time1: '18:00', emails: [], enableEquipe: true };
+  if (conf.enableEquipe === undefined) conf.enableEquipe = true; // Valeur par défaut
+  return conf;
+}
+
 /* =========================================================================
    RÉCUPÉRATION DYNAMIQUE DES TÂCHES
    ========================================================================= */
@@ -499,7 +441,7 @@ async function getPointsForToday(zoneId, dateIso){
 }
 
 /* =========================================================================
-   DÉCONNEXION AUTOMATIQUE & ENVOI MAIL IN-APP
+   DÉCONNEXION AUTOMATIQUE
    ========================================================================= */
 let session = null;
 let currentPin = '';
@@ -528,22 +470,6 @@ function resetInactivityTimer(){
 ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'].forEach(evt => {
   window.addEventListener(evt, resetInactivityTimer, { passive: true });
 });
-
-setInterval(async () => {
-  const config = await idbGet('mail_schedule', 'global_config');
-  if(!config || !config.active || !config.emails || config.emails.length === 0) return;
-
-  const now = new Date();
-  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const todayKey = todayISO();
-
-  if(config.time1 === currentTime && config.lastSentDate !== `${todayKey}_${currentTime}`){
-    config.lastSentDate = `${todayKey}_${currentTime}`;
-    await pushToCloud('mail_schedule', 'global_config', config);
-    toast(`✉️ Heure d'envoi atteinte (${currentTime}). Envoi du mail en cours...`);
-    triggerInAppMailSending(config.emails);
-  }
-}, 60000);
 
 const root = document.getElementById('app-root');
 
@@ -620,16 +546,22 @@ function topbarHtml(title, sub){
   `;
 }
 
-function renderLogin(){
+async function renderLogin(){
   clearTimeout(inactivityTimer);
   syncPendingQueue();
+  
+  const conf = await getGlobalConfig();
+  if (!conf.enableEquipe) {
+    pendingRole = 'controleur';
+  }
+
   root.innerHTML = `
     <div id="screen-login">
       <div class="login-card">
         <div class="brand-eyebrow">SASU SOAN</div>
         <div class="brand-title">Contrôle Prestations</div>
         <div class="role-switch">
-          <button class="role-btn ${pendingRole==='agent'?'active':''}" data-role="agent">Équipe</button>
+          <button class="role-btn ${pendingRole==='agent'?'active':''}" data-role="agent" style="display:${conf.enableEquipe?'block':'none'}">Équipe</button>
           <button class="role-btn ${pendingRole==='controleur'?'active':''}" data-role="controleur">Contrôleur</button>
         </div>
         <div class="section-note">Saisis ton code à 4 chiffres</div>
@@ -731,6 +663,7 @@ async function renderZones(){
   const roleTitle = session.role==='agent' ? t('Équipe') : t('Contrôleur');
   const roleLabel = `${roleTitle} · ${session.nom}`;
   const userLang = (session && session.lang) ? session.lang : 'fr';
+  const config = await getGlobalConfig();
 
   root.innerHTML = `
     <div class="wrap">
@@ -747,7 +680,7 @@ async function renderZones(){
 
       <div style="display:flex;gap:10px;margin-bottom:15px;">
         <button class="btn ghost block" id="globalPdfBtn" style="flex:1;border-color:#C7791B;color:#C7791B;">${t('📄 Rapport PDF')}</button>
-        <button class="btn ghost block" id="mailScheduleBtn" style="flex:1;border-color:#2B6E68;color:#2B6E68;">${t('✉️ Envois Mails')}</button>
+        ${session.role==='controleur' ? `<button class="btn ghost block" id="mailScheduleBtn" style="flex:1;border-color:#2B6E68;color:#2B6E68;">⚙️ Paramètres</button>` : ''}
       </div>
 
       ${session.role==='controleur' ? `
@@ -776,7 +709,7 @@ async function renderZones(){
       const c = await idbGet('controles', controleId);
 
       let remaining = 0;
-      if(isAgent){
+      if(isAgent && config.enableEquipe){
         const eqReponses = (c && c.passageEquipe && c.passageEquipe.reponses) || {};
         activePoints.forEach(p => {
           const r = eqReponses[p.id];
@@ -813,7 +746,7 @@ async function renderZones(){
       card.onclick = ()=>{
         activeZoneId = card.dataset.zone;
         activeControleId = `${date}__${activeZoneId}`;
-        activeMode = isAgent ? 'equipe' : 'contreVisite';
+        activeMode = (isAgent && config.enableEquipe) ? 'equipe' : 'contreVisite';
         renderControle();
       };
     });
@@ -854,10 +787,13 @@ async function renderZones(){
 }
 
 /* =========================================================================
-   PROGRAMMATION & ENVOI DIRECT IN-APP DU MAIL
+   PROGRAMMATION MAILS ET REGLAGES GLOBAUX
    ========================================================================= */
 async function generateAndStorePDFData(){
   const date = todayISO();
+  const config = await getGlobalConfig();
+  const enableEq = config.enableEquipe;
+
   let totalNok = 0;
   let totalEcarts = 0;
 
@@ -879,11 +815,10 @@ async function generateAndStorePDFData(){
       const rEq = (eq.reponses && eq.reponses[p.id]) || {};
       const rCv = (cv.reponses && cv.reponses[p.id]) || {};
       let eqConformeCalculated = (rEq.photos && rEq.photos.length > 0) ? (rEq.conforme !== false) : false;
-      
-      let cvConformeCalculated = (rCv.conforme === false) ? false : (rCv.conforme === true ? true : true);
+      let cvConformeCalculated = (rCv.conforme === false) ? false : true;
 
       const isFinalOk = (cvConformeCalculated === true);
-      const isRealEcart = (eqConformeCalculated === true && cvConformeCalculated === false);
+      const isRealEcart = enableEq ? (eqConformeCalculated === true && cvConformeCalculated === false) : false;
 
       if(!isFinalOk) totalNok++;
       if(isRealEcart) totalEcarts++;
@@ -891,8 +826,8 @@ async function generateAndStorePDFData(){
   }
 
   const statusSummary = totalNok === 0 
-    ? 'PRESTATION CONFORME — 0 NOK' 
-    : `${totalNok} NOK dont ${totalEcarts} écart(s)`;
+    ? (enableEq ? 'PRESTATION CONFORME — 0 NOK' : 'CONSTAT CONFORME — 0 NOK')
+    : (enableEq ? `${totalNok} NOK dont ${totalEcarts} écart(s)` : `${totalNok} NOK`);
 
   const reportDocId = `report_${date}`;
   const reportData = {
@@ -956,33 +891,28 @@ async function triggerInAppMailSending(emails){
 async function renderMailScheduleAdmin(){
   resetInactivityTimer();
   
-  let mailConfig = await idbGet('mail_schedule', 'global_config') || {
-    id: 'global_config',
-    active: true,
-    time1: '18:00',
-    emails: []
-  };
-
-  if(navigator.onLine){
-    try {
-      const doc = await db.collection('mail_schedule').doc('global_config').get();
-      if(doc.exists){
-        mailConfig = doc.data();
-        await idbPut('mail_schedule', mailConfig);
-      }
-    } catch(e){}
-  }
+  let mailConfig = await getGlobalConfig();
 
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml(t('Programmation Mails'), t('Rapports Automatiques'))}
+      ${topbarHtml('Paramètres & Mails', 'Gestion Globale')}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section" style="padding:16px;">
-        <div class="section-note">Inscrivez les adresses destinataires et définissez l'heure quotidienne d'envoi du PDF.</div>
+        
+        <div style="background:#fff;border:1px solid #E7E1D6;padding:14px;border-radius:10px;margin-bottom:15px;">
+          <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">⚙️ Mode de fonctionnement</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:12px;color:#6B655C;font-weight:600;">Activer la saisie Équipe (Double contrôle)</span>
+            <input type="checkbox" id="enableEquipeCheck" ${mailConfig.enableEquipe?'checked':''} style="width:20px;height:20px;accent-color:#2B6E68;cursor:pointer;">
+          </div>
+          <div style="font-size:11px;color:#B23A34;margin-top:6px;">Si décoché, l'application fonctionne en mode "Constat" (Contrôleur uniquement, sans notion d'écart).</div>
+        </div>
+
+        <div class="section-note">Inscrivez les adresses destinataires et définissez l'heure d'envoi automatique.</div>
 
         <div style="background:#fff;border:1px solid #E7E1D6;padding:14px;border-radius:10px;margin-bottom:15px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <span style="font-weight:700;font-size:13px;color:#211E1A;">État de la programmation</span>
+            <span style="font-weight:700;font-size:13px;color:#211E1A;">État de l'envoi mail</span>
             <input type="checkbox" id="mailActiveCheck" ${mailConfig.active?'checked':''} style="width:20px;height:20px;accent-color:#2B6E68;cursor:pointer;">
           </div>
 
@@ -1049,10 +979,11 @@ async function renderMailScheduleAdmin(){
 
   document.getElementById('saveMailConfigBtn').onclick = async () => {
     mailConfig.active = document.getElementById('mailActiveCheck').checked;
+    mailConfig.enableEquipe = document.getElementById('enableEquipeCheck').checked;
     mailConfig.time1 = document.getElementById('mailTime1').value;
 
     await pushToCloud('mail_schedule', 'global_config', mailConfig);
-    toast('Configuration mail sauvegardée !');
+    toast('Configuration sauvegardée !');
     goToZones();
   };
 
@@ -1066,7 +997,7 @@ async function renderMailScheduleAdmin(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE (SANS AUTO-VALIDATION À 18H)
+   SAISIE CONTRÔLE / PRESTATION ZONE (AVEC MODE CONSTAT)
    ========================================================================= */
 async function renderControle(){
   resetInactivityTimer();
@@ -1074,6 +1005,9 @@ async function renderControle(){
   const currentHour = new Date().getHours();
   const userLang = (session && session.lang) ? session.lang : 'fr';
   
+  const config = await getGlobalConfig();
+  const enableEq = config.enableEquipe;
+
   let c = await idbGet('controles', activeControleId) || {
     id: activeControleId, zoneId: activeZoneId, date,
     passageEquipe: { agentNom:null, heure:null, reponses:{} },
@@ -1098,7 +1032,7 @@ async function renderControle(){
   const equipeReponses = (c.passageEquipe && c.passageEquipe.reponses) || {};
 
   activePoints.forEach(p => {
-    if(!isContreVisite){
+    if(!isContreVisite && enableEq){
       if(currentHour >= 10){
         if(!currentBranch.reponses[p.id]){
           currentBranch.reponses[p.id] = { conforme: false, photos:[], commentaire: t('Non réalisé avant 10h') };
@@ -1107,10 +1041,12 @@ async function renderControle(){
         }
       }
     }
-    // CORRECTION : Pas d'auto-validation à true à 18h pour la contre-visite
   });
 
-  const viewSubtitle = isContreVisite ? t('Contre-visite Contrôleur') : t('Réalisation Prestation');
+  let viewSubtitle = '';
+  if(!enableEq) viewSubtitle = t('Rapport de Constat');
+  else viewSubtitle = isContreVisite ? t('Contre-visite Contrôleur') : t('Réalisation Prestation');
+
   const translatedZoneName = await translateDynamicText(zone.nom, userLang);
 
   root.innerHTML = `
@@ -1163,10 +1099,22 @@ async function renderControle(){
       const eqPhotos = isContreVisite ? (eqR.photos || []) : [];
 
       const eqWasOk = (eqR.conforme === true && eqR.photos && eqR.photos.length > 0);
-      const isEquipeNok = isContreVisite && !eqWasOk;
+      const isEquipeNok = enableEq && isContreVisite && !eqWasOk;
 
-      const isEquipeLocked = !isContreVisite && myPhotos.length === 0;
-      const isCtrlNokLocked = isContreVisite && eqWasOk && myPhotos.length === 0;
+      let disableOk = false;
+      let disableNok = false;
+      
+      if(enableEq) {
+        if(!isContreVisite) {
+          disableOk = myPhotos.length === 0;
+          disableNok = myPhotos.length === 0;
+        } else {
+          disableNok = eqWasOk && myPhotos.length === 0;
+        }
+      } else {
+        // Mode constat: NOK nécessite photo. OK est libre.
+        disableNok = myPhotos.length === 0;
+      }
 
       const freqLabel = p.freq==='J' ? t('Jour') : (p.freq==='H' ? t('Hebdo') : t('Mensuel'));
       const displayLabel = await translateDynamicText(p.label, userLang);
@@ -1179,24 +1127,24 @@ async function renderControle(){
               ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">⚠️ ${t('Équipe').toUpperCase()} : NOK</span>` : ''}
             </div>
             <div class="point-toggle" style="margin-top:6px;">
-              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" ${isEquipeLocked ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✓ OK</button>
-              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" ${(isEquipeLocked || isCtrlNokLocked) ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✕ NOK</button>
+              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" ${disableOk ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✓ OK</button>
+              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" ${disableNok ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✕ NOK</button>
             </div>
           </div>
 
-          ${isContreVisite && eqPhotos.length ? `
+          ${enableEq && isContreVisite && eqPhotos.length ? `
             <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:8px;">${t('📸 Photos transmises par l\'Équipe :')}</div>
             <div class="point-photo-row" style="display:flex;gap:6px;overflow-x:auto;padding:6px;background:#DCEEEC;border-radius:8px;margin-top:4px;">
               ${eqPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe - ${p.label}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
             </div>
           ` : ''}
 
-          ${isContreVisite && eqR.commentaire ? `
+          ${enableEq && isContreVisite && eqR.commentaire ? `
             <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">${t('💬 Obs. Équipe')} (${c.passageEquipe.agentNom||t('Équipe')}) : "${eqR.commentaire}"</div>
           ` : ''}
 
           <div style="font-size:11px;color:#6B655C;margin-top:8px;">
-            ${isContreVisite ? t('Tes photos contrôleur (exigée si passage en NOK) :') : t('Photo obligatoire pour activer la réponse :')}
+            ${!enableEq ? t('Photo exigée si passage en NOK :') : (isContreVisite ? t('Tes photos contrôleur (exigée si passage en NOK) :') : t('Photo obligatoire pour activer la réponse :'))}
           </div>
           <div class="point-photo-row" id="photos_${p.id}" style="display:flex;align-items:center;overflow-x:auto;margin-top:4px;">
             <div class="my-photos-container" style="display:inline-flex;align-items:center;">
@@ -1208,7 +1156,7 @@ async function renderControle(){
             </label>
           </div>
           
-          <textarea class="point-comment" placeholder="${isContreVisite ? t('Remarques Contrôleur (optionnel)') : t('Remarques Équipe (optionnel)')}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6;">${r.commentaire||''}</textarea>
+          <textarea class="point-comment" placeholder="${!enableEq ? t('Remarques (optionnel)') : (isContreVisite ? t('Remarques Contrôleur (optionnel)') : t('Remarques Équipe (optionnel)'))}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6;">${r.commentaire||''}</textarea>
         </div>
       `;
     }
@@ -1231,13 +1179,30 @@ async function renderControle(){
             const thumbItem = btn.closest('.photo-item-thumb');
             if(thumbItem) thumbItem.remove();
             
-            if(!isContreVisite && currentBranch.reponses[pId].photos.length === 0){
+            // Re-lock if photo count reaches 0
+            if(currentBranch.reponses[pId].photos.length === 0){
               const parentCard = document.querySelector(`.point-item[data-point="${pId}"]`);
               if(parentCard){
+                const rEqLoc = equipeReponses[pId] || {};
+                const eqWasOkLoc = (rEqLoc.conforme === true && rEqLoc.photos && rEqLoc.photos.length > 0);
+                
                 parentCard.querySelectorAll('.toggle-btn').forEach(b => {
-                  b.setAttribute('disabled', 'true');
-                  b.style.opacity = '0.4';
-                  b.style.cursor = 'not-allowed';
+                  const isNokBtn = b.classList.contains('non-conforme');
+                  const isOkBtn = b.classList.contains('conforme');
+                  let lock = false;
+                  
+                  if(enableEq){
+                    if(!isContreVisite) lock = true;
+                    else if(isNokBtn && eqWasOkLoc) lock = true;
+                  } else {
+                    if(isNokBtn) lock = true;
+                  }
+
+                  if(lock){
+                    b.setAttribute('disabled', 'true');
+                    b.style.opacity = '0.4';
+                    b.style.cursor = 'not-allowed';
+                  }
                 });
               }
             }
@@ -1260,7 +1225,9 @@ async function renderControle(){
       item.querySelectorAll('.toggle-btn').forEach(btn=>{
         btn.onclick = async (e)=>{
           if(btn.hasAttribute('disabled')){
-            if(!isContreVisite){
+            if(!enableEq){
+              toast('📷 Photo obligatoire pour signaler une anomalie (NOK)');
+            } else if(!isContreVisite){
               toast('📷 Dépose au moins une photo pour déverrouiller cet item');
             } else {
               toast('📷 Photo contrôleur obligatoire pour passer cet item Équipe OK en NOK !');
@@ -1306,13 +1273,12 @@ async function renderControle(){
             attachDelButtons();
           }
 
-          if(!isContreVisite){
-            item.querySelectorAll('.toggle-btn').forEach(b => {
-              b.removeAttribute('disabled');
-              b.style.opacity = '1';
-              b.style.cursor = 'pointer';
-            });
-          }
+          // Unlock buttons
+          item.querySelectorAll('.toggle-btn').forEach(b => {
+            b.removeAttribute('disabled');
+            b.style.opacity = '1';
+            b.style.cursor = 'pointer';
+          });
 
           await triggerAutoSave();
           toast(t('Photo ajoutée'));
@@ -1342,7 +1308,7 @@ async function renderControle(){
 }
 
 /* =========================================================================
-   ÉCRAN HISTORIQUE
+   ÉCRAN HISTORIQUE & PDF
    ========================================================================= */
 async function generatePDFForDate(targetDateIso){
   resetInactivityTimer();
@@ -1350,6 +1316,8 @@ async function generatePDFForDate(targetDateIso){
   const { jsPDF } = window.jspdf;
   const docPdf = new jsPDF({ unit: 'mm', format: 'a4' });
   const date = targetDateIso;
+  const config = await getGlobalConfig();
+  const enableEq = config.enableEquipe;
   
   const C_INK = [33, 30, 26];
   const C_AMBER = [199, 121, 27];
@@ -1370,7 +1338,7 @@ async function generatePDFForDate(targetDateIso){
   docPdf.setTextColor(255, 255, 255);
   docPdf.setFont('helvetica', 'bold');
   docPdf.setFontSize(15);
-  docPdf.text('SASU SOAN — RAPPORT DE PRESTATION', 14, 15);
+  docPdf.text(enableEq ? 'SASU SOAN — RAPPORT DE PRESTATION' : 'SASU SOAN — RAPPORT DE CONSTAT', 14, 15);
   
   docPdf.setFont('helvetica', 'normal');
   docPdf.setFontSize(9);
@@ -1385,7 +1353,7 @@ async function generatePDFForDate(targetDateIso){
   docPdf.setTextColor(...C_INK);
   docPdf.setFont('helvetica', 'bold');
   docPdf.setFontSize(10);
-  docPdf.text('SOMMAIRE DE PRESTATION', 18, 42);
+  docPdf.text(enableEq ? 'SOMMAIRE DE PRESTATION' : 'SOMMAIRE DU CONSTAT', 18, 42);
   docPdf.setFont('helvetica', 'normal');
   docPdf.setFontSize(8.5);
   docPdf.setTextColor(100, 100, 100);
@@ -1444,7 +1412,7 @@ async function generatePDFForDate(targetDateIso){
     docPdf.setFont('helvetica', 'normal');
     docPdf.setFontSize(8.5);
     docPdf.setTextColor(...C_INK);
-    docPdf.text(`Prestation du ${fmtDate(date)}`, 14, y);
+    docPdf.text(`Rapport du ${fmtDate(date)}`, 14, y);
     y += 8;
 
     for(const p of activePoints){
@@ -1455,7 +1423,7 @@ async function generatePDFForDate(targetDateIso){
       let cvConformeCalculated = (rCv.conforme === false) ? false : true;
 
       const isFinalOk = (cvConformeCalculated === true);
-      const isRealEcart = (eqConformeCalculated === true && cvConformeCalculated === false);
+      const isRealEcart = enableEq ? (eqConformeCalculated === true && cvConformeCalculated === false) : false;
 
       if(!isFinalOk) totalNok++;
       if(isRealEcart) totalEcarts++;
@@ -1479,10 +1447,15 @@ async function generatePDFForDate(targetDateIso){
 
       docPdf.setFont('helvetica', 'normal');
       docPdf.setFontSize(8);
-      docPdf.text(`Équipe: ${eqConformeCalculated?'OK':'NOK'}`, 125, y + 6);
-      docPdf.text(`Contrôleur: ${cvConformeCalculated?'OK':'NOK'}`, 150, y + 6);
+      
+      if(enableEq) {
+        docPdf.text(`Équipe: ${eqConformeCalculated?'OK':'NOK'}`, 125, y + 6);
+        docPdf.text(`Contrôleur: ${cvConformeCalculated?'OK':'NOK'}`, 150, y + 6);
+      } else {
+        docPdf.text(`Constat: ${cvConformeCalculated?'OK':'NOK'}`, 150, y + 6);
+      }
 
-      if(isRealEcart){
+      if(enableEq && isRealEcart){
         docPdf.setFillColor(...C_RED);
         docPdf.rect(175, y + 2, 16, 10, 'F');
         docPdf.setTextColor(255, 255, 255);
@@ -1501,17 +1474,18 @@ async function generatePDFForDate(targetDateIso){
       if(rEq.commentaire || rCv.commentaire || eqAgent || cvCtrl){
         docPdf.setFontSize(8);
         docPdf.setTextColor(80, 80, 80);
-        if(rEq.commentaire){
+        if(enableEq && rEq.commentaire){
           docPdf.text(`• Obs. Équipe [${eqAgent} à ${eqTime}] : ${rEq.commentaire}`, 18, y);
           y += 5;
         }
         if(rCv.commentaire){
-          docPdf.text(`• Obs. Contrôleur [${cvCtrl} à ${cvTime}] : ${rCv.commentaire}`, 18, y);
+          const tag = enableEq ? 'Contrôleur' : 'Constat';
+          docPdf.text(`• Obs. ${tag} [${cvCtrl} à ${cvTime}] : ${rCv.commentaire}`, 18, y);
           y += 5;
         }
       }
 
-      const allEqPhotos = rEq.photos || [];
+      const allEqPhotos = enableEq ? (rEq.photos || []) : [];
       const allCvPhotos = rCv.photos || [];
 
       if(allEqPhotos.length > 0 || allCvPhotos.length > 0){
@@ -1538,7 +1512,11 @@ async function generatePDFForDate(targetDateIso){
             docPdf.setFillColor(...C_AMBER);
             docPdf.rect(xPos, y + 38, 55, 6, 'F');
             docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
-            docPdf.text(`CTRL : ${cvCtrl} (${cvTime})`, xPos + 2, y + 42.5);
+            if(enableEq){
+              docPdf.text(`CTRL : ${cvCtrl} (${cvTime})`, xPos + 2, y + 42.5);
+            } else {
+              docPdf.text(`CONSTAT : ${cvCtrl} (${cvTime})`, xPos + 2, y + 42.5);
+            }
 
             xPos += 58;
             if(xPos > 140){ xPos = 18; y += 48; }
@@ -1565,17 +1543,23 @@ async function generatePDFForDate(targetDateIso){
   docPdf.setFontSize(10);
   
   const statusMsg = totalNok === 0 
-    ? 'BILAN CONTRÔLE : PRESTATION CONFORME — 0 NOK' 
-    : `BILAN CONTRÔLE : ${totalNok} NOK dont ${totalEcarts} écart(s)`;
+    ? (enableEq ? 'BILAN CONTRÔLE : PRESTATION CONFORME — 0 NOK' : 'BILAN CONSTAT : CONFORME — 0 NOK')
+    : (enableEq ? `BILAN CONTRÔLE : ${totalNok} NOK dont ${totalEcarts} écart(s)` : `BILAN CONSTAT : ${totalNok} NOK`);
   
   docPdf.text(statusMsg, 18, 149);
 
   docPdf.save(`Rapport_SOAN_Global_${date}.pdf`);
 }
 
+async function generateGlobalPDF(){
+  await generatePDFForDate(todayISO());
+}
+
 async function renderHistory(){
   resetInactivityTimer();
   const userLang = (session && session.lang) ? session.lang : 'fr';
+  const config = await getGlobalConfig();
+  const enableEq = config.enableEquipe;
 
   root.innerHTML = `
     <div class="wrap">
@@ -1690,11 +1674,11 @@ async function renderHistory(){
           const cvOk = (rCv.conforme === false) ? false : true;
 
           const isFinalOk = (cvOk === true);
-          const isRealEcart = (eqOk === true && cvOk === false);
+          const isRealEcart = enableEq ? (eqOk === true && cvOk === false) : false;
 
           const eqAgent = rEq.agentNom || eq.agentNom || t('Équipe');
           const eqTime = rEq.heure || eq.heure || '--:--';
-          const cvCtrl = rCv.controleurNom || cv.controleurNom || t('Contrôleur');
+          const cvCtrl = rCv.controleurNom || cv.controleurNom || (enableEq ? t('Contrôleur') : t('Constat'));
           const cvTime = rCv.heure || cv.heure || '--:--';
 
           const translatedLabel = await translateDynamicText(p.label, userLang);
@@ -1703,37 +1687,43 @@ async function renderHistory(){
             <div style="border:1px solid ${isFinalOk ? '#2B6E68' : '#B23A34'};background:${isFinalOk ? '#DCEEEC' : '#FEF2F2'};padding:12px;border-radius:8px;margin-bottom:10px;">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
                 <div style="font-weight:600;font-size:13.5px;color:#211E1A;flex:1;">${translatedLabel}</div>
-                ${isRealEcart ? `<span style="background:#B23A34;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap;">ÉCART / NOK</span>` : ''}
+                ${enableEq && isRealEcart ? `<span style="background:#B23A34;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap;">ÉCART / NOK</span>` : ''}
               </div>
 
               <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-                <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${eqOk?'#2B6E68':'#B23A34'};color:#fff;">
-                  <span>${t('Équipe')} (${eqAgent} ${eqTime}) :</span>
-                  <strong>${eqOk?'✓ OK':'✕ NOK'}</strong>
-                </div>
-
-                <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${cvOk?'#2B6E68':'#B23A34'};color:#fff;">
-                  <span>${t('Contrôleur')} (${cvCtrl} ${cvTime}) :</span>
-                  <strong>${cvOk?'✓ OK':'✕ NOK'}</strong>
-                </div>
+                ${enableEq ? `
+                  <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${eqOk?'#2B6E68':'#B23A34'};color:#fff;">
+                    <span>${t('Équipe')} (${eqAgent}${eqTime}) :</span>
+                    <strong>${eqOk?'✓ OK':'✕ NOK'}</strong>
+                  </div>
+                  <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${cvOk?'#2B6E68':'#B23A34'};color:#fff;">
+                    <span>${t('Contrôleur')} (${cvCtrl}${cvTime}) :</span>
+                    <strong>${cvOk?'✓ OK':'✕ NOK'}</strong>
+                  </div>
+                ` : `
+                  <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${cvOk?'#2B6E68':'#B23A34'};color:#fff;">
+                    <span>${t('Constat')} (${cvCtrl}${cvTime}) :</span>
+                    <strong>${cvOk?'✓ OK':'✕ NOK'}</strong>
+                  </div>
+                `}
               </div>
 
-              ${rEq.commentaire ? `<div style="font-size:11px;color:#4A453E;margin-top:4px;">💬 <em>Obs. ${t('Équipe')} [${eqAgent} à ${eqTime}] :</em> "${rEq.commentaire}"</div>` : ''}
-              ${rCv.commentaire ? `<div style="font-size:11px;color:#C7791B;margin-top:4px;">💬 <em>Obs. ${t('Contrôleur')} [${cvCtrl} à ${cvTime}] :</em> "${rCv.commentaire}"</div>` : ''}
+              ${enableEq && rEq.commentaire ? `<div style="font-size:11px;color:#4A453E;margin-top:4px;">💬 <em>Obs. ${t('Équipe')} [${eqAgent} à ${eqTime}] :</em> "${rEq.commentaire}"</div>` : ''}
+              ${rCv.commentaire ? `<div style="font-size:11px;color:#C7791B;margin-top:4px;">💬 <em>Obs. ${enableEq ? t('Contrôleur') : t('Constat')} [${cvCtrl} à ${cvTime}] :</em> "${rCv.commentaire}"</div>` : ''}
 
-              ${(eqPhotos.length || cvPhotos.length) ? `
+              ${((enableEq && eqPhotos.length) || cvPhotos.length) ? `
                 <div style="display:flex;gap:8px;margin-top:10px;overflow-x:auto;padding-bottom:4px;">
-                  ${eqPhotos.map(pSrc => `
+                  ${enableEq ? eqPhotos.map(pSrc => `
                     <div style="position:relative;flex-shrink:0;">
                       <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe (${eqAgent} ${eqTime}) - ${translatedLabel}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
                       <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${eqAgent} (${eqTime})</span>
                     </div>
-                  `).join('')}
+                  `).join('') : ''}
 
                   ${cvPhotos.map(pSrc => `
                     <div style="position:relative;flex-shrink:0;">
-                      <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Contrôleur (${cvCtrl} ${cvTime}) - ${translatedLabel}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
-                      <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">CTRL: ${cvCtrl} (${cvTime})</span>
+                      <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo ${enableEq?'Contrôleur':'Constat'} (${cvCtrl} ${cvTime}) - ${translatedLabel}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
+                      <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${enableEq?'CTRL':'CONST'}: ${cvCtrl} (${cvTime})</span>
                     </div>
                   `).join('')}
                 </div>
@@ -1765,11 +1755,13 @@ async function renderHistory(){
 }
 
 /* =========================================================================
-   ÉCRAN STATISTIQUES & SUIVI CENTRÉ SUR LES NOK
+   ÉCRAN STATISTIQUES
    ========================================================================= */
 async function renderStats(){
   resetInactivityTimer();
   const userLang = (session && session.lang) ? session.lang : 'fr';
+  const config = await getGlobalConfig();
+  const enableEq = config.enableEquipe;
 
   root.innerHTML = `
     <div class="wrap">
@@ -1820,20 +1812,20 @@ async function renderStats(){
       Object.keys(eq).forEach(pId => {
         const rEq = eq[pId];
         const rCv = cv[pId];
-        if(rEq){
+        if(rEq || rCv){
           totalChecked++;
-          const eqOk = (rEq.photos && rEq.photos.length > 0 && rEq.conforme !== false);
+          const eqOk = (rEq && rEq.photos && rEq.photos.length > 0 && rEq.conforme !== false);
           const cvOk = (rCv ? rCv.conforme !== false : true);
 
           if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].total++;
 
-          if(!cvOk || !eqOk){
+          if(!cvOk || (enableEq && !eqOk)){
             nokCount++;
             if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].nok++;
             itemNokMap[pId] = (itemNokMap[pId] || 0) + 1;
           }
 
-          if(eqOk === true && cvOk === false){
+          if(enableEq && eqOk === true && cvOk === false){
             ecartsCount++;
           }
         }
@@ -1896,7 +1888,7 @@ async function renderStats(){
         <div style="background:#FAF8F3;padding:14px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
           <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">${t('Anomalies Relevées')}</div>
           <div style="font-size:20px;font-weight:800;color:#B23A34;margin-top:4px;">${currentStats.nokCount} NOK</div>
-          <div style="font-size:12px;color:#6B655C;margin-top:2px;font-weight:600;">${t('dont')} ${currentStats.ecartsCount} ${t('écart(s)')}</div>
+          ${enableEq ? `<div style="font-size:12px;color:#6B655C;margin-top:2px;font-weight:600;">${t('dont')} ${currentStats.ecartsCount}${t('écart(s)')}</div>` : ''}
         </div>
       </div>
 
@@ -1947,7 +1939,7 @@ async function renderStats(){
         ${topNokItems.length > 0 ? topNokItems.map(te => `
           <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #E7E1D6;font-size:12px;gap:10px;">
             <span style="color:#211E1A;font-weight:500;flex:1;word-break:break-word;">${te.label}</span>
-            <span style="background:#FEF2F2;color:#B23A34;font-weight:700;padding:4px 8px;border-radius:4px;font-size:11px;border:1px solid #B23A34;white-space:nowrap;">${te.count} ${t('fois NOK')}</span>
+            <span style="background:#FEF2F2;color:#B23A34;font-weight:700;padding:4px 8px;border-radius:4px;font-size:11px;border:1px solid #B23A34;white-space:nowrap;">${te.count}${t('fois NOK')}</span>
           </div>
         `).join('') : `<div style="font-size:12px;color:#2B6E68;font-weight:600;">${t('Aucune anomalie NOK relevée sur cette période ! 🎉')}</div>`}
       </div>
@@ -1958,238 +1950,6 @@ async function renderStats(){
 
   contextSelect.onchange = updateStatsUI;
   await updateStatsUI();
-}
-
-/* =========================================================================
-   GÉNÉRATION DU RAPPORT PDF GLOBAL
-   ========================================================================= */
-async function generateGlobalPDF(){
-  resetInactivityTimer();
-  if(typeof window.jspdf === 'undefined'){ toast('Bibliothèque PDF indisponible'); return; }
-  const { jsPDF } = window.jspdf;
-  const docPdf = new jsPDF({ unit: 'mm', format: 'a4' });
-  const date = todayISO();
-  
-  const C_INK = [33, 30, 26];
-  const C_AMBER = [199, 121, 27];
-  const C_TEAL = [43, 110, 104];
-  const C_TEAL_BG = [220, 238, 236];
-  const C_RED = [178, 58, 52];
-  const C_RED_BG = [254, 242, 242];
-  const C_BG = [250, 248, 243];
-  const C_LINE = [231, 225, 214];
-
-  let totalNok = 0;
-  let totalEcarts = 0;
-  const zonePageMap = {};
-
-  docPdf.setFillColor(...C_INK);
-  docPdf.rect(0, 0, 210, 28, 'F');
-  
-  docPdf.setTextColor(255, 255, 255);
-  docPdf.setFont('helvetica', 'bold');
-  docPdf.setFontSize(15);
-  docPdf.text('SASU SOAN — RAPPORT DE PRESTATION', 14, 15);
-  
-  docPdf.setFont('helvetica', 'normal');
-  docPdf.setFontSize(9);
-  docPdf.setTextColor(220, 220, 220);
-  docPdf.text(`Date : ${fmtDate(date)}  |  Généré le : ${new Date().toLocaleTimeString('fr-FR')}`, 14, 22);
-
-  docPdf.setFillColor(...C_BG);
-  docPdf.roundedRect(14, 34, 182, 22, 3, 3, 'F');
-  docPdf.setDrawColor(...C_LINE);
-  docPdf.roundedRect(14, 34, 182, 22, 3, 3, 'S');
-
-  docPdf.setTextColor(...C_INK);
-  docPdf.setFont('helvetica', 'bold');
-  docPdf.setFontSize(10);
-  docPdf.text('SOMMAIRE DE PRESTATION', 18, 42);
-  docPdf.setFont('helvetica', 'normal');
-  docPdf.setFontSize(8.5);
-  docPdf.setTextColor(100, 100, 100);
-  docPdf.text('Cliquez sur une zone ci-dessous pour accéder directement au rapport détaillé.', 18, 48);
-
-  let currentY = 64;
-  
-  for(const z of ZONES){
-    docPdf.setFillColor(255, 255, 255);
-    docPdf.roundedRect(14, currentY, 182, 12, 2, 2, 'F');
-    docPdf.setDrawColor(...C_LINE);
-    docPdf.roundedRect(14, currentY, 182, 12, 2, 2, 'S');
-
-    docPdf.setFont('helvetica', 'bold');
-    docPdf.setFontSize(10);
-    docPdf.setTextColor(...C_AMBER);
-    docPdf.text(`• ZONE : ${z.nom.toUpperCase()}`, 18, currentY + 8);
-
-    docPdf.setFont('helvetica', 'normal');
-    docPdf.setFontSize(8.5);
-    docPdf.setTextColor(...C_INK);
-    docPdf.text('Accéder au détail ->', 140, currentY + 8);
-
-    zonePageMap[z.id] = { ySommaire: currentY, pageTarget: 0 };
-    currentY += 16;
-  }
-
-  for(const z of ZONES){
-    docPdf.addPage();
-    const pageNum = docPdf.internal.getNumberOfPages();
-    zonePageMap[z.id].pageTarget = pageNum;
-
-    let y = 20;
-
-    docPdf.setFillColor(...C_AMBER);
-    docPdf.rect(14, y, 182, 8, 'F');
-    docPdf.setTextColor(255, 255, 255);
-    docPdf.setFont('helvetica', 'bold');
-    docPdf.setFontSize(11);
-    docPdf.text(`ZONE : ${z.nom.toUpperCase()}`, 18, y + 5.5);
-    y += 14;
-
-    const controleId = `${date}__${z.id}`;
-    let c = await idbGet('controles', controleId);
-    if(navigator.onLine && !c){
-      try {
-        const doc = await db.collection('controles').doc(controleId).get();
-        if(doc.exists) c = doc.data();
-      } catch(e){}
-    }
-
-    const activePoints = await getPointsForToday(z.id, date);
-    const eq = (c && c.passageEquipe) || {};
-    const cv = (c && c.contreVisite) || {};
-
-    docPdf.setFont('helvetica', 'normal');
-    docPdf.setFontSize(8.5);
-    docPdf.setTextColor(...C_INK);
-    docPdf.text(`Prestation du ${fmtDate(date)}`, 14, y);
-    y += 8;
-
-    for(const p of activePoints){
-      const rEq = (eq.reponses && eq.reponses[p.id]) || { conforme: null, photos:[], commentaire:'', agentNom: eq.agentNom, heure: eq.heure };
-      const rCv = (cv.reponses && cv.reponses[p.id]) || { conforme: null, photos:[], commentaire:'', controleurNom: cv.controleurNom, heure: cv.heure };
-
-      let eqConformeCalculated = (rEq.photos && rEq.photos.length > 0) ? (rEq.conforme !== false) : false;
-      let cvConformeCalculated = (rCv.conforme === false) ? false : true;
-
-      const isFinalOk = (cvConformeCalculated === true);
-      const isRealEcart = (eqConformeCalculated === true && cvConformeCalculated === false);
-
-      if(!isFinalOk) totalNok++;
-      if(isRealEcart) totalEcarts++;
-
-      if(y > 250){ docPdf.addPage(); y = 20; }
-
-      if(isFinalOk){
-        docPdf.setFillColor(...C_TEAL_BG);
-        docPdf.setDrawColor(...C_TEAL);
-      } else {
-        docPdf.setFillColor(...C_RED_BG);
-        docPdf.setDrawColor(...C_RED);
-      }
-
-      docPdf.roundedRect(14, y, 182, 14, 2, 2, 'FD');
-
-      docPdf.setFont('helvetica', 'bold');
-      docPdf.setFontSize(8.5);
-      docPdf.setTextColor(...C_INK);
-      docPdf.text(p.label, 18, y + 6);
-
-      docPdf.setFont('helvetica', 'normal');
-      docPdf.setFontSize(8);
-      docPdf.text(`Équipe: ${eqConformeCalculated?'OK':'NOK'}`, 125, y + 6);
-      docPdf.text(`Contrôleur: ${cvConformeCalculated?'OK':'NOK'}`, 150, y + 6);
-
-      if(isRealEcart){
-        docPdf.setFillColor(...C_RED);
-        docPdf.rect(175, y + 2, 16, 10, 'F');
-        docPdf.setTextColor(255, 255, 255);
-        docPdf.setFont('helvetica', 'bold');
-        docPdf.setFontSize(7);
-        docPdf.text('ÉCART', 177, y + 8);
-      }
-
-      y += 18;
-
-      const eqAgent = rEq.agentNom || eq.agentNom || 'Agent';
-      const eqTime = rEq.heure || eq.heure || '--:--';
-      const cvCtrl = rCv.controleurNom || cv.controleurNom || 'Contrôleur';
-      const cvTime = rCv.heure || cv.heure || '--:--';
-
-      if(rEq.commentaire || rCv.commentaire || eqAgent || cvCtrl){
-        docPdf.setFontSize(8);
-        docPdf.setTextColor(80, 80, 80);
-        if(rEq.commentaire){
-          docPdf.text(`• Obs. Équipe [${eqAgent} à ${eqTime}] : ${rEq.commentaire}`, 18, y);
-          y += 5;
-        }
-        if(rCv.commentaire){
-          docPdf.text(`• Obs. Contrôleur [${cvCtrl} à ${cvTime}] : ${rCv.commentaire}`, 18, y);
-          y += 5;
-        }
-      }
-
-      const allEqPhotos = rEq.photos || [];
-      const allCvPhotos = rCv.photos || [];
-
-      if(allEqPhotos.length > 0 || allCvPhotos.length > 0){
-        if(y > 210){ docPdf.addPage(); y = 20; }
-
-        let xPos = 18;
-        
-        for(const imgBase64 of allEqPhotos){
-          try {
-            docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 38);
-            docPdf.setFillColor(...C_TEAL);
-            docPdf.rect(xPos, y + 38, 55, 6, 'F');
-            docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
-            docPdf.text(`ÉQUIPE : ${eqAgent} (${eqTime})`, xPos + 2, y + 42.5);
-
-            xPos += 58;
-            if(xPos > 140){ xPos = 18; y += 48; }
-          } catch(e){}
-        }
-
-        for(const imgBase64 of allCvPhotos){
-          try {
-            docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 38);
-            docPdf.setFillColor(...C_AMBER);
-            docPdf.rect(xPos, y + 38, 55, 6, 'F');
-            docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
-            docPdf.text(`CTRL : ${cvCtrl} (${cvTime})`, xPos + 2, y + 42.5);
-
-            xPos += 58;
-            if(xPos > 140){ xPos = 18; y += 48; }
-          } catch(e){}
-        }
-
-        y += 50;
-      }
-    }
-  }
-
-  docPdf.setPage(1);
-  for(const z of ZONES){
-    const info = zonePageMap[z.id];
-    if(info && info.pageTarget > 0){
-      docPdf.link(14, info.ySommaire, 182, 12, { pageNumber: info.pageTarget });
-    }
-  }
-
-  docPdf.setFillColor(...(totalNok === 0 ? C_TEAL : C_RED));
-  docPdf.roundedRect(14, 140, 182, 14, 3, 3, 'F');
-  docPdf.setTextColor(255, 255, 255);
-  docPdf.setFont('helvetica', 'bold');
-  docPdf.setFontSize(10);
-  
-  const statusMsg = totalNok === 0 
-    ? 'BILAN CONTRÔLE : PRESTATION CONFORME — 0 NOK' 
-    : `BILAN CONTRÔLE : ${totalNok} NOK dont ${totalEcarts} écart(s)`;
-  
-  docPdf.text(statusMsg, 18, 149);
-
-  docPdf.save(`Rapport_SOAN_Global_${date}.pdf`);
 }
 
 /* =========================================================================
