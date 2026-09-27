@@ -2022,17 +2022,74 @@ async function renderTaskAdmin(){
       ${topbarHtml('Planning & Référentiel', 'Gestion des Tâches')}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section" style="padding:16px;">
-        <div class="section-note">Modifiez les libellés, récurrences, ou ajoutez/supprimez des tâches par zone.</div>
+        <div class="section-note">Modifiez les libellés, récurrences, ou ajoutez/supprimez des tâches par zone.<br><strong style="color:#2B6E68;">✓ Sauvegarde automatique intégrée.</strong></div>
         ${tasksHtml}
-        <button class="btn amber block" id="saveTasksBtn" style="margin-top:20px;margin-bottom:20px;">Sauvegarder les modifications</button>
+        <button class="btn amber block" id="saveTasksBtn" style="margin-top:20px;margin-bottom:20px;">Terminer et Retourner aux Zones</button>
       </div>
     </div>
   `;
 
   document.getElementById('backBtn').onclick = goToZones;
 
+  // --- 1. FONCTIONS DE SAUVEGARDE SILENCIEUSE ---
+  const saveSingleCard = async (card) => {
+    const taskId = card.dataset.taskId;
+    const zoneId = card.dataset.zoneId;
+    const label = card.querySelector('.task-label-input').value.trim();
+    const freq = card.querySelector('.freq-select').value;
+    let targetValue = 1;
+
+    if(freq === 'H'){
+      targetValue = parseInt(card.querySelector('.val-select-hebdo').value);
+    } else if(freq === 'M'){
+      targetValue = parseInt(card.querySelector('.val-input-mensuel').value) || 1;
+    }
+
+    const data = {
+      taskId,
+      zoneId,
+      label: label || 'Tâche sans nom',
+      freq,
+      targetValue,
+      deleted: false
+    };
+    await pushToCloud('task_schedule', taskId, data);
+  };
+
+  const saveAllCards = async () => {
+    const cards = document.querySelectorAll('.task-admin-card');
+    for(const card of cards){
+      await saveSingleCard(card);
+    }
+  };
+
+  // --- 2. DÉCLENCHEURS AUTO-SAVE (À LA FRAPPE ET AUX CLICS) ---
+  document.querySelectorAll('.task-admin-card').forEach(card => {
+    const labelInput = card.querySelector('.task-label-input');
+    const freqSelect = card.querySelector('.freq-select');
+    const hebdoSelect = card.querySelector('.val-select-hebdo');
+    const mensuelInput = card.querySelector('.val-input-mensuel');
+
+    let debounceTimer;
+    // Sauvegarde auto après 600ms d'arrêt de frappe
+    labelInput.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => saveSingleCard(card), 600);
+    });
+
+    mensuelInput.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => saveSingleCard(card), 600);
+    });
+
+    // Sauvegarde auto dès qu'on change un menu déroulant
+    freqSelect.addEventListener('change', () => saveSingleCard(card));
+    hebdoSelect.addEventListener('change', () => saveSingleCard(card));
+  });
+
+  // --- 3. GESTION DE L'AFFICHAGE CONDITIONNEL ---
   document.querySelectorAll('.freq-select').forEach(sel => {
-    sel.onchange = () => {
+    sel.addEventListener('change', () => {
       const taskId = sel.dataset.task;
       const val = sel.value;
       const targetBox = document.getElementById(`target_box_${taskId}`);
@@ -2050,11 +2107,13 @@ async function renderTaskAdmin(){
         selectHebdo.style.display = 'none';
         wrapMensuel.style.display = 'flex';
       }
-    };
+    });
   });
 
+  // --- 4. AJOUT / SUPPRESSION (AVEC SAUVEGARDE FORCÉE) ---
   document.querySelectorAll('.add-task-btn').forEach(btn => {
     btn.onclick = async () => {
+      await saveAllCards(); // Sécurité : on sauve tout ce qui a été tapé avant d'ajouter
       const zoneId = btn.dataset.zone;
       const label = prompt("Nom de la nouvelle tâche :");
       if(!label || !label.trim()) return;
@@ -2078,9 +2137,10 @@ async function renderTaskAdmin(){
   document.querySelectorAll('.delete-task-btn').forEach(btn => {
     btn.onclick = async () => {
       if(!confirm("Supprimer définitivement cette tâche ?")) return;
+      await saveAllCards(); // Sécurité : on sauve tout avant de supprimer
+
       const taskId = btn.dataset.taskId;
       const zoneId = btn.dataset.zoneId;
-
       const taskData = {
         taskId: taskId,
         zoneId: zoneId,
@@ -2093,37 +2153,13 @@ async function renderTaskAdmin(){
     };
   });
 
-  document.getElementById('saveTasksBtn').onclick = async ()=>{
-    const cards = document.querySelectorAll('.task-admin-card');
-    for(const card of cards){
-      const taskId = card.dataset.taskId;
-      const zoneId = card.dataset.zoneId;
-      const label = card.querySelector('.task-label-input').value.trim();
-      const freq = card.querySelector('.freq-select').value;
-      let targetValue = 1;
-
-      if(freq === 'H'){
-        targetValue = parseInt(card.querySelector('.val-select-hebdo').value);
-      } else if(freq === 'M'){
-        targetValue = parseInt(card.querySelector('.val-input-mensuel').value) || 1;
-      }
-
-      const data = {
-        taskId,
-        zoneId,
-        label: label || 'Tâche sans nom',
-        freq,
-        targetValue,
-        deleted: false
-      };
-
-      await pushToCloud('task_schedule', taskId, data);
-    }
-    toast('Tâches et planning sauvegardés !');
+  // --- 5. BOUTON DE FIN ---
+  document.getElementById('saveTasksBtn').onclick = async () => {
+    await saveAllCards();
+    toast('Modifications terminées !');
     goToZones();
   };
 }
-
 /* =========================================================================
    ADMINISTRATION UTILISATEURS
    ========================================================================= */
