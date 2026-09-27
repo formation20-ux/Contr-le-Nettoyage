@@ -1985,29 +1985,35 @@ async function renderTaskAdmin(){
     if(zonePoints.length === 0){
       tasksHtml += `<div style="font-size:12px;color:#6B655C;font-style:italic;padding:8px 0;">Aucune tâche enregistrée dans cette zone.</div>`;
     } else {
-      zonePoints.forEach(p => {
+      zonePoints.forEach((p, index) => {
         const currentFreq = p.freq || 'J';
         const currentVal = p.targetValue || 1;
+        const isFirst = index === 0;
+        const isLast = index === zonePoints.length - 1;
 
         tasksHtml += `
-          <div class="task-admin-card" data-task-id="${p.id}" data-zone-id="${z.id}" style="background:#fff;border:1px solid #E7E1D6;padding:12px;border-radius:8px;margin-top:10px;">
+          <div class="task-admin-card" data-task-id="${p.id}" data-zone-id="${z.id}" data-order="${p.order}" style="background:#fff;border:1px solid #E7E1D6;padding:12px;border-radius:8px;margin-top:10px;">
             <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <button class="btn ghost small move-up-btn" data-task-id="${p.id}" data-zone-id="${z.id}" style="padding:0 4px;font-size:12px;height:16px;line-height:1;min-width:auto;opacity:${isFirst?'0.2':'1'}" ${isFirst?'disabled':''}>▲</button>
+                <button class="btn ghost small move-down-btn" data-task-id="${p.id}" data-zone-id="${z.id}" style="padding:0 4px;font-size:12px;height:16px;line-height:1;min-width:auto;opacity:${isLast?'0.2':'1'}" ${isLast?'disabled':''}>▼</button>
+              </div>
               <input type="text" class="task-label-input" value="${p.label.replace(/"/g, '&quot;')}" style="flex:1;padding:8px;border-radius:6px;border:1px solid #E7E1D6;font-size:13px;font-weight:600;color:#211E1A;">
               <button class="btn danger small delete-task-btn" data-task-id="${p.id}" data-zone-id="${z.id}" style="padding:6px 10px;">Suppr.</button>
             </div>
             
-            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-left:24px;">
               <div style="flex:1;min-width:130px;">
                 <label style="font-size:11px;color:#6B655C;display:block;margin-bottom:2px;">Fréquence :</label>
                 <select class="freq-select" data-task="${p.id}" style="width:100%;padding:6px;border-radius:6px;border:1px solid #E7E1D6;font-size:12px;">
-                  <option value="J" ${currentFreq==='J'?'selected':''}>Quotidien (Tous les jours)</option>
-                  <option value="H" ${currentFreq==='H'?'selected':''}>Hebdomadaire (Un jour/semaine)</option>
-                  <option value="M" ${currentFreq==='M'?'selected':''}>Mensuel (Un jour/mois)</option>
+                  <option value="J" ${currentFreq==='J'?'selected':''}>Quotidien</option>
+                  <option value="H" ${currentFreq==='H'?'selected':''}>Hebdomadaire</option>
+                  <option value="M" ${currentFreq==='M'?'selected':''}>Mensuel</option>
                 </select>
               </div>
 
               <div class="target-val-box" id="target_box_${p.id}" style="flex:1;min-width:140px;display:${currentFreq==='J'?'none':'block'};">
-                <label style="font-size:11px;color:#6B655C;display:block;margin-bottom:2px;">Jour d'exécution :</label>
+                <label style="font-size:11px;color:#6B655C;display:block;margin-bottom:2px;">Jour :</label>
                 <select class="val-select-hebdo" data-task="${p.id}" style="width:100%;padding:6px;border-radius:6px;border:1px solid #E7E1D6;font-size:12px;display:${currentFreq==='H'?'block':'none'};">
                   <option value="1" ${currentVal==1?'selected':''}>Lundi</option>
                   <option value="2" ${currentVal==2?'selected':''}>Mardi</option>
@@ -2017,7 +2023,6 @@ async function renderTaskAdmin(){
                   <option value="6" ${currentVal==6?'selected':''}>Samedi</option>
                   <option value="0" ${currentVal==0?'selected':''}>Dimanche</option>
                 </select>
-
                 <div class="val-input-mensuel-wrap" style="display:${currentFreq==='M'?'flex':'none'};align-items:center;gap:6px;">
                   <input type="number" class="val-input-mensuel" data-task="${p.id}" min="1" max="28" value="${currentVal}" style="width:70px;padding:6px;border-radius:6px;border:1px solid #E7E1D6;font-size:12px;">
                   <span style="font-size:11px;color:#6B655C;">du mois</span>
@@ -2035,7 +2040,7 @@ async function renderTaskAdmin(){
       ${topbarHtml('Planning & Référentiel', 'Gestion des Tâches')}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section" style="padding:16px;">
-        <div class="section-note">Modifiez les libellés, récurrences, ou ajoutez/supprimez des tâches par zone.<br><strong style="color:#2B6E68;">✓ Sauvegarde automatique intégrée.</strong></div>
+        <div class="section-note">Réordonnez les tâches avec les flèches, modifiez-les, ajoutez ou supprimez-les.<br><strong style="color:#2B6E68;">✓ Sauvegarde automatique intégrée.</strong></div>
         ${tasksHtml}
         <button class="btn amber block" id="saveTasksBtn" style="margin-top:20px;margin-bottom:20px;">Terminer et Retourner aux Zones</button>
       </div>
@@ -2044,10 +2049,11 @@ async function renderTaskAdmin(){
 
   document.getElementById('backBtn').onclick = goToZones;
 
-  // --- 1. FONCTIONS DE SAUVEGARDE SILENCIEUSE ---
+  // --- 1. SAUVEGARDE SILENCIEUSE ---
   const saveSingleCard = async (card) => {
     const taskId = card.dataset.taskId;
     const zoneId = card.dataset.zoneId;
+    const order = parseInt(card.dataset.order) || 0;
     const label = card.querySelector('.task-label-input').value.trim();
     const freq = card.querySelector('.freq-select').value;
     let targetValue = 1;
@@ -2058,25 +2064,50 @@ async function renderTaskAdmin(){
       targetValue = parseInt(card.querySelector('.val-input-mensuel').value) || 1;
     }
 
-    const data = {
-      taskId,
-      zoneId,
-      label: label || 'Tâche sans nom',
-      freq,
-      targetValue,
-      deleted: false
-    };
+    const data = { taskId, zoneId, label: label || 'Tâche sans nom', freq, targetValue, order, deleted: false };
     await pushToCloud('task_schedule', taskId, data);
   };
 
   const saveAllCards = async () => {
-    const cards = document.querySelectorAll('.task-admin-card');
-    for(const card of cards){
+    for(const card of document.querySelectorAll('.task-admin-card')){
       await saveSingleCard(card);
     }
   };
 
-  // --- 2. DÉCLENCHEURS AUTO-SAVE (À LA FRAPPE ET AUX CLICS) ---
+  // --- 2. LOGIQUE DE RÉARRANGEMENT (HAUT / BAS) ---
+  const reorderTasks = async (taskId, zoneId, direction) => {
+    await saveAllCards(); // Sauvegarde les textes en cours avant de bouger
+    const currentMap = await getAllTasksMap();
+    let zoneTasks = currentMap[zoneId];
+    const idx = zoneTasks.findIndex(t => t.id === taskId);
+    
+    if (direction === 'up' && idx > 0) {
+      [zoneTasks[idx], zoneTasks[idx - 1]] = [zoneTasks[idx - 1], zoneTasks[idx]];
+    } else if (direction === 'down' && idx < zoneTasks.length - 1) {
+      [zoneTasks[idx], zoneTasks[idx + 1]] = [zoneTasks[idx + 1], zoneTasks[idx]];
+    } else {
+      return;
+    }
+
+    // Réassignation séquentielle de l'ordre pour toute la zone
+    for (let i = 0; i < zoneTasks.length; i++) {
+      const t = zoneTasks[i];
+      let existing = await idbGet('task_schedule', t.id) || { taskId: t.id, zoneId: zoneId, label: t.label, freq: t.freq, targetValue: t.targetValue, deleted: false };
+      existing.order = i;
+      await pushToCloud('task_schedule', t.id, existing);
+    }
+    
+    renderTaskAdmin(); // Rafraîchit l'interface pour montrer le nouvel ordre
+  };
+
+  document.querySelectorAll('.move-up-btn').forEach(btn => {
+    btn.onclick = () => reorderTasks(btn.dataset.taskId, btn.dataset.zoneId, 'up');
+  });
+  document.querySelectorAll('.move-down-btn').forEach(btn => {
+    btn.onclick = () => reorderTasks(btn.dataset.taskId, btn.dataset.zoneId, 'down');
+  });
+
+  // --- 3. DÉCLENCHEURS AUTO-SAVE ---
   document.querySelectorAll('.task-admin-card').forEach(card => {
     const labelInput = card.querySelector('.task-label-input');
     const freqSelect = card.querySelector('.freq-select');
@@ -2084,64 +2115,48 @@ async function renderTaskAdmin(){
     const mensuelInput = card.querySelector('.val-input-mensuel');
 
     let debounceTimer;
-    // Sauvegarde auto après 600ms d'arrêt de frappe
-    labelInput.addEventListener('input', () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => saveSingleCard(card), 600);
-    });
+    const triggerSave = () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => saveSingleCard(card), 600); };
 
-    mensuelInput.addEventListener('input', () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => saveSingleCard(card), 600);
-    });
-
-    // Sauvegarde auto dès qu'on change un menu déroulant
+    labelInput.addEventListener('input', triggerSave);
+    mensuelInput.addEventListener('input', triggerSave);
     freqSelect.addEventListener('change', () => saveSingleCard(card));
     hebdoSelect.addEventListener('change', () => saveSingleCard(card));
   });
 
-  // --- 3. GESTION DE L'AFFICHAGE CONDITIONNEL ---
+  // --- 4. AFFICHAGE CONDITIONNEL DES FRÉQUENCES ---
   document.querySelectorAll('.freq-select').forEach(sel => {
     sel.addEventListener('change', () => {
       const taskId = sel.dataset.task;
-      const val = sel.value;
       const targetBox = document.getElementById(`target_box_${taskId}`);
-      const selectHebdo = targetBox.querySelector('.val-select-hebdo');
-      const wrapMensuel = targetBox.querySelector('.val-input-mensuel-wrap');
-
-      if(val === 'J'){
+      if(sel.value === 'J'){
         targetBox.style.display = 'none';
-      } else if(val === 'H'){
+      } else if(sel.value === 'H'){
         targetBox.style.display = 'block';
-        selectHebdo.style.display = 'block';
-        wrapMensuel.style.display = 'none';
-      } else if(val === 'M'){
+        targetBox.querySelector('.val-select-hebdo').style.display = 'block';
+        targetBox.querySelector('.val-input-mensuel-wrap').style.display = 'none';
+      } else if(sel.value === 'M'){
         targetBox.style.display = 'block';
-        selectHebdo.style.display = 'none';
-        wrapMensuel.style.display = 'flex';
+        targetBox.querySelector('.val-select-hebdo').style.display = 'none';
+        targetBox.querySelector('.val-input-mensuel-wrap').style.display = 'flex';
       }
     });
   });
 
-  // --- 4. AJOUT / SUPPRESSION (AVEC SAUVEGARDE FORCÉE) ---
+  // --- 5. AJOUT / SUPPRESSION ---
   document.querySelectorAll('.add-task-btn').forEach(btn => {
     btn.onclick = async () => {
-      await saveAllCards(); // Sécurité : on sauve tout ce qui a été tapé avant d'ajouter
+      await saveAllCards();
       const zoneId = btn.dataset.zone;
       const label = prompt("Nom de la nouvelle tâche :");
       if(!label || !label.trim()) return;
 
       const newTaskId = uid(`task_${zoneId}`);
-      const taskData = {
-        taskId: newTaskId,
-        zoneId: zoneId,
-        label: label.trim(),
-        freq: 'J',
-        targetValue: 1,
-        deleted: false
-      };
-
-      await pushToCloud('task_schedule', newTaskId, taskData);
+      const newOrder = allMap[zoneId] ? allMap[zoneId].length : 0; // Se place à la fin
+      
+      await pushToCloud('task_schedule', newTaskId, {
+        taskId: newTaskId, zoneId: zoneId, label: label.trim(),
+        freq: 'J', targetValue: 1, order: newOrder, deleted: false
+      });
       toast('Tâche ajoutée !');
       renderTaskAdmin();
     };
@@ -2150,26 +2165,19 @@ async function renderTaskAdmin(){
   document.querySelectorAll('.delete-task-btn').forEach(btn => {
     btn.onclick = async () => {
       if(!confirm("Supprimer définitivement cette tâche ?")) return;
-      await saveAllCards(); // Sécurité : on sauve tout avant de supprimer
+      await saveAllCards();
 
-      const taskId = btn.dataset.taskId;
-      const zoneId = btn.dataset.zoneId;
-      const taskData = {
-        taskId: taskId,
-        zoneId: zoneId,
-        deleted: true
-      };
-
-      await pushToCloud('task_schedule', taskId, taskData);
+      await pushToCloud('task_schedule', btn.dataset.taskId, {
+        taskId: btn.dataset.taskId, zoneId: btn.dataset.zoneId, deleted: true
+      });
       toast('Tâche supprimée !');
       renderTaskAdmin();
     };
   });
 
-  // --- 5. BOUTON DE FIN ---
+  // --- 6. BOUTON DE FIN ---
   document.getElementById('saveTasksBtn').onclick = async () => {
     await saveAllCards();
-    toast('Modifications terminées !');
     goToZones();
   };
 }
