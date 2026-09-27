@@ -386,6 +386,13 @@ async function getGlobalConfig() {
 async function getAllTasksMap(forceCloud = false){
   let tasksMap = JSON.parse(JSON.stringify(DEFAULT_POINTS));
   
+  // Initialiser un ordre par défaut pour les tâches natives
+  Object.keys(tasksMap).forEach(zId => {
+    tasksMap[zId].forEach((p, idx) => {
+      if (p.order === undefined) p.order = idx;
+    });
+  });
+  
   const localTasks = await idbGetAll('task_schedule');
   localTasks.forEach(item => {
     if(item.deleted) {
@@ -401,7 +408,8 @@ async function getAllTasksMap(forceCloud = false){
         id: item.taskId,
         label: item.label,
         freq: item.freq,
-        targetValue: item.targetValue
+        targetValue: item.targetValue,
+        order: item.order !== undefined ? item.order : 9999
       };
 
       if(existingIdx >= 0){
@@ -410,6 +418,11 @@ async function getAllTasksMap(forceCloud = false){
         tasksMap[zId].push(taskObj);
       }
     }
+  });
+
+  // Trier systématiquement chaque zone par ordre d'apparition
+  Object.keys(tasksMap).forEach(zId => {
+    tasksMap[zId].sort((a, b) => (a.order || 0) - (b.order || 0));
   });
 
   if(navigator.onLine && forceCloud){
