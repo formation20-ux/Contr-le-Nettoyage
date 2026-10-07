@@ -183,7 +183,6 @@ const DEFAULT_POINTS = {
     { id:'lob_10', label:'Nettoyage traces sur surfaces vitrées', freq:'J' },
     { id:'lob_11', label:'Nettoyage rampes inox', freq:'J' }
   ],
-  ...// (Je garde la liste complète des tâches comme avant pour économiser de la place visuellement, mais le code complet l'inclura)
   cuisine: [
     { id:'cui_1', label:'Nettoyage des 2 grils & rabats', freq:'J' },
     { id:'cui_2', label:'Nettoyage arrière des grills et friteuses', freq:'J' },
@@ -643,7 +642,6 @@ function renderPinPad(){
         secretTapCount = 0;
         const codeInput = prompt("Saisissez le code d'accès administrateur :");
         if(codeInput === "2105"){
-          // Force mode administrateur caché
           session = { role: 'controleur', agentId: 'admin_temp', nom: 'Admin Secours', lang: 'fr', isAdmin: true };
           resetInactivityTimer();
           goToZones();
@@ -704,10 +702,8 @@ async function renderZones(){
   const userLang = (session && session.lang) ? session.lang : 'fr';
   const config = await getGlobalConfig();
 
-  // Détermination des droits d'accès Administrateur
   const allAgents = await idbGetAll('agents');
   const hasAdmin = allAgents.some(a => a.isAdmin === true);
-  // Un utilisateur peut accéder aux réglages si : il est admin OU il a utilisé le code secret OU il est contrôleur et aucun admin n'existe encore.
   const canAccessAdmin = session.isAdmin || session.agentId === 'admin_temp' || (session.role === 'controleur' && !hasAdmin);
 
   root.innerHTML = `
@@ -2505,7 +2501,6 @@ async function openAgentModal(existing){
   const allAgents = await idbGetAll('agents');
   const hasAdmin = allAgents.some(a => a.isAdmin === true);
   
-  // Peut attribuer les droits Admin si on l'est soi-même, si on utilise le code secret, ou si aucun admin n'existe encore
   const canAssignAdmin = (session && session.isAdmin) || (session && session.agentId === 'admin_temp') || !hasAdmin;
 
   const backdrop = document.createElement('div');
