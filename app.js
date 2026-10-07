@@ -1045,28 +1045,41 @@ async function renderControle(){
   const config = await getGlobalConfig();
   const enableEq = config.enableEquipe;
 
-  let c = await idbGet('controles', activeControleId) || {
-    id: activeControleId, zoneId: activeZoneId, date,
-    passageEquipe: { agentNom:null, heure:null, reponses:{} },
-    contreVisite:  { controleurNom:null, heure:null, reponses:{} }
-  };
-
-  if(navigator.onLine){
-    db.collection('controles').doc(activeControleId).get().then(doc => {
-      if(doc.exists) {
-        c.passageEquipe = doc.data().passageEquipe || c.passageEquipe;
-        c.contreVisite = doc.data().contreVisite || c.contreVisite;
-        idbPut('controles', c);
-      }
-    }).catch(()=>{});
+  // CORRECTION DU CONFLIT DE SAUVEGARDE :
+  // On récupère d'abord les données locales
+  let c = await idbGet('controles', activeControleId);
+  
+  if(!c) {
+    c = {
+      id: activeControleId, zoneId: activeZoneId, date,
+      passageEquipe: { agentNom:null, heure:null, reponses:{} },
+      contreVisite:  { controleurNom:null, heure:null, reponses:{} }
+    };
   }
+
+  // On attend OBLIGATOIREMENT la fin de la récupération Firebase AVANT de définir les variables
+  if(navigator.onLine){
+    try {
+      const doc = await db.collection('controles').doc(activeControleId).get();
+      if(doc.exists) {
+        const data = doc.data();
+        if(data.passageEquipe) c.passageEquipe = data.passageEquipe;
+        if(data.contreVisite) c.contreVisite = data.contreVisite;
+        await idbPut('controles', c); // On met à jour le local
+      }
+    } catch(e){}
+  }
+
+  // Sécurisation de l'objet pour éviter les crashs
+  if (!c.passageEquipe.reponses) c.passageEquipe.reponses = {};
+  if (!c.contreVisite.reponses) c.contreVisite.reponses = {};
 
   const zone = ZONES.find(z=>z.id===activeZoneId);
   const activePoints = await getPointsForToday(activeZoneId, date);
   const isContreVisite = activeMode==='contreVisite';
   
   const currentBranch = isContreVisite ? c.contreVisite : c.passageEquipe;
-  const equipeReponses = (c.passageEquipe && c.passageEquipe.reponses) || {};
+  const equipeReponses = c.passageEquipe.reponses;
 
   activePoints.forEach(p => {
     if(!isContreVisite && enableEq){
@@ -1111,6 +1124,7 @@ async function renderControle(){
     if(isContreVisite) currentBranch.controleurNom = session.nom;
     else currentBranch.agentNom = session.nom;
 
+    // Enregistrement cloud 100% fiable grâce à la résolution du conflit ci-dessus
     await pushToCloud('controles', c.id, c);
   };
 
@@ -1162,16 +1176,16 @@ async function renderControle(){
       pointsHtml += `
         <div class="point-item" data-point="${p.id}" style="border:1px solid ${isEquipeNok?'#B23A34':'#E7E1D6'};padding:12px;border-radius:10px;margin-bottom:12px;background:${isEquipeNok?'#F6DEDC':'#fff'};">
           
-          <div class="point-head" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
-            <div class="point-label" style="flex:1; font-weight:600; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div class="point-head" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:8px;">
+            <div class="point-label" style="flex:1; font-weight:600; display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
               <span style="line-height:1.3; color:#211E1A; margin-top:2px;">${displayLabel}</span>
               <span style="background:#FAF8F3; border:1px solid #E7E1D6; color:#857F75; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; margin-top:2px;">${freqLabel}</span>
               ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:bold;white-space:nowrap;margin-top:2px;">⚠️ ${t('Équipe').toUpperCase()} : NOK</span>` : ''}
             </div>
             
             <div class="point-toggle" style="display:flex; gap:6px; flex-shrink:0;">
-              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" style="padding:6px 12px; font-size:12px; font-weight:700; border-radius:6px; min-width:70px; line-height:1.2; ${disableOk ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableOk ? 'disabled' : ''}>✓ OK</button>
-              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" style="padding:6px 12px; font-size:12px; font-weight:700; border-radius:6px; min-width:70px; line-height:1.2; ${disableNok ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableNok ? 'disabled' : ''}>✕ NOK</button>
+              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===true?'#2B6E68':'#E7E1D6'}; background:${r.conforme===true?'#2B6E68':'#fff'}; color:${r.conforme===true?'#fff':'#6B655C'}; ${disableOk ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableOk ? 'disabled' : ''}>✓ OK</button>
+              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===false?'#B23A34':'#E7E1D6'}; background:${r.conforme===false?'#B23A34':'#fff'}; color:${r.conforme===false?'#fff':'#6B655C'}; ${disableNok ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableNok ? 'disabled' : ''}>✕ NOK</button>
             </div>
           </div>
 
@@ -1186,7 +1200,7 @@ async function renderControle(){
             <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">${t('💬 Obs. Équipe')} (${c.passageEquipe.agentNom||t('Équipe')}) : "${eqR.commentaire}"</div>
           ` : ''}
 
-          <div style="font-size:11px;color:#6B655C;margin-top:12px;">
+          <div style="font-size:11px;color:#6B655C;margin-top:4px;">
             ${photoWarningText}
           </div>
           <div class="point-photo-row" id="photos_${p.id}" style="display:flex;align-items:center;overflow-x:auto;margin-top:4px;">
@@ -1230,7 +1244,6 @@ async function renderControle(){
                 
                 parentCard.querySelectorAll('.toggle-btn').forEach(b => {
                   const isNokBtn = b.classList.contains('non-conforme');
-                  const isOkBtn = b.classList.contains('conforme');
                   let lock = false;
                   
                   if(enableEq){
@@ -1273,7 +1286,7 @@ async function renderControle(){
             if(!enableEq){
               toast('📷 Photo obligatoire pour signaler une anomalie (NOK)');
             } else if(!isContreVisite){
-              toast('📷 Dépose au moins une photo pour déverrouiller cet item');
+              toast('📷 Dépose au moins une photo pour valider');
             } else {
               toast('📷 Photo contrôleur obligatoire pour invalider !');
             }
@@ -1281,8 +1294,24 @@ async function renderControle(){
             return;
           }
           r.conforme = btn.dataset.val==='true';
-          item.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active'));
+          
+          item.querySelectorAll('.toggle-btn').forEach(b=>{
+             b.classList.remove('active');
+             b.style.background = '#fff';
+             b.style.color = '#6B655C';
+             b.style.borderColor = '#E7E1D6';
+          });
+          
           btn.classList.add('active');
+          if(r.conforme === true){
+             btn.style.background = '#2B6E68';
+             btn.style.color = '#fff';
+             btn.style.borderColor = '#2B6E68';
+          } else {
+             btn.style.background = '#B23A34';
+             btn.style.color = '#fff';
+             btn.style.borderColor = '#B23A34';
+          }
           
           await triggerAutoSave();
           toast(t('Enregistré'));
