@@ -402,7 +402,6 @@ function clearRealtimeListeners() {
    RÉCUPÉRATION DYNAMIQUE DES TÂCHES
    ========================================================================= */
 async function getAllTasksMap(forceCloud = false){
-  // CORRECTION: Si forceCloud est actif, on FORCE la récupération Firebase AVANT d'afficher
   if(navigator.onLine && forceCloud){
     try {
       const snap = await db.collection('task_schedule').get();
@@ -414,7 +413,6 @@ async function getAllTasksMap(forceCloud = false){
 
   let tasksMap = JSON.parse(JSON.stringify(DEFAULT_POINTS));
   
-  // Initialiser un ordre par défaut
   Object.keys(tasksMap).forEach(zId => {
     tasksMap[zId].forEach((p, idx) => {
       if (p.order === undefined) p.order = idx;
@@ -554,7 +552,8 @@ function fileToResizedBase64(file, maxWidth){
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, targetW, targetH);
           
-          resolve(canvas.toDataURL('image/jpeg', 0.4));
+          // Augmentation de la qualité de la photo : 80% au lieu de 40%
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
         } catch(err) {
           reject(err);
         }
@@ -696,7 +695,6 @@ async function renderZones(){
   clearRealtimeListeners();
   resetInactivityTimer();
   
-  // Synchro silencieuse des tâches AVANT de construire le tableau de bord
   await getAllTasksMap(true);
   
   const date = todayISO();
@@ -794,7 +792,6 @@ async function renderZones(){
 
   await updateGridUI();
 
-  // ÉCOUTEUR TEMPS RÉEL POUR LE TABLEAU DE BORD (DASHBOARD)
   if(navigator.onLine){
     window.zoneListeners = window.zoneListeners || [];
     ZONES.forEach(z => {
@@ -1076,7 +1073,6 @@ async function renderControle(){
   const config = await getGlobalConfig();
   const enableEq = config.enableEquipe;
 
-  // On récupère d'abord les données locales
   let c = await idbGet('controles', activeControleId);
   
   if(!c) {
@@ -1087,7 +1083,6 @@ async function renderControle(){
     };
   }
 
-  // On attend OBLIGATOIREMENT la fin de la récupération Firebase AVANT d'afficher la vue
   if(navigator.onLine){
     try {
       const doc = await db.collection('controles').doc(activeControleId).get();
@@ -1165,8 +1160,6 @@ async function renderControle(){
     `;
   };
 
-  const listEl = document.getElementById('pointsList');
-  
   const refreshPointsListUI = async () => {
     let pointsHtml = '';
 
@@ -1246,6 +1239,7 @@ async function renderControle(){
       `;
     }
 
+    const listEl = document.getElementById('pointsList');
     if(listEl) listEl.innerHTML = pointsHtml;
 
     document.querySelectorAll('.click-zoom').forEach(img => {
@@ -1352,7 +1346,8 @@ async function renderControle(){
         try {
           toast(t('Chargement…'));
           const file = fileInput.files[0];
-          const dataUrl = await fileToResizedBase64(file, 400);
+          // MODIFICATION DE LA RÉSOLUTION À 1200 PIXELS
+          const dataUrl = await fileToResizedBase64(file, 1200);
           
           if (!currentBranch.reponses[pId]) {
             currentBranch.reponses[pId] = { conforme: null, photos: [], commentaire: '' };
@@ -1402,7 +1397,6 @@ async function renderControle(){
     goToZones();
   };
 
-  // ÉCOUTEUR TEMPS RÉEL SUR LA ZONE ACTIVE
   if(navigator.onLine){
     window.controleListener = db.collection('controles').doc(activeControleId).onSnapshot(doc => {
       if(doc.exists) {
