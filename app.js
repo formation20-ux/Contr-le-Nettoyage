@@ -552,7 +552,6 @@ function fileToResizedBase64(file, maxWidth){
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, targetW, targetH);
           
-          // Augmentation de la qualité de la photo : 80% au lieu de 40%
           resolve(canvas.toDataURL('image/jpeg', 0.8));
         } catch(err) {
           reject(err);
@@ -935,6 +934,20 @@ async function renderMailScheduleAdmin(){
   resetInactivityTimer();
   let mailConfig = await getGlobalConfig();
 
+  // Fonction utilitaire pour estimer le stockage local
+  const getStorageInfo = async () => {
+    if (navigator.storage && navigator.storage.estimate) {
+      try {
+        const estimate = await navigator.storage.estimate();
+        const usageMB = (estimate.usage / (1024 * 1024)).toFixed(1);
+        return `${usageMB} Mo`;
+      } catch (e) {
+        return 'Calcul impossible';
+      }
+    }
+    return 'Non supporté';
+  };
+
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml('Paramètres & Mails', 'Gestion Globale', mailConfig.appName)}
@@ -972,6 +985,15 @@ async function renderMailScheduleAdmin(){
         </div>
 
         <div style="background:#fff;border:1px solid #E7E1D6;padding:14px;border-radius:10px;margin-bottom:15px;">
+          <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">💾 Stockage Local</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:12px;color:#6B655C;font-weight:600;">Espace utilisé par l'application :</span>
+            <span id="storageUsageBadge" style="background:#E7E1D6;color:#211E1A;padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;">Calcul...</span>
+          </div>
+          <div style="font-size:10px;color:#857F75;margin-top:6px;">Inclut les photos stockées localement et l'historique de navigation.</div>
+        </div>
+
+        <div style="background:#fff;border:1px solid #E7E1D6;padding:14px;border-radius:10px;margin-bottom:15px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
             <span style="font-weight:700;font-size:13px;color:#211E1A;">Envoi automatique PDF</span>
             <input type="checkbox" id="mailActiveCheck" ${mailConfig.active?'checked':''} style="width:20px;height:20px;accent-color:#2B6E68;cursor:pointer;">
@@ -1000,6 +1022,12 @@ async function renderMailScheduleAdmin(){
   `;
 
   document.getElementById('backBtn').onclick = goToZones;
+  
+  // Affichage du stockage
+  getStorageInfo().then(res => {
+    const badge = document.getElementById('storageUsageBadge');
+    if(badge) badge.textContent = res;
+  });
 
   const renderEmailsUI = () => {
     const container = document.getElementById('emailListContainer');
@@ -1346,7 +1374,6 @@ async function renderControle(){
         try {
           toast(t('Chargement…'));
           const file = fileInput.files[0];
-          // MODIFICATION DE LA RÉSOLUTION À 1200 PIXELS
           const dataUrl = await fileToResizedBase64(file, 1200);
           
           if (!currentBranch.reponses[pId]) {
