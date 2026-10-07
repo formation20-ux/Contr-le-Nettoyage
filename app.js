@@ -1136,15 +1136,18 @@ async function renderControle(){
             
             <div class="point-label" style="flex:1; font-weight:600; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
               <span style="line-height:1.3; color:#211E1A;">${displayLabel}</span>
-              <span style="background:#FAF8F3; border:1px solid #E7E1D6; color:#857F75; padding:3px 6px; border-radius:4px; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">${freqLabel}</span>${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:3px 6px;border-radius:4px;font-size:9.5px;font-weight:bold;white-space:nowrap;">⚠️ ${t('Équipe').toUpperCase()} : NOK</span>` : ''}
+              <span style="background:#FAF8F3; border:1px solid #E7E1D6; color:#857F75; padding:3px 6px; border-radius:4px; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">${freqLabel}</span>
+              ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:3px 6px;border-radius:4px;font-size:9.5px;font-weight:bold;white-space:nowrap;">⚠️ ${t('Équipe').toUpperCase()} : NOK</span>` : ''}
             </div>
             
-            <div class="point-toggle" style="display:flex; gap:6px; flex-shrink:0;">
-              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" style="padding:6px 12px; font-size:12px; height:auto; min-width:60px; line-height:1.3; ${disableOk ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableOk ? 'disabled' : ''}>
-                ✓<br>OK
+            <div class="point-toggle" style="display:flex; gap:8px; flex-shrink:0;">
+              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" style="width:64px; height:52px; padding:0; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:11px; font-weight:700; line-height:1.2; border-radius:8px; box-sizing:border-box; ${disableOk ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableOk ? 'disabled' : ''}>
+                <span style="font-size:16px; margin-bottom:2px;">✓</span>
+                <span>OK</span>
               </button>
-              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" style="padding:6px 12px; font-size:12px; height:auto; min-width:60px; line-height:1.3; ${disableNok ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableNok ? 'disabled' : ''}>
-                ✕<br>NOK
+              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" style="width:64px; height:52px; padding:0; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:11px; font-weight:700; line-height:1.2; border-radius:8px; box-sizing:border-box; ${disableNok ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableNok ? 'disabled' : ''}>
+                <span style="font-size:16px; margin-bottom:2px;">✕</span>
+                <span>NOK</span>
               </button>
             </div>
             
@@ -1174,7 +1177,7 @@ async function renderControle(){
             </label>
           </div>
           
-          <textarea class="point-comment" placeholder="${!enableEq ? t('Remarques (optionnel)') : (isContreVisite ? t('Remarques Contrôleur (optionnel)') : t('Remarques Équipe (optionnel)'))}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6;">${r.commentaire||''}</textarea>
+          <textarea class="point-comment" placeholder="${!enableEq ? t('Remarques (optionnel)') : (isContreVisite ? t('Remarques Contrôleur (optionnel)') : t('Remarques Équipe (optionnel)'))}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6; box-sizing:border-box;">${r.commentaire||''}</textarea>
         </div>
       `;
     }
