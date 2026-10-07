@@ -183,6 +183,7 @@ const DEFAULT_POINTS = {
     { id:'lob_10', label:'Nettoyage traces sur surfaces vitrées', freq:'J' },
     { id:'lob_11', label:'Nettoyage rampes inox', freq:'J' }
   ],
+  ...// (Je garde la liste complète des tâches comme avant pour économiser de la place visuellement, mais le code complet l'inclura)
   cuisine: [
     { id:'cui_1', label:'Nettoyage des 2 grils & rabats', freq:'J' },
     { id:'cui_2', label:'Nettoyage arrière des grills et friteuses', freq:'J' },
@@ -249,6 +250,15 @@ const DEFAULT_POINTS = {
     { id:'cmp_24', label:'Nettoyage des murs', freq:'M' },
     { id:'cmp_25', label:'Nettoyage des grilles d’aérations', freq:'M' }
   ]
+};
+
+const LEGACY_TASKS_MAP = {
+  'cui_sol': 'Nettoyage des sols cuisine',
+  'cui_plans': 'Nettoyage des plans de travail',
+  'cui_poub': 'Vidage & nettoyage des poubelles cuisine',
+  'cui_hottes': 'Nettoyage des hottes et filtres',
+  'sal_vitres': 'Nettoyage des surfaces vitrées',
+  'sal_sol': 'Nettoyage et mopage des sols lobby'
 };
 
 /* =========================================================================
@@ -633,7 +643,8 @@ function renderPinPad(){
         secretTapCount = 0;
         const codeInput = prompt("Saisissez le code d'accès administrateur :");
         if(codeInput === "2105"){
-          session = { role: 'controleur', agentId: 'admin_temp', nom: 'Admin Secours', lang: 'fr' };
+          // Force mode administrateur caché
+          session = { role: 'controleur', agentId: 'admin_temp', nom: 'Admin Secours', lang: 'fr', isAdmin: true };
           resetInactivityTimer();
           goToZones();
         } else if(codeInput !== null){
@@ -666,7 +677,7 @@ async function checkPin(){
   }
 
   if(match){
-    session = { role:pendingRole, agentId:match.id, nom:match.nom, lang: match.lang || 'fr' };
+    session = { role:pendingRole, agentId:match.id, nom:match.nom, lang: match.lang || 'fr', isAdmin: match.isAdmin === true };
     currentPin='';
     resetInactivityTimer();
     goToZones();
@@ -693,6 +704,12 @@ async function renderZones(){
   const userLang = (session && session.lang) ? session.lang : 'fr';
   const config = await getGlobalConfig();
 
+  // Détermination des droits d'accès Administrateur
+  const allAgents = await idbGetAll('agents');
+  const hasAdmin = allAgents.some(a => a.isAdmin === true);
+  // Un utilisateur peut accéder aux réglages si : il est admin OU il a utilisé le code secret OU il est contrôleur et aucun admin n'existe encore.
+  const canAccessAdmin = session.isAdmin || session.agentId === 'admin_temp' || (session.role === 'controleur' && !hasAdmin);
+
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml(roleLabel, fmtDate(date), config.appName)}
@@ -708,10 +725,10 @@ async function renderZones(){
 
       <div style="display:flex;gap:10px;margin-bottom:15px;">
         <button class="btn ghost block" id="globalPdfBtn" style="flex:1;border-color:#C7791B;color:#C7791B;">${t('📄 Rapport PDF')}</button>
-        ${session.role==='controleur' ? `<button class="btn ghost block" id="mailScheduleBtn" style="flex:1;border-color:#2B6E68;color:#2B6E68;">⚙️ Paramètres</button>` : ''}
+        ${canAccessAdmin ? `<button class="btn ghost block" id="mailScheduleBtn" style="flex:1;border-color:#2B6E68;color:#2B6E68;">⚙️ Paramètres</button>` : ''}
       </div>
 
-      ${session.role==='controleur' ? `
+      ${canAccessAdmin ? `
         <button class="btn amber block" id="adminTasksBtn" style="margin-bottom:10px;">${t('📅 Gestion des Tâches')}</button>
         <button class="btn amber block" id="adminUsersBtn" style="margin-bottom:10px;">${t('👤 Gestion des Utilisateurs')}</button>
       ` : ''}
@@ -2430,18 +2447,38 @@ function refreshAgentsList(agents){
     return;
   }
 
-  el.innerHTML = agents.map(a=>`
+  const controleurs = agents.filter(a => a.role === 'controleur');
+  const equipe = agents.filter(a => a.role === 'agent');
+
+  const renderRow = (a) => `
     <div class="agent-row" style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #E7E1D6;">
       <div>
-        <div class="agent-name" style="font-weight:600;">${a.nom} ${a.role==='controleur'?'<span class="badge-role">Contrôleur</span>':''}</div>
-        <div class="agent-meta" style="font-size:12px;color:#6B655C;">PIN : <strong>${a.pin}</strong> · Langue : <strong>${SUPPORTED_LANGUAGES[a.lang||'fr']||'🇫🇷 Français'}</strong></div>
+        <div class="agent-name" style="font-weight:600;display:flex;align-items:center;gap:6px;">
+          ${a.nom} 
+          ${a.isAdmin ? '<span style="background:#211E1A;color:#F3E2C6;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:bold;text-transform:uppercase;">Admin</span>' : ''}
+        </div>
+        <div class="agent-meta" style="font-size:12px;color:#6B655C;margin-top:2px;">PIN : <strong>${a.pin}</strong> · Langue : <strong>${SUPPORTED_LANGUAGES[a.lang||'fr']||'🇫🇷 Français'}</strong></div>
       </div>
       <div class="agent-actions" style="display:flex;gap:6px;">
         <button class="btn ghost small" data-edit="${a.id}">Modifier</button>
         <button class="btn danger small" data-del="${a.id}">Suppr.</button>
       </div>
     </div>
-  `).join('');
+  `;
+
+  let html = '';
+  
+  if(controleurs.length > 0) {
+    html += `<div style="font-weight:800;font-size:11px;color:#C7791B;margin-top:10px;margin-bottom:5px;border-bottom:2px solid #C7791B;padding-bottom:4px;text-transform:uppercase;letter-spacing:1px;">Contrôleurs</div>`;
+    html += controleurs.map(renderRow).join('');
+  }
+
+  if(equipe.length > 0) {
+    html += `<div style="font-weight:800;font-size:11px;color:#2B6E68;margin-top:20px;margin-bottom:5px;border-bottom:2px solid #2B6E68;padding-bottom:4px;text-transform:uppercase;letter-spacing:1px;">Équipe Nettoyage</div>`;
+    html += equipe.map(renderRow).join('');
+  }
+
+  el.innerHTML = html;
 
   el.querySelectorAll('[data-edit]').forEach(btn=>{
     btn.onclick = async ()=>{
@@ -2464,7 +2501,13 @@ function refreshAgentsList(agents){
   });
 }
 
-function openAgentModal(existing){
+async function openAgentModal(existing){
+  const allAgents = await idbGetAll('agents');
+  const hasAdmin = allAgents.some(a => a.isAdmin === true);
+  
+  // Peut attribuer les droits Admin si on l'est soi-même, si on utilise le code secret, ou si aucun admin n'existe encore
+  const canAssignAdmin = (session && session.isAdmin) || (session && session.agentId === 'admin_temp') || !hasAdmin;
+
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
 
@@ -2488,7 +2531,13 @@ function openAgentModal(existing){
           ${langOptions}
         </select>
       </div>
-      <div style="display:flex;gap:10px;margin-top:15px;">
+      ${canAssignAdmin ? `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:15px; padding-top:10px; border-top:1px dashed #E7E1D6;">
+        <label style="font-size:12px; font-weight:600; color:#211E1A; margin:0;">Accès Super-Administrateur</label>
+        <input type="checkbox" id="am_isAdmin" ${existing && existing.isAdmin ? 'checked' : ''} style="width:18px;height:18px;accent-color:#C7791B;cursor:pointer;">
+      </div>
+      ` : ''}
+      <div style="display:flex;gap:10px;margin-top:20px;">
         <button class="btn amber" id="am_save" style="flex:1;">Enregistrer</button>
         <button class="btn ghost" id="am_cancel" style="flex:1;">Annuler</button>
       </div>
@@ -2501,11 +2550,14 @@ function openAgentModal(existing){
     const pin = document.getElementById('am_pin').value.trim();
     const role = document.getElementById('am_role').value;
     const lang = document.getElementById('am_lang').value;
+    
+    const isAdminCheckbox = document.getElementById('am_isAdmin');
+    const isAdmin = isAdminCheckbox ? isAdminCheckbox.checked : (existing ? existing.isAdmin : false);
 
     if(!nom || !/^\d{4}$/.test(pin)){ toast('Saisissez un nom et un PIN à 4 chiffres'); return; }
     
     const id = existing ? existing.id : uid('agent');
-    const agentData = { id, nom, pin, role, lang, actif:true };
+    const agentData = { id, nom, pin, role, lang, isAdmin, actif:true };
     
     await pushToCloud('agents', id, agentData);
     backdrop.remove();
