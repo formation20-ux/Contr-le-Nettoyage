@@ -402,8 +402,19 @@ function clearRealtimeListeners() {
    RÉCUPÉRATION DYNAMIQUE DES TÂCHES
    ========================================================================= */
 async function getAllTasksMap(forceCloud = false){
+  // CORRECTION: Si forceCloud est actif, on FORCE la récupération Firebase AVANT d'afficher
+  if(navigator.onLine && forceCloud){
+    try {
+      const snap = await db.collection('task_schedule').get();
+      for (const doc of snap.docs) {
+        await idbPut('task_schedule', doc.data());
+      }
+    } catch(e) {}
+  }
+
   let tasksMap = JSON.parse(JSON.stringify(DEFAULT_POINTS));
   
+  // Initialiser un ordre par défaut
   Object.keys(tasksMap).forEach(zId => {
     tasksMap[zId].forEach((p, idx) => {
       if (p.order === undefined) p.order = idx;
@@ -440,12 +451,6 @@ async function getAllTasksMap(forceCloud = false){
   Object.keys(tasksMap).forEach(zId => {
     tasksMap[zId].sort((a, b) => (a.order || 0) - (b.order || 0));
   });
-
-  if(navigator.onLine && forceCloud){
-    db.collection('task_schedule').get().then(snap => {
-      snap.docs.forEach(doc => idbPut('task_schedule', doc.data()));
-    }).catch(()=>{});
-  }
 
   return tasksMap;
 }
@@ -690,6 +695,10 @@ async function goToZones(){ activeZoneId=null; await renderZones(); }
 async function renderZones(){
   clearRealtimeListeners();
   resetInactivityTimer();
+  
+  // Synchro silencieuse des tâches AVANT de construire le tableau de bord
+  await getAllTasksMap(true);
+  
   const date = todayISO();
   const roleTitle = session.role==='agent' ? t('Équipe') : t('Contrôleur');
   const roleLabel = `${roleTitle} · ${session.nom}`;
@@ -1078,12 +1087,64 @@ async function renderControle(){
     };
   }
 
+  // On attend OBLIGATOIREMENT la fin de la récupération Firebase AVANT d'afficher la vue
+  if(navigator.onLine){
+    try {
+      const doc = await db.collection('controles').doc(activeControleId).get();
+      if(doc.exists) {
+        const data = doc.data();
+        if(data.passageEquipe) c.passageEquipe = data.passageEquipe;
+        if(data.contreVisite) c.contreVisite = data.contreVisite;
+        await idbPut('controles', c); 
+      }
+    } catch(e){}
+  }
+
+  if (!c.passageEquipe.reponses) c.passageEquipe.reponses = {};
+  if (!c.contreVisite.reponses) c.contreVisite.reponses = {};
+
   const zone = ZONES.find(z=>z.id===activeZoneId);
   const activePoints = await getPointsForToday(activeZoneId, date);
   const isContreVisite = activeMode==='contreVisite';
   
   let currentBranch = isContreVisite ? c.contreVisite : c.passageEquipe;
   let equipeReponses = c.passageEquipe.reponses;
+
+  activePoints.forEach(p => {
+    if(!isContreVisite && enableEq){
+      if(currentHour >= 10){
+        if(!currentBranch.reponses[p.id]){
+          currentBranch.reponses[p.id] = { conforme: false, photos:[], commentaire: t('Non réalisé avant 10h') };
+        } else if(config.reqPhotoEq && (!currentBranch.reponses[p.id].photos || currentBranch.reponses[p.id].photos.length === 0)){
+          currentBranch.reponses[p.id].conforme = false;
+        }
+      }
+    }
+  });
+
+  let viewSubtitle = '';
+  if(!enableEq) viewSubtitle = t('Rapport de Constat');
+  else viewSubtitle = isContreVisite ? t('Contre-visite Contrôleur') : t('Réalisation Prestation');
+
+  const translatedZoneName = await translateDynamicText(zone.nom, userLang);
+
+  root.innerHTML = `
+    <div class="wrap">
+      ${topbarHtml(translatedZoneName, viewSubtitle, config.appName)}
+      <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
+      <div class="section">
+        <div id="pointsList">
+          <div style="text-align:center;padding:30px;">
+            <div class="loading-spinner"></div>
+            <div style="font-size:12px;color:#6B655C;margin-top:10px;">${t('Chargement…')}</div>
+          </div>
+        </div>
+        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">${t('Terminer et Retourner aux Zones')}</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = goToZones;
 
   const triggerAutoSave = async () => {
     const currentTime = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
@@ -1104,6 +1165,8 @@ async function renderControle(){
     `;
   };
 
+  const listEl = document.getElementById('pointsList');
+  
   const refreshPointsListUI = async () => {
     let pointsHtml = '';
 
@@ -1183,7 +1246,6 @@ async function renderControle(){
       `;
     }
 
-    const listEl = document.getElementById('pointsList');
     if(listEl) listEl.innerHTML = pointsHtml;
 
     document.querySelectorAll('.click-zoom').forEach(img => {
@@ -1335,29 +1397,6 @@ async function renderControle(){
     });
   };
 
-  let viewSubtitle = '';
-  if(!enableEq) viewSubtitle = t('Rapport de Constat');
-  else viewSubtitle = isContreVisite ? t('Contre-visite Contrôleur') : t('Réalisation Prestation');
-
-  const translatedZoneName = await translateDynamicText(zone.nom, userLang);
-
-  root.innerHTML = `
-    <div class="wrap">
-      ${topbarHtml(translatedZoneName, viewSubtitle, config.appName)}
-      <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
-      <div class="section">
-        <div id="pointsList">
-          <div style="text-align:center;padding:30px;">
-            <div class="loading-spinner"></div>
-            <div style="font-size:12px;color:#6B655C;margin-top:10px;">${t('Chargement…')}</div>
-          </div>
-        </div>
-        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">${t('Terminer et Retourner aux Zones')}</button>
-      </div>
-    </div>
-  `;
-
-  document.getElementById('backBtn').onclick = goToZones;
   document.getElementById('saveBtn').onclick = async ()=>{
     await triggerAutoSave();
     goToZones();
@@ -1379,11 +1418,11 @@ async function renderControle(){
             refreshPointsListUI();
         }
       } else {
-        refreshPointsListUI(); // Pour le premier rendu si document inexistant en BDD
+        refreshPointsListUI();
       }
     });
   } else {
-    refreshPointsListUI(); // Pour le fonctionnement hors-ligne
+    refreshPointsListUI();
   }
 }
 
@@ -2050,7 +2089,7 @@ async function renderStats(){
 async function renderTaskAdmin(){
   clearRealtimeListeners();
   resetInactivityTimer();
-  const allMap = await getAllTasksMap();
+  const allMap = await getAllTasksMap(true);
   const config = await getGlobalConfig();
 
   let tasksHtml = '';
