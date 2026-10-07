@@ -98,9 +98,7 @@ const SUPPORTED_LANGUAGES = {
   hi: '🇮🇳 हिन्दी'
 };
 
-const STATIC_TRANSLATIONS = {
-  // Les traductions dynamiques passent par l'API
-};
+const STATIC_TRANSLATIONS = {};
 
 const translationCache = {};
 
@@ -376,7 +374,7 @@ async function getGlobalConfig() {
     } catch(e){}
   }
   if (!conf) conf = { active: true, time1: '18:00', emails: [], enableEquipe: true };
-  if (conf.enableEquipe === undefined) conf.enableEquipe = true; // Valeur par défaut
+  if (conf.enableEquipe === undefined) conf.enableEquipe = true;
   return conf;
 }
 
@@ -1135,9 +1133,10 @@ async function renderControle(){
       pointsHtml += `
         <div class="point-item" data-point="${p.id}" style="border:1px solid ${isEquipeNok?'#B23A34':'#E7E1D6'};padding:12px;border-radius:10px;margin-bottom:12px;background:${isEquipeNok?'#F6DEDC':'#fff'};">
           <div class="point-head">
-            <div class="point-label" style="font-weight:600;">
-              ${displayLabel} <small>(${freqLabel})</small>
-              ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">⚠️ ${t('Équipe').toUpperCase()} : NOK</span>` : ''}
+            <div class="point-label" style="font-weight:600; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+              <span style="line-height:1.3; color:#211E1A;">${displayLabel}</span>
+              <span style="background:#FAF8F3; border:1px solid #E7E1D6; color:#857F75; padding:3px 6px; border-radius:4px; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">${freqLabel}</span>
+              ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:3px 6px;border-radius:4px;font-size:9.5px;font-weight:bold;white-space:nowrap;">⚠️ ${t('Équipe').toUpperCase()} : NOK</span>` : ''}
             </div>
             <div class="point-toggle" style="margin-top:6px;">
               <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" ${disableOk ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✓ OK</button>
@@ -2076,7 +2075,7 @@ async function renderTaskAdmin(){
 
   // --- 2. LOGIQUE DE RÉARRANGEMENT (HAUT / BAS) ---
   const reorderTasks = async (taskId, zoneId, direction) => {
-    await saveAllCards(); // Sauvegarde les textes en cours avant de bouger
+    await saveAllCards();
     const currentMap = await getAllTasksMap();
     let zoneTasks = currentMap[zoneId];
     const idx = zoneTasks.findIndex(t => t.id === taskId);
@@ -2089,7 +2088,6 @@ async function renderTaskAdmin(){
       return;
     }
 
-    // Réassignation séquentielle de l'ordre pour toute la zone
     for (let i = 0; i < zoneTasks.length; i++) {
       const t = zoneTasks[i];
       let existing = await idbGet('task_schedule', t.id) || { taskId: t.id, zoneId: zoneId, label: t.label, freq: t.freq, targetValue: t.targetValue, deleted: false };
@@ -2097,7 +2095,7 @@ async function renderTaskAdmin(){
       await pushToCloud('task_schedule', t.id, existing);
     }
     
-    renderTaskAdmin(); // Rafraîchit l'interface pour montrer le nouvel ordre
+    renderTaskAdmin();
   };
 
   document.querySelectorAll('.move-up-btn').forEach(btn => {
@@ -2151,7 +2149,7 @@ async function renderTaskAdmin(){
       if(!label || !label.trim()) return;
 
       const newTaskId = uid(`task_${zoneId}`);
-      const newOrder = allMap[zoneId] ? allMap[zoneId].length : 0; // Se place à la fin
+      const newOrder = allMap[zoneId] ? allMap[zoneId].length : 0;
       
       await pushToCloud('task_schedule', newTaskId, {
         taskId: newTaskId, zoneId: zoneId, label: label.trim(),
@@ -2181,6 +2179,7 @@ async function renderTaskAdmin(){
     goToZones();
   };
 }
+
 /* =========================================================================
    ADMINISTRATION UTILISATEURS
    ========================================================================= */
