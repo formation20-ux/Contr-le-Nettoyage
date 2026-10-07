@@ -373,8 +373,14 @@ async function getGlobalConfig() {
       }
     } catch(e){}
   }
-  if (!conf) conf = { active: true, time1: '18:00', emails: [], enableEquipe: true };
+  if (!conf) conf = {};
+  if (conf.active === undefined) conf.active = true;
+  if (!conf.time1) conf.time1 = '18:00';
+  if (!conf.emails) conf.emails = [];
   if (conf.enableEquipe === undefined) conf.enableEquipe = true;
+  if (conf.appName === undefined) conf.appName = 'SASU SOAN';
+  if (conf.reqPhotoEq === undefined) conf.reqPhotoEq = true;
+  if (conf.reqPhotoCtrl === undefined) conf.reqPhotoCtrl = true;
   return conf;
 }
 
@@ -384,7 +390,7 @@ async function getGlobalConfig() {
 async function getAllTasksMap(forceCloud = false){
   let tasksMap = JSON.parse(JSON.stringify(DEFAULT_POINTS));
   
-  // Initialiser un ordre par défaut pour les tâches natives
+  // Initialiser un ordre par défaut
   Object.keys(tasksMap).forEach(zId => {
     tasksMap[zId].forEach((p, idx) => {
       if (p.order === undefined) p.order = idx;
@@ -418,7 +424,6 @@ async function getAllTasksMap(forceCloud = false){
     }
   });
 
-  // Trier systématiquement chaque zone par ordre d'apparition
   Object.keys(tasksMap).forEach(zId => {
     tasksMap[zId].sort((a, b) => (a.order || 0) - (b.order || 0));
   });
@@ -542,12 +547,12 @@ function fileToResizedBase64(file, maxWidth){
   });
 }
 
-function topbarHtml(title, sub){
+function topbarHtml(title, sub, appName = "SASU SOAN"){
   const online = navigator.onLine;
   return `
     <div class="topbar">
       <div>
-        <div class="brand-eyebrow">${t(sub||'SASU SOAN — Prestation Nettoyage')}</div>
+        <div class="brand-eyebrow">${t(sub||`${appName} — Prestation Nettoyage`)}</div>
         <div class="brand-title">${title}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
@@ -569,7 +574,7 @@ async function renderLogin(){
   root.innerHTML = `
     <div id="screen-login">
       <div class="login-card">
-        <div class="brand-eyebrow">SASU SOAN</div>
+        <div class="brand-eyebrow">${conf.appName}</div>
         <div class="brand-title">Contrôle Prestations</div>
         <div class="role-switch">
           <button class="role-btn ${pendingRole==='agent'?'active':''}" data-role="agent" style="display:${conf.enableEquipe?'block':'none'}">Équipe</button>
@@ -678,7 +683,7 @@ async function renderZones(){
 
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml(roleLabel, fmtDate(date))}
+      ${topbarHtml(roleLabel, fmtDate(date), config.appName)}
       <div class="section">
         <div class="section-title">${t('Zones de Prestation')}</div>
         <div class="zone-grid" id="zoneGrid"></div>
@@ -901,29 +906,47 @@ async function triggerInAppMailSending(emails){
 
 async function renderMailScheduleAdmin(){
   resetInactivityTimer();
-  
   let mailConfig = await getGlobalConfig();
 
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Paramètres & Mails', 'Gestion Globale')}
+      ${topbarHtml('Paramètres & Mails', 'Gestion Globale', mailConfig.appName)}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section" style="padding:16px;">
         
         <div style="background:#fff;border:1px solid #E7E1D6;padding:14px;border-radius:10px;margin-bottom:15px;">
-          <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">⚙️ Mode de fonctionnement</div>
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:12px;color:#6B655C;font-weight:600;">Activer la saisie Équipe (Double contrôle)</span>
+          <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">⚙️ Préférences de l'application</div>
+          
+          <div style="margin-bottom:12px;">
+            <label style="font-size:11px;color:#6B655C;display:block;margin-bottom:4px;font-weight:600;">Nom de l'entreprise :</label>
+            <input type="text" id="appNameInput" value="${mailConfig.appName}" placeholder="ex: SASU SOAN" style="width:100%;padding:8px;border-radius:6px;border:1px solid #E7E1D6;font-size:13px;">
+          </div>
+          
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px dashed #E7E1D6;">
+            <span style="font-size:12px;color:#211E1A;font-weight:600;">Activer la saisie Équipe (Double contrôle)</span>
             <input type="checkbox" id="enableEquipeCheck" ${mailConfig.enableEquipe?'checked':''} style="width:20px;height:20px;accent-color:#2B6E68;cursor:pointer;">
           </div>
-          <div style="font-size:11px;color:#B23A34;margin-top:6px;">Si décoché, l'application fonctionne en mode "Constat" (Contrôleur uniquement, sans notion d'écart).</div>
-        </div>
 
-        <div class="section-note">Inscrivez les adresses destinataires et définissez l'heure d'envoi automatique.</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px dashed #E7E1D6;">
+            <div style="display:flex;flex-direction:column;">
+              <span style="font-size:12px;color:#211E1A;font-weight:600;">Photo obligatoire pour l'Équipe</span>
+              <span style="font-size:10px;color:#6B655C;">Pour valider une tâche (OK/NOK)</span>
+            </div>
+            <input type="checkbox" id="reqPhotoEqCheck" ${mailConfig.reqPhotoEq?'checked':''} style="width:20px;height:20px;accent-color:#2B6E68;cursor:pointer;">
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px dashed #E7E1D6;">
+            <div style="display:flex;flex-direction:column;">
+              <span style="font-size:12px;color:#211E1A;font-weight:600;">Photo obligatoire pour le Contrôleur</span>
+              <span style="font-size:10px;color:#6B655C;">Exigée uniquement en cas d'anomalie (NOK)</span>
+            </div>
+            <input type="checkbox" id="reqPhotoCtrlCheck" ${mailConfig.reqPhotoCtrl?'checked':''} style="width:20px;height:20px;accent-color:#2B6E68;cursor:pointer;">
+          </div>
+        </div>
 
         <div style="background:#fff;border:1px solid #E7E1D6;padding:14px;border-radius:10px;margin-bottom:15px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <span style="font-weight:700;font-size:13px;color:#211E1A;">État de l'envoi mail</span>
+            <span style="font-weight:700;font-size:13px;color:#211E1A;">Envoi automatique PDF</span>
             <input type="checkbox" id="mailActiveCheck" ${mailConfig.active?'checked':''} style="width:20px;height:20px;accent-color:#2B6E68;cursor:pointer;">
           </div>
 
@@ -934,11 +957,11 @@ async function renderMailScheduleAdmin(){
         </div>
 
         <div style="background:#fff;border:1px solid #E7E1D6;padding:14px;border-radius:10px;margin-bottom:15px;">
-          <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">Liste des Destinataires</div>
+          <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">Destinataires du Rapport</div>
           <div id="emailListContainer"></div>
           
           <div style="display:flex;gap:8px;margin-top:10px;">
-            <input type="email" id="newEmailInput" placeholder="ex: direction@soan.fr" style="flex:1;padding:8px;border-radius:6px;border:1px solid #E7E1D6;font-size:12px;">
+            <input type="email" id="newEmailInput" placeholder="ex: direction@entreprise.fr" style="flex:1;padding:8px;border-radius:6px;border:1px solid #E7E1D6;font-size:12px;">
             <button class="btn amber small" id="addEmailBtn" style="padding:6px 12px;">+ Ajouter</button>
           </div>
         </div>
@@ -989,8 +1012,11 @@ async function renderMailScheduleAdmin(){
   };
 
   document.getElementById('saveMailConfigBtn').onclick = async () => {
+    mailConfig.appName = document.getElementById('appNameInput').value.trim() || 'SASU SOAN';
     mailConfig.active = document.getElementById('mailActiveCheck').checked;
     mailConfig.enableEquipe = document.getElementById('enableEquipeCheck').checked;
+    mailConfig.reqPhotoEq = document.getElementById('reqPhotoEqCheck').checked;
+    mailConfig.reqPhotoCtrl = document.getElementById('reqPhotoCtrlCheck').checked;
     mailConfig.time1 = document.getElementById('mailTime1').value;
 
     await pushToCloud('mail_schedule', 'global_config', mailConfig);
@@ -1008,7 +1034,7 @@ async function renderMailScheduleAdmin(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE (AVEC MODE CONSTAT)
+   SAISIE CONTRÔLE / PRESTATION ZONE
    ========================================================================= */
 async function renderControle(){
   resetInactivityTimer();
@@ -1047,7 +1073,7 @@ async function renderControle(){
       if(currentHour >= 10){
         if(!currentBranch.reponses[p.id]){
           currentBranch.reponses[p.id] = { conforme: false, photos:[], commentaire: t('Non réalisé avant 10h') };
-        } else if(!currentBranch.reponses[p.id].photos || currentBranch.reponses[p.id].photos.length === 0){
+        } else if(config.reqPhotoEq && (!currentBranch.reponses[p.id].photos || currentBranch.reponses[p.id].photos.length === 0)){
           currentBranch.reponses[p.id].conforme = false;
         }
       }
@@ -1062,7 +1088,7 @@ async function renderControle(){
 
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml(translatedZoneName, viewSubtitle)}
+      ${topbarHtml(translatedZoneName, viewSubtitle, config.appName)}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section">
         <div id="pointsList">
@@ -1109,22 +1135,25 @@ async function renderControle(){
       const eqR = equipeReponses[p.id] || {};
       const eqPhotos = isContreVisite ? (eqR.photos || []) : [];
 
-      const eqWasOk = (eqR.conforme === true && eqR.photos && eqR.photos.length > 0);
+      const eqWasOk = (eqR.conforme === true && (!config.reqPhotoEq || (eqR.photos && eqR.photos.length > 0)));
       const isEquipeNok = enableEq && isContreVisite && !eqWasOk;
 
       let disableOk = false;
       let disableNok = false;
+      let photoWarningText = t('Photos jointes (optionnel) :');
       
       if(enableEq) {
         if(!isContreVisite) {
-          disableOk = myPhotos.length === 0;
-          disableNok = myPhotos.length === 0;
+          disableOk = config.reqPhotoEq && myPhotos.length === 0;
+          disableNok = config.reqPhotoEq && myPhotos.length === 0;
+          if(config.reqPhotoEq) photoWarningText = t('Photo obligatoire pour valider la tâche :');
         } else {
-          disableNok = eqWasOk && myPhotos.length === 0;
+          disableNok = config.reqPhotoCtrl && eqWasOk && myPhotos.length === 0;
+          if(config.reqPhotoCtrl) photoWarningText = t('Photo contrôleur exigée pour invalider (NOK) :');
         }
       } else {
-        // Mode constat: NOK nécessite photo. OK est libre.
-        disableNok = myPhotos.length === 0;
+        disableNok = config.reqPhotoCtrl && myPhotos.length === 0;
+        if(config.reqPhotoCtrl) photoWarningText = t('Photo exigée si passage en NOK :');
       }
 
       const freqLabel = p.freq==='J' ? t('Jour') : (p.freq==='H' ? t('Hebdo') : t('Mensuel'));
@@ -1132,25 +1161,18 @@ async function renderControle(){
 
       pointsHtml += `
         <div class="point-item" data-point="${p.id}" style="border:1px solid ${isEquipeNok?'#B23A34':'#E7E1D6'};padding:12px;border-radius:10px;margin-bottom:12px;background:${isEquipeNok?'#F6DEDC':'#fff'};">
+          
           <div class="point-head" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
-            
             <div class="point-label" style="flex:1; font-weight:600; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
-              <span style="line-height:1.3; color:#211E1A;">${displayLabel}</span>
-              <span style="background:#FAF8F3; border:1px solid #E7E1D6; color:#857F75; padding:3px 6px; border-radius:4px; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">${freqLabel}</span>
-              ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:3px 6px;border-radius:4px;font-size:9.5px;font-weight:bold;white-space:nowrap;">⚠️ ${t('Équipe').toUpperCase()} : NOK</span>` : ''}
+              <span style="line-height:1.3; color:#211E1A; margin-top:2px;">${displayLabel}</span>
+              <span style="background:#FAF8F3; border:1px solid #E7E1D6; color:#857F75; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; margin-top:2px;">${freqLabel}</span>
+              ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:bold;white-space:nowrap;margin-top:2px;">⚠️ ${t('Équipe').toUpperCase()} : NOK</span>` : ''}
             </div>
             
-            <div class="point-toggle" style="display:flex; gap:8px; flex-shrink:0;">
-              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" style="width:64px; height:52px; padding:0; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:11px; font-weight:700; line-height:1.2; border-radius:8px; box-sizing:border-box; ${disableOk ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableOk ? 'disabled' : ''}>
-                <span style="font-size:16px; margin-bottom:2px;">✓</span>
-                <span>OK</span>
-              </button>
-              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" style="width:64px; height:52px; padding:0; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:11px; font-weight:700; line-height:1.2; border-radius:8px; box-sizing:border-box; ${disableNok ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableNok ? 'disabled' : ''}>
-                <span style="font-size:16px; margin-bottom:2px;">✕</span>
-                <span>NOK</span>
-              </button>
+            <div class="point-toggle" style="display:flex; gap:6px; flex-shrink:0;">
+              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" style="padding:6px 12px; font-size:12px; font-weight:700; border-radius:6px; min-width:70px; line-height:1.2; ${disableOk ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableOk ? 'disabled' : ''}>✓ OK</button>
+              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" style="padding:6px 12px; font-size:12px; font-weight:700; border-radius:6px; min-width:70px; line-height:1.2; ${disableNok ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableNok ? 'disabled' : ''}>✕ NOK</button>
             </div>
-            
           </div>
 
           ${enableEq && isContreVisite && eqPhotos.length ? `
@@ -1164,8 +1186,8 @@ async function renderControle(){
             <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">${t('💬 Obs. Équipe')} (${c.passageEquipe.agentNom||t('Équipe')}) : "${eqR.commentaire}"</div>
           ` : ''}
 
-          <div style="font-size:11px;color:#6B655C;margin-top:8px;">
-            ${!enableEq ? t('Photo exigée si passage en NOK :') : (isContreVisite ? t('Tes photos contrôleur (exigée si passage en NOK) :') : t('Photo obligatoire pour activer la réponse :'))}
+          <div style="font-size:11px;color:#6B655C;margin-top:12px;">
+            ${photoWarningText}
           </div>
           <div class="point-photo-row" id="photos_${p.id}" style="display:flex;align-items:center;overflow-x:auto;margin-top:4px;">
             <div class="my-photos-container" style="display:inline-flex;align-items:center;">
@@ -1200,12 +1222,11 @@ async function renderControle(){
             const thumbItem = btn.closest('.photo-item-thumb');
             if(thumbItem) thumbItem.remove();
             
-            // Re-lock if photo count reaches 0
             if(currentBranch.reponses[pId].photos.length === 0){
               const parentCard = document.querySelector(`.point-item[data-point="${pId}"]`);
               if(parentCard){
                 const rEqLoc = equipeReponses[pId] || {};
-                const eqWasOkLoc = (rEqLoc.conforme === true && rEqLoc.photos && rEqLoc.photos.length > 0);
+                const eqWasOkLoc = (rEqLoc.conforme === true && (!config.reqPhotoEq || (rEqLoc.photos && rEqLoc.photos.length > 0)));
                 
                 parentCard.querySelectorAll('.toggle-btn').forEach(b => {
                   const isNokBtn = b.classList.contains('non-conforme');
@@ -1213,10 +1234,13 @@ async function renderControle(){
                   let lock = false;
                   
                   if(enableEq){
-                    if(!isContreVisite) lock = true;
-                    else if(isNokBtn && eqWasOkLoc) lock = true;
+                    if(!isContreVisite) {
+                      if(config.reqPhotoEq) lock = true;
+                    } else if(isNokBtn && eqWasOkLoc && config.reqPhotoCtrl) {
+                      lock = true;
+                    }
                   } else {
-                    if(isNokBtn) lock = true;
+                    if(isNokBtn && config.reqPhotoCtrl) lock = true;
                   }
 
                   if(lock){
@@ -1251,7 +1275,7 @@ async function renderControle(){
             } else if(!isContreVisite){
               toast('📷 Dépose au moins une photo pour déverrouiller cet item');
             } else {
-              toast('📷 Photo contrôleur obligatoire pour passer cet item Équipe OK en NOK !');
+              toast('📷 Photo contrôleur obligatoire pour invalider !');
             }
             e.preventDefault();
             return;
@@ -1294,7 +1318,6 @@ async function renderControle(){
             attachDelButtons();
           }
 
-          // Unlock buttons
           item.querySelectorAll('.toggle-btn').forEach(b => {
             b.removeAttribute('disabled');
             b.style.opacity = '1';
@@ -1359,7 +1382,7 @@ async function generatePDFForDate(targetDateIso){
   docPdf.setTextColor(255, 255, 255);
   docPdf.setFont('helvetica', 'bold');
   docPdf.setFontSize(15);
-  docPdf.text(enableEq ? 'SASU SOAN — RAPPORT DE PRESTATION' : 'SASU SOAN — RAPPORT DE CONSTAT', 14, 15);
+  docPdf.text(enableEq ? `${config.appName.toUpperCase()} — RAPPORT DE PRESTATION` : `${config.appName.toUpperCase()} — RAPPORT DE CONSTAT`, 14, 15);
   
   docPdf.setFont('helvetica', 'normal');
   docPdf.setFontSize(9);
@@ -1440,7 +1463,7 @@ async function generatePDFForDate(targetDateIso){
       const rEq = (eq.reponses && eq.reponses[p.id]) || { conforme: null, photos:[], commentaire:'', agentNom: eq.agentNom, heure: eq.heure };
       const rCv = (cv.reponses && cv.reponses[p.id]) || { conforme: null, photos:[], commentaire:'', controleurNom: cv.controleurNom, heure: cv.heure };
 
-      let eqConformeCalculated = (rEq.photos && rEq.photos.length > 0) ? (rEq.conforme !== false) : false;
+      let eqConformeCalculated = (!config.reqPhotoEq || (rEq.photos && rEq.photos.length > 0)) ? (rEq.conforme !== false) : false;
       let cvConformeCalculated = (rCv.conforme === false) ? false : true;
 
       const isFinalOk = (cvConformeCalculated === true);
@@ -1569,7 +1592,7 @@ async function generatePDFForDate(targetDateIso){
   
   docPdf.text(statusMsg, 18, 149);
 
-  docPdf.save(`Rapport_SOAN_Global_${date}.pdf`);
+  docPdf.save(`Rapport_Global_${date}.pdf`);
 }
 
 async function generateGlobalPDF(){
@@ -1584,7 +1607,7 @@ async function renderHistory(){
 
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml(t('Historique des Prestations'), t('Consultation Archives'))}
+      ${topbarHtml(t('Historique des Prestations'), t('Consultation Archives'), config.appName)}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section" style="padding:16px;">
         <div class="field" style="margin-bottom:15px;">
@@ -1691,7 +1714,7 @@ async function renderHistory(){
           const eqPhotos = rEq.photos || [];
           const cvPhotos = rCv.photos || [];
 
-          const eqOk = (eqPhotos.length > 0 && rEq.conforme !== false);
+          const eqOk = (!config.reqPhotoEq || eqPhotos.length > 0) ? (rEq.conforme !== false) : false;
           const cvOk = (rCv.conforme === false) ? false : true;
 
           const isFinalOk = (cvOk === true);
@@ -1786,7 +1809,7 @@ async function renderStats(){
 
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml(t('Suivi des Anomalies (NOK)'), t('Tableau de Bord'))}
+      ${topbarHtml(t('Suivi des Anomalies (NOK)'), t('Tableau de Bord'), config.appName)}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section" style="padding:16px;">
         <div class="field" style="margin-bottom:15px;">
@@ -1822,7 +1845,7 @@ async function renderStats(){
   const computePeriodStats = (startDateIso, endDateIso) => {
     let totalChecked = 0, nokCount = 0, ecartsCount = 0;
     let zoneBreakdown = {};
-    let itemNokMap = {};
+    let itemStatsMap = {};
 
     ZONES.forEach(z => { zoneBreakdown[z.id] = { total:0, nok:0, nom:z.nom }; });
 
@@ -1835,15 +1858,17 @@ async function renderStats(){
         const rCv = cv[pId];
         if(rEq || rCv){
           totalChecked++;
-          const eqOk = (rEq && rEq.photos && rEq.photos.length > 0 && rEq.conforme !== false);
+          const eqOk = (rEq && (!config.reqPhotoEq || (rEq.photos && rEq.photos.length > 0)) && rEq.conforme !== false);
           const cvOk = (rCv ? rCv.conforme !== false : true);
 
           if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].total++;
+          if(!itemStatsMap[pId]) itemStatsMap[pId] = { checked: 0, nok: 0 };
+          itemStatsMap[pId].checked++;
 
           if(!cvOk || (enableEq && !eqOk)){
             nokCount++;
             if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].nok++;
-            itemNokMap[pId] = (itemNokMap[pId] || 0) + 1;
+            itemStatsMap[pId].nok++;
           }
 
           if(enableEq && eqOk === true && cvOk === false){
@@ -1855,7 +1880,7 @@ async function renderStats(){
 
     const nokRate = totalChecked ? Math.round((nokCount / totalChecked) * 100) : 0;
 
-    return { totalChecked, nokCount, ecartsCount, nokRate, zoneBreakdown, itemNokMap };
+    return { totalChecked, nokCount, ecartsCount, nokRate, zoneBreakdown, itemStatsMap };
   };
 
   const updateStatsUI = async () => {
@@ -1872,7 +1897,7 @@ async function renderStats(){
 
     const deltaNok = currentStats.nokRate - refNokRate;
 
-    let rawTopItems = Object.keys(currentStats.itemNokMap).map(id => {
+    let rawTopItems = Object.keys(currentStats.itemStatsMap).map(id => {
       let label = id;
       
       if(LEGACY_TASKS_MAP[id]){
@@ -1887,13 +1912,16 @@ async function renderStats(){
         if(dynFound && dynFound.label) label = dynFound.label;
       }
 
-      return { id, label, count: currentStats.itemNokMap[id] };
-    }).sort((a,b) => b.count - a.count).slice(0,5);
+      const stat = currentStats.itemStatsMap[id];
+      const rate = stat.checked ? Math.round((stat.nok / stat.checked) * 100) : 0;
+
+      return { id, label, checked: stat.checked, nok: stat.nok, rate };
+    }).filter(item => item.nok > 0).sort((a,b) => b.nok - a.nok);
 
     let topNokItems = [];
     for(const item of rawTopItems){
       const transLabel = await translateDynamicText(item.label, userLang);
-      topNokItems.push({ id: item.id, label: transLabel, count: item.count });
+      topNokItems.push({ id: item.id, label: transLabel, checked: item.checked, nok: item.nok, rate: item.rate });
     }
 
     let html = `
@@ -1956,11 +1984,16 @@ async function renderStats(){
       </div>
 
       <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;">
-        <div style="font-weight:700;font-size:13px;color:#B23A34;margin-bottom:10px;">⚠️ ${t('Classement des Tâches les plus souvent NOK')}</div>
+        <div style="font-weight:700;font-size:13px;color:#B23A34;margin-bottom:14px;">⚠️ ${t('Analyse par Tâche (Tâches posant problème)')}</div>
         ${topNokItems.length > 0 ? topNokItems.map(te => `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #E7E1D6;font-size:12px;gap:10px;">
-            <span style="color:#211E1A;font-weight:500;flex:1;word-break:break-word;">${te.label}</span>
-            <span style="background:#FEF2F2;color:#B23A34;font-weight:700;padding:4px 8px;border-radius:4px;font-size:11px;border:1px solid #B23A34;white-space:nowrap;">${te.count}${t('fois NOK')}</span>
+          <div style="margin-bottom: 12px;">
+             <div style="display:flex; justify-content:space-between; align-items:flex-end; font-size:11px; margin-bottom:4px;">
+                 <span style="font-weight:600; color:#211E1A; line-height:1.2; flex:1; padding-right:10px;">${te.label}</span>
+                 <span style="font-weight:700; color:#B23A34; white-space:nowrap;">${te.rate}% (${te.nok}/${te.checked})</span>
+             </div>
+             <div style="background:#FEF2F2; height:6px; border-radius:3px; overflow:hidden;">
+                 <div style="background:#B23A34; width:${te.rate}%; height:100%; border-radius:3px;"></div>
+             </div>
           </div>
         `).join('') : `<div style="font-size:12px;color:#2B6E68;font-weight:600;">${t('Aucune anomalie NOK relevée sur cette période ! 🎉')}</div>`}
       </div>
@@ -1979,6 +2012,7 @@ async function renderStats(){
 async function renderTaskAdmin(){
   resetInactivityTimer();
   const allMap = await getAllTasksMap();
+  const config = await getGlobalConfig();
 
   let tasksHtml = '';
   ZONES.forEach(z => {
@@ -2045,7 +2079,7 @@ async function renderTaskAdmin(){
 
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Planning & Référentiel', 'Gestion des Tâches')}
+      ${topbarHtml('Planning & Référentiel', 'Gestion des Tâches', config.appName)}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section" style="padding:16px;">
         <div class="section-note">Réordonnez les tâches avec les flèches, modifiez-les, ajoutez ou supprimez-les.<br><strong style="color:#2B6E68;">✓ Sauvegarde automatique intégrée.</strong></div>
@@ -2194,9 +2228,11 @@ async function renderTaskAdmin(){
    ========================================================================= */
 async function renderAgentsAdmin(){
   resetInactivityTimer();
+  const config = await getGlobalConfig();
+  
   root.innerHTML = `
     <div class="wrap">
-      ${topbarHtml('Gestion Utilisateurs', 'Cloud & Local')}
+      ${topbarHtml('Gestion Utilisateurs', 'Cloud & Local', config.appName)}
       <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
       <div class="section">
         <div id="agentsList">
