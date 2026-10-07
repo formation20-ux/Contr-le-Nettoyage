@@ -379,9 +379,23 @@ async function getGlobalConfig() {
   if (!conf.emails) conf.emails = [];
   if (conf.enableEquipe === undefined) conf.enableEquipe = true;
   if (conf.appName === undefined) conf.appName = 'SASU SOAN';
-  if (conf.reqPhotoEq === undefined) conf.reqPhotoEq = true;
-  if (conf.reqPhotoCtrl === undefined) conf.reqPhotoCtrl = true;
+  if (conf.reqPhotoEq === undefined) conf.reqPhotoEq = false;
+  if (conf.reqPhotoCtrl === undefined) conf.reqPhotoCtrl = false;
   return conf;
+}
+
+/* =========================================================================
+   SYNCHRONISATION TEMPS RÉEL (ANTI-DESYNC)
+   ========================================================================= */
+function clearRealtimeListeners() {
+  if(window.zoneListeners) {
+    window.zoneListeners.forEach(u => { if(typeof u === 'function') u(); });
+    window.zoneListeners = [];
+  }
+  if(window.controleListener) {
+    if(typeof window.controleListener === 'function') window.controleListener();
+    window.controleListener = null;
+  }
 }
 
 /* =========================================================================
@@ -390,7 +404,6 @@ async function getGlobalConfig() {
 async function getAllTasksMap(forceCloud = false){
   let tasksMap = JSON.parse(JSON.stringify(DEFAULT_POINTS));
   
-  // Initialiser un ordre par défaut
   Object.keys(tasksMap).forEach(zId => {
     tasksMap[zId].forEach((p, idx) => {
       if (p.order === undefined) p.order = idx;
@@ -563,6 +576,7 @@ function topbarHtml(title, sub, appName = "SASU SOAN"){
 }
 
 async function renderLogin(){
+  clearRealtimeListeners();
   clearTimeout(inactivityTimer);
   syncPendingQueue();
   
@@ -674,6 +688,7 @@ async function goToZones(){ activeZoneId=null; await renderZones(); }
    MENU PRINCIPAL
    ========================================================================= */
 async function renderZones(){
+  clearRealtimeListeners();
   resetInactivityTimer();
   const date = todayISO();
   const roleTitle = session.role==='agent' ? t('Équipe') : t('Contrôleur');
@@ -770,14 +785,19 @@ async function renderZones(){
 
   await updateGridUI();
 
+  // ÉCOUTEUR TEMPS RÉEL POUR LE TABLEAU DE BORD (DASHBOARD)
   if(navigator.onLine){
+    window.zoneListeners = window.zoneListeners || [];
     ZONES.forEach(z => {
       const controleId = `${date}__${z.id}`;
-      db.collection('controles').doc(controleId).get().then(doc => {
+      const unsub = db.collection('controles').doc(controleId).onSnapshot(doc => {
         if(doc.exists){
-          idbPut('controles', doc.data()).then(() => updateGridUI());
+          idbPut('controles', doc.data()).then(() => {
+            if(document.getElementById('zoneGrid')) updateGridUI();
+          });
         }
-      }).catch(()=>{});
+      });
+      window.zoneListeners.push(unsub);
     });
   }
 
@@ -905,6 +925,7 @@ async function triggerInAppMailSending(emails){
 }
 
 async function renderMailScheduleAdmin(){
+  clearRealtimeListeners();
   resetInactivityTimer();
   let mailConfig = await getGlobalConfig();
 
@@ -1037,6 +1058,7 @@ async function renderMailScheduleAdmin(){
    SAISIE CONTRÔLE / PRESTATION ZONE
    ========================================================================= */
 async function renderControle(){
+  clearRealtimeListeners();
   resetInactivityTimer();
   const date = todayISO();
   const currentHour = new Date().getHours();
@@ -1045,7 +1067,6 @@ async function renderControle(){
   const config = await getGlobalConfig();
   const enableEq = config.enableEquipe;
 
-  // CORRECTION DU CONFLIT DE SAUVEGARDE :
   // On récupère d'abord les données locales
   let c = await idbGet('controles', activeControleId);
   
@@ -1057,65 +1078,12 @@ async function renderControle(){
     };
   }
 
-  // On attend OBLIGATOIREMENT la fin de la récupération Firebase AVANT de définir les variables
-  if(navigator.onLine){
-    try {
-      const doc = await db.collection('controles').doc(activeControleId).get();
-      if(doc.exists) {
-        const data = doc.data();
-        if(data.passageEquipe) c.passageEquipe = data.passageEquipe;
-        if(data.contreVisite) c.contreVisite = data.contreVisite;
-        await idbPut('controles', c); // On met à jour le local
-      }
-    } catch(e){}
-  }
-
-  // Sécurisation de l'objet pour éviter les crashs
-  if (!c.passageEquipe.reponses) c.passageEquipe.reponses = {};
-  if (!c.contreVisite.reponses) c.contreVisite.reponses = {};
-
   const zone = ZONES.find(z=>z.id===activeZoneId);
   const activePoints = await getPointsForToday(activeZoneId, date);
   const isContreVisite = activeMode==='contreVisite';
   
-  const currentBranch = isContreVisite ? c.contreVisite : c.passageEquipe;
-  const equipeReponses = c.passageEquipe.reponses;
-
-  activePoints.forEach(p => {
-    if(!isContreVisite && enableEq){
-      if(currentHour >= 10){
-        if(!currentBranch.reponses[p.id]){
-          currentBranch.reponses[p.id] = { conforme: false, photos:[], commentaire: t('Non réalisé avant 10h') };
-        } else if(config.reqPhotoEq && (!currentBranch.reponses[p.id].photos || currentBranch.reponses[p.id].photos.length === 0)){
-          currentBranch.reponses[p.id].conforme = false;
-        }
-      }
-    }
-  });
-
-  let viewSubtitle = '';
-  if(!enableEq) viewSubtitle = t('Rapport de Constat');
-  else viewSubtitle = isContreVisite ? t('Contre-visite Contrôleur') : t('Réalisation Prestation');
-
-  const translatedZoneName = await translateDynamicText(zone.nom, userLang);
-
-  root.innerHTML = `
-    <div class="wrap">
-      ${topbarHtml(translatedZoneName, viewSubtitle, config.appName)}
-      <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
-      <div class="section">
-        <div id="pointsList">
-          <div style="text-align:center;padding:30px;">
-            <div class="loading-spinner"></div>
-            <div style="font-size:12px;color:#6B655C;margin-top:10px;">${t('Chargement…')}</div>
-          </div>
-        </div>
-        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">${t('Terminer et Retourner aux Zones')}</button>
-      </div>
-    </div>
-  `;
-
-  document.getElementById('backBtn').onclick = goToZones;
+  let currentBranch = isContreVisite ? c.contreVisite : c.passageEquipe;
+  let equipeReponses = c.passageEquipe.reponses;
 
   const triggerAutoSave = async () => {
     const currentTime = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
@@ -1124,7 +1092,6 @@ async function renderControle(){
     if(isContreVisite) currentBranch.controleurNom = session.nom;
     else currentBranch.agentNom = session.nom;
 
-    // Enregistrement cloud 100% fiable grâce à la résolution du conflit ci-dessus
     await pushToCloud('controles', c.id, c);
   };
 
@@ -1137,8 +1104,6 @@ async function renderControle(){
     `;
   };
 
-  const listEl = document.getElementById('pointsList');
-  
   const refreshPointsListUI = async () => {
     let pointsHtml = '';
 
@@ -1184,8 +1149,8 @@ async function renderControle(){
             </div>
             
             <div class="point-toggle" style="display:flex; gap:6px; flex-shrink:0;">
-              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===true?'#2B6E68':'#E7E1D6'}; background:${r.conforme===true?'#2B6E68':'#fff'}; color:${r.conforme===true?'#fff':'#6B655C'}; ${disableOk ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableOk ? 'disabled' : ''}>✓ OK</button>
-              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===false?'#B23A34':'#E7E1D6'}; background:${r.conforme===false?'#B23A34':'#fff'}; color:${r.conforme===false?'#fff':'#6B655C'}; ${disableNok ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableNok ? 'disabled' : ''}>✕ NOK</button>
+              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" data-locked="${disableOk ? 'true' : 'false'}" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===true?'#2B6E68':'#E7E1D6'}; background:${r.conforme===true?'#2B6E68':'#fff'}; color:${r.conforme===true?'#fff':'#6B655C'};">✓ OK</button>
+              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" data-locked="${disableNok ? 'true' : 'false'}" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===false?'#B23A34':'#E7E1D6'}; background:${r.conforme===false?'#B23A34':'#fff'}; color:${r.conforme===false?'#fff':'#6B655C'};">✕ NOK</button>
             </div>
           </div>
 
@@ -1218,14 +1183,15 @@ async function renderControle(){
       `;
     }
 
-    listEl.innerHTML = pointsHtml;
+    const listEl = document.getElementById('pointsList');
+    if(listEl) listEl.innerHTML = pointsHtml;
 
-    listEl.querySelectorAll('.click-zoom').forEach(img => {
+    document.querySelectorAll('.click-zoom').forEach(img => {
       img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
     });
 
     const attachDelButtons = () => {
-      listEl.querySelectorAll('.del-photo-btn').forEach(btn => {
+      document.querySelectorAll('.del-photo-btn').forEach(btn => {
         btn.onclick = async (e) => {
           e.stopPropagation();
           const pId = btn.dataset.point;
@@ -1257,9 +1223,7 @@ async function renderControle(){
                   }
 
                   if(lock){
-                    b.setAttribute('disabled', 'true');
-                    b.style.opacity = '0.4';
-                    b.style.cursor = 'not-allowed';
+                    b.dataset.locked = 'true';
                   }
                 });
               }
@@ -1273,7 +1237,7 @@ async function renderControle(){
     };
     attachDelButtons();
 
-    listEl.querySelectorAll('.point-item').forEach(item=>{
+    document.querySelectorAll('.point-item').forEach(item=>{
       const pId = item.dataset.point;
       if(!currentBranch.reponses[pId]) {
         currentBranch.reponses[pId] = { conforme: null, photos:[], commentaire:'' };
@@ -1282,7 +1246,7 @@ async function renderControle(){
 
       item.querySelectorAll('.toggle-btn').forEach(btn=>{
         btn.onclick = async (e)=>{
-          if(btn.hasAttribute('disabled')){
+          if(btn.dataset.locked === 'true'){
             if(!enableEq){
               toast('📷 Photo obligatoire pour signaler une anomalie (NOK)');
             } else if(!isContreVisite){
@@ -1293,6 +1257,7 @@ async function renderControle(){
             e.preventDefault();
             return;
           }
+
           r.conforme = btn.dataset.val==='true';
           
           item.querySelectorAll('.toggle-btn').forEach(b=>{
@@ -1348,9 +1313,7 @@ async function renderControle(){
           }
 
           item.querySelectorAll('.toggle-btn').forEach(b => {
-            b.removeAttribute('disabled');
-            b.style.opacity = '1';
-            b.style.cursor = 'pointer';
+            b.dataset.locked = 'false';
           });
 
           await triggerAutoSave();
@@ -1372,12 +1335,56 @@ async function renderControle(){
     });
   };
 
-  await refreshPointsListUI();
+  let viewSubtitle = '';
+  if(!enableEq) viewSubtitle = t('Rapport de Constat');
+  else viewSubtitle = isContreVisite ? t('Contre-visite Contrôleur') : t('Réalisation Prestation');
 
+  const translatedZoneName = await translateDynamicText(zone.nom, userLang);
+
+  root.innerHTML = `
+    <div class="wrap">
+      ${topbarHtml(translatedZoneName, viewSubtitle, config.appName)}
+      <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
+      <div class="section">
+        <div id="pointsList">
+          <div style="text-align:center;padding:30px;">
+            <div class="loading-spinner"></div>
+            <div style="font-size:12px;color:#6B655C;margin-top:10px;">${t('Chargement…')}</div>
+          </div>
+        </div>
+        <button class="btn amber block" id="saveBtn" style="margin-top:12px;">${t('Terminer et Retourner aux Zones')}</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('backBtn').onclick = goToZones;
   document.getElementById('saveBtn').onclick = async ()=>{
     await triggerAutoSave();
     goToZones();
   };
+
+  // ÉCOUTEUR TEMPS RÉEL SUR LA ZONE ACTIVE
+  if(navigator.onLine){
+    window.controleListener = db.collection('controles').doc(activeControleId).onSnapshot(doc => {
+      if(doc.exists) {
+        const data = doc.data();
+        if(data.passageEquipe) c.passageEquipe = data.passageEquipe;
+        if(data.contreVisite) c.contreVisite = data.contreVisite;
+        idbPut('controles', c); 
+        
+        currentBranch = isContreVisite ? c.contreVisite : c.passageEquipe;
+        equipeReponses = c.passageEquipe.reponses;
+
+        if(document.getElementById('pointsList') && (!document.activeElement || document.activeElement.tagName !== 'TEXTAREA')) {
+            refreshPointsListUI();
+        }
+      } else {
+        refreshPointsListUI(); // Pour le premier rendu si document inexistant en BDD
+      }
+    });
+  } else {
+    refreshPointsListUI(); // Pour le fonctionnement hors-ligne
+  }
 }
 
 /* =========================================================================
@@ -1629,6 +1636,7 @@ async function generateGlobalPDF(){
 }
 
 async function renderHistory(){
+  clearRealtimeListeners();
   resetInactivityTimer();
   const userLang = (session && session.lang) ? session.lang : 'fr';
   const config = await getGlobalConfig();
@@ -1831,6 +1839,7 @@ async function renderHistory(){
    ÉCRAN STATISTIQUES
    ========================================================================= */
 async function renderStats(){
+  clearRealtimeListeners();
   resetInactivityTimer();
   const userLang = (session && session.lang) ? session.lang : 'fr';
   const config = await getGlobalConfig();
@@ -2039,6 +2048,7 @@ async function renderStats(){
    ADMINISTRATION DU PLANNING & DE L'ÉDITION DES TÂCHES
    ========================================================================= */
 async function renderTaskAdmin(){
+  clearRealtimeListeners();
   resetInactivityTimer();
   const allMap = await getAllTasksMap();
   const config = await getGlobalConfig();
@@ -2256,6 +2266,7 @@ async function renderTaskAdmin(){
    ADMINISTRATION UTILISATEURS
    ========================================================================= */
 async function renderAgentsAdmin(){
+  clearRealtimeListeners();
   resetInactivityTimer();
   const config = await getGlobalConfig();
   
