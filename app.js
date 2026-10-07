@@ -251,15 +251,6 @@ const DEFAULT_POINTS = {
   ]
 };
 
-const LEGACY_TASKS_MAP = {
-  'cui_sol': 'Nettoyage des sols cuisine',
-  'cui_plans': 'Nettoyage des plans de travail',
-  'cui_poub': 'Vidage & nettoyage des poubelles cuisine',
-  'cui_hottes': 'Nettoyage des hottes et filtres',
-  'sal_vitres': 'Nettoyage des surfaces vitrées',
-  'sal_sol': 'Nettoyage et mopage des sols lobby'
-};
-
 /* =========================================================================
    MOTEUR DE STOCKAGE HYBRIDE & CONFIG GLOBALE
    ========================================================================= */
@@ -934,12 +925,11 @@ async function renderMailScheduleAdmin(){
   resetInactivityTimer();
   let mailConfig = await getGlobalConfig();
 
-  // Fonction utilitaire pour estimer le stockage local
   const getStorageInfo = async () => {
     if (navigator.storage && navigator.storage.estimate) {
       try {
         const estimate = await navigator.storage.estimate();
-        const usageMB = (estimate.usage / (1024 * 1024)).toFixed(1);
+        const usageMB = (estimate.usage / (1024 * 1024)).toFixed(2);
         return `${usageMB} Mo`;
       } catch (e) {
         return 'Calcul impossible';
@@ -985,12 +975,27 @@ async function renderMailScheduleAdmin(){
         </div>
 
         <div style="background:#fff;border:1px solid #E7E1D6;padding:14px;border-radius:10px;margin-bottom:15px;">
-          <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">💾 Stockage Local</div>
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:12px;color:#6B655C;font-weight:600;">Espace utilisé par l'application :</span>
+          <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">☁️ Stockage & Base de données</div>
+          
+          <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:8px;border-bottom:1px dashed #E7E1D6;margin-bottom:8px;">
+            <div style="display:flex;flex-direction:column;">
+              <span style="font-size:12px;color:#211E1A;font-weight:600;">Stockage Cloud (Firebase)</span>
+              <span style="font-size:10px;color:#6B655C;">Espace réel occupé sur le serveur</span>
+            </div>
+            <button class="btn ghost small" id="calcCloudBtn" style="padding:4px 8px;font-size:10px;border-color:#2B6E68;color:#2B6E68;">Calculer</button>
+            <span id="firebaseUsageBadge" style="display:none;background:#DCEEEC;color:#2B6E68;padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;"></span>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div style="display:flex;flex-direction:column;">
+              <span style="font-size:12px;color:#211E1A;font-weight:600;">Stockage Local (Cet appareil)</span>
+              <span style="font-size:10px;color:#6B655C;">Données en cache sur ce téléphone/PC</span>
+            </div>
             <span id="storageUsageBadge" style="background:#E7E1D6;color:#211E1A;padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;">Calcul...</span>
           </div>
-          <div style="font-size:10px;color:#857F75;margin-top:6px;">Inclut les photos stockées localement et l'historique de navigation.</div>
+
+          <button class="btn ghost block" id="clearCacheBtn" style="border-color:#B23A34;color:#B23A34;margin-top:10px;font-size:12px;">🗑️ Vider le cache de l'appareil</button>
+          <div style="font-size:9.5px;color:#B23A34;text-align:center;margin-top:6px;">Ne supprime pas les données de la journée en cours.</div>
         </div>
 
         <div style="background:#fff;border:1px solid #E7E1D6;padding:14px;border-radius:10px;margin-bottom:15px;">
@@ -1022,12 +1027,65 @@ async function renderMailScheduleAdmin(){
   `;
 
   document.getElementById('backBtn').onclick = goToZones;
-  
-  // Affichage du stockage
+
   getStorageInfo().then(res => {
     const badge = document.getElementById('storageUsageBadge');
     if(badge) badge.textContent = res;
   });
+
+  document.getElementById('calcCloudBtn').onclick = async () => {
+    const btn = document.getElementById('calcCloudBtn');
+    const badge = document.getElementById('firebaseUsageBadge');
+    btn.textContent = 'Calcul...';
+    
+    try {
+      const snap = await db.collection('controles').get();
+      let totalStr = '';
+      snap.docs.forEach(d => totalStr += JSON.stringify(d.data()));
+      const snap2 = await db.collection('pdf_reports').get();
+      snap2.docs.forEach(d => totalStr += JSON.stringify(d.data()));
+      
+      const sizeMB = (new Blob([totalStr]).size / (1024 * 1024)).toFixed(2);
+      btn.style.display = 'none';
+      badge.style.display = 'inline-block';
+      badge.textContent = `${sizeMB} Mo`;
+    } catch(e) {
+      btn.textContent = 'Erreur';
+    }
+  };
+
+  document.getElementById('clearCacheBtn').onclick = async () => {
+    if(confirm("Voulez-vous vraiment vider le cache de cet appareil ? Cela libérera de l'espace local. Toutes les données restent sécurisées sur Firebase.")){
+      const today = todayISO();
+      const idb = await openDB();
+      
+      const txC = idb.transaction('controles', 'readwrite');
+      const storeC = txC.objectStore('controles');
+      const reqC = storeC.getAllKeys();
+      reqC.onsuccess = () => {
+        reqC.result.forEach(k => {
+          if(!String(k).startsWith(today)) storeC.delete(k);
+        });
+      };
+      
+      const txP = idb.transaction('pdf_reports', 'readwrite');
+      const storeP = txP.objectStore('pdf_reports');
+      const reqP = storeP.getAllKeys();
+      reqP.onsuccess = () => {
+        reqP.result.forEach(k => {
+          if(k !== `report_${today}`) storeP.delete(k);
+        });
+      };
+
+      toast('Cache nettoyé avec succès !');
+      setTimeout(() => {
+        getStorageInfo().then(res => {
+          const badge = document.getElementById('storageUsageBadge');
+          if(badge) badge.textContent = res;
+        });
+      }, 1000);
+    }
+  };
 
   const renderEmailsUI = () => {
     const container = document.getElementById('emailListContainer');
