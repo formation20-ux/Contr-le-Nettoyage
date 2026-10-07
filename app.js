@@ -1132,16 +1132,22 @@ async function renderControle(){
 
       pointsHtml += `
         <div class="point-item" data-point="${p.id}" style="border:1px solid ${isEquipeNok?'#B23A34':'#E7E1D6'};padding:12px;border-radius:10px;margin-bottom:12px;background:${isEquipeNok?'#F6DEDC':'#fff'};">
-          <div class="point-head">
-            <div class="point-label" style="font-weight:600; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div class="point-head" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+            
+            <div class="point-label" style="flex:1; font-weight:600; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
               <span style="line-height:1.3; color:#211E1A;">${displayLabel}</span>
-              <span style="background:#FAF8F3; border:1px solid #E7E1D6; color:#857F75; padding:3px 6px; border-radius:4px; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">${freqLabel}</span>
-              ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:3px 6px;border-radius:4px;font-size:9.5px;font-weight:bold;white-space:nowrap;">⚠️ ${t('Équipe').toUpperCase()} : NOK</span>` : ''}
+              <span style="background:#FAF8F3; border:1px solid #E7E1D6; color:#857F75; padding:3px 6px; border-radius:4px; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">${freqLabel}</span>${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:3px 6px;border-radius:4px;font-size:9.5px;font-weight:bold;white-space:nowrap;">⚠️ ${t('Équipe').toUpperCase()} : NOK</span>` : ''}
             </div>
-            <div class="point-toggle" style="margin-top:6px;">
-              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" ${disableOk ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✓ OK</button>
-              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" ${disableNok ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>✕ NOK</button>
+            
+            <div class="point-toggle" style="display:flex; gap:6px; flex-shrink:0;">
+              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" style="padding:6px 12px; font-size:12px; height:auto; min-width:60px; line-height:1.3; ${disableOk ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableOk ? 'disabled' : ''}>
+                ✓<br>OK
+              </button>
+              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" style="padding:6px 12px; font-size:12px; height:auto; min-width:60px; line-height:1.3; ${disableNok ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${disableNok ? 'disabled' : ''}>
+                ✕<br>NOK
+              </button>
             </div>
+            
           </div>
 
           ${enableEq && isContreVisite && eqPhotos.length ? `
