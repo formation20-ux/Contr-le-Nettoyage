@@ -251,15 +251,6 @@ const DEFAULT_POINTS = {
   ]
 };
 
-const LEGACY_TASKS_MAP = {
-  'cui_sol': 'Nettoyage des sols cuisine',
-  'cui_plans': 'Nettoyage des plans de travail',
-  'cui_poub': 'Vidage & nettoyage des poubelles cuisine',
-  'cui_hottes': 'Nettoyage des hottes et filtres',
-  'sal_vitres': 'Nettoyage des surfaces vitrées',
-  'sal_sol': 'Nettoyage et mopage des sols lobby'
-};
-
 /* =========================================================================
    MOTEUR DE STOCKAGE HYBRIDE & CONFIG GLOBALE
    ========================================================================= */
@@ -273,7 +264,7 @@ function openDB(){
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e)=>{
       const db = e.target.result;
-      const stores = ['controles', 'agents', 'task_schedule', 'sync_queue', 'mail_schedule', 'pdf_reports', 'photos', 'global_reports'];
+      const stores = ['controles', 'agents', 'task_schedule', 'sync_queue', 'mail_schedule', 'pdf_reports', 'photos'];
       stores.forEach(s => {
         if(!db.objectStoreNames.contains(s)){
           db.createObjectStore(s, { keyPath: (s === 'task_schedule' ? 'taskId' : 'id') });
@@ -380,7 +371,6 @@ async function getGlobalConfig() {
   if (conf.enableEquipe === undefined) conf.enableEquipe = true;
   if (conf.appName === undefined) conf.appName = 'SASU SOAN';
   if (conf.reqPhotoEq === undefined) conf.reqPhotoEq = false;
-  // Note: On ne gère plus reqPhotoCtrl car le Contrôleur DOIT toujours mettre une photo pour un NOK.
   return conf;
 }
 
@@ -707,13 +697,13 @@ async function checkPin(){
     } catch(e){}
   }
 
+  const errEl = document.getElementById('pinError');
   if(match){
     session = { role:pendingRole, agentId:match.id, nom:match.nom, lang: match.lang || 'fr', isAdmin: match.isAdmin === true };
     currentPin='';
     resetInactivityTimer();
     goToZones();
   } else {
-    const errEl = document.getElementById('pinError');
     if(errEl) {
        errEl.style.color = '#B23A34';
        errEl.textContent = t('Code incorrect');
@@ -1347,7 +1337,7 @@ async function renderControle(){
           const isEquipeNok = enableEq && isContreVisite && !eqWasOk && (eqR.conforme !== undefined);
 
           let disableOk = isLockedByControl;
-          let disableNok = isLockedByControl || myPhotoIds.length === 0; // NOK EXIGE TOUJOURS UNE PHOTO
+          let disableNok = isLockedByControl || myPhotoIds.length === 0; 
           let photoWarningText = '';
           
           if(enableEq) {
@@ -1529,7 +1519,7 @@ async function renderControle(){
                   const isOkBtn = b.classList.contains('conforme');
                   let lock = false;
                   
-                  if(isNokBtn) lock = true; // NOK TOUJOURS VERROUILLÉ SANS PHOTO
+                  if(isNokBtn) lock = true; 
                   else if(isOkBtn && enableEq && !isContreVisite && config.reqPhotoEq) lock = true;
 
                   if(lock){
@@ -2566,27 +2556,48 @@ async function renderStats(){
       const eq = (c.passageEquipe && c.passageEquipe.reponses) || {};
       const cv = (c.contreVisite && c.contreVisite.reponses) || {};
 
-      Object.keys(eq).forEach(pId => {
-        if(pId === 'zone_summary') return; // Exclut les bilans des statistiques
-        
+      const allKeys = new Set([...Object.keys(eq), ...Object.keys(cv)]);
+
+      allKeys.forEach(pId => {
+        if(pId === 'zone_summary') return; 
+
         const rEq = eq[pId];
         const rCv = cv[pId];
-        if(rEq || rCv){
-          totalChecked++;
-          const eqOk = (rEq && (!config.reqPhotoEq || (rEq.photos && rEq.photos.length > 0)) && rEq.conforme !== false);
-          const cvOk = (rCv ? rCv.conforme !== false : true);
 
+        const eqAnswered = rEq && typeof rEq.conforme === 'boolean';
+        const cvAnswered = rCv && typeof rCv.conforme === 'boolean';
+
+        if(eqAnswered || cvAnswered){
+          totalChecked++;
           if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].total++;
           if(!itemStatsMap[pId]) itemStatsMap[pId] = { checked: 0, nok: 0 };
           itemStatsMap[pId].checked++;
 
-          if(!cvOk || (enableEq && !eqOk)){
+          let isNok = false;
+          let isEcart = false;
+
+          if (enableEq) {
+              if (cvAnswered) {
+                  isNok = (rCv.conforme === false);
+                  if (eqAnswered && rEq.conforme === true && rCv.conforme === false) {
+                      isEcart = true;
+                  }
+              } else if (eqAnswered) {
+                  isNok = (rEq.conforme === false);
+              }
+          } else {
+              if (cvAnswered) {
+                  isNok = (rCv.conforme === false);
+              }
+          }
+
+          if(isNok){
             nokCount++;
             if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].nok++;
             itemStatsMap[pId].nok++;
           }
 
-          if(enableEq && eqOk === true && cvOk === false){
+          if(isEcart){
             ecartsCount++;
           }
         }
