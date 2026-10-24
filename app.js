@@ -780,7 +780,6 @@ async function renderZones(){
           const eqAnswered = rEq && rEq.conforme !== null && rEq.conforme !== undefined;
           const cvAnswered = rCv && rCv.conforme !== null && rCv.conforme !== undefined;
           
-          // Si l'équipe n'a pas répondu ET que le contrôleur n'a pas encore répondu non plus, ça reste à faire.
           if (!eqAnswered && !cvAnswered) {
             remaining++;
           }
@@ -1756,7 +1755,40 @@ async function generatePDFForDate(targetDateIso){
       if(!isFinalOk) totalNok++;
       if(isRealEcart) totalEcarts++;
 
-      if(y > 250){ docPdf.addPage(); y = 20; }
+      const allEqPhotos = [];
+      for(const pid of (enableEq ? (rEq.photos || []) : [])){
+         const b64 = await getPhotoBase64(pid);
+         if(b64) allEqPhotos.push(b64);
+      }
+      
+      const allCvPhotos = [];
+      for(const pid of (rCv.photos || [])){
+         const b64 = await getPhotoBase64(pid);
+         if(b64) allCvPhotos.push(b64);
+      }
+
+      const eqAgent = rEq.agentNom || eq.agentNom || 'Agent';
+      const eqTime = rEq.heure || eq.heure || '--:--';
+      const cvCtrl = rCv.controleurNom || cv.controleurNom || 'Contrôleur';
+      const cvTime = rCv.heure || cv.heure || '--:--';
+
+      // ---- CORRECTION PDF : GESTION DES BLOCS INDIVISIBLES ----
+      // On calcule approximativement la hauteur nécessaire pour ce point (titre + texte + photos)
+      let neededHeight = 18; // Hauteur de base (titre + badge OK/NOK)
+      
+      if(enableEq && rEq.commentaire) neededHeight += 5;
+      if(rCv.commentaire) neededHeight += 5;
+      
+      if(allEqPhotos.length > 0 || allCvPhotos.length > 0) {
+        neededHeight += 50; 
+      }
+
+      // Si le bloc ne rentre pas sur la page actuelle, on passe à la suivante
+      if(y + neededHeight > 280){ 
+        docPdf.addPage(); 
+        y = 20; 
+      }
+      // --------------------------------------------------------
 
       if(isFinalOk){
         docPdf.setFillColor(...C_TEAL_BG);
@@ -1794,11 +1826,6 @@ async function generatePDFForDate(targetDateIso){
 
       y += 18;
 
-      const eqAgent = rEq.agentNom || eq.agentNom || 'Agent';
-      const eqTime = rEq.heure || eq.heure || '--:--';
-      const cvCtrl = rCv.controleurNom || cv.controleurNom || 'Contrôleur';
-      const cvTime = rCv.heure || cv.heure || '--:--';
-
       if(rEq.commentaire || rCv.commentaire || eqAgent || cvCtrl){
         docPdf.setFontSize(8);
         docPdf.setTextColor(80, 80, 80);
@@ -1813,21 +1840,7 @@ async function generatePDFForDate(targetDateIso){
         }
       }
 
-      const allEqPhotos = [];
-      for(const pid of (enableEq ? (rEq.photos || []) : [])){
-         const b64 = await getPhotoBase64(pid);
-         if(b64) allEqPhotos.push(b64);
-      }
-      
-      const allCvPhotos = [];
-      for(const pid of (rCv.photos || [])){
-         const b64 = await getPhotoBase64(pid);
-         if(b64) allCvPhotos.push(b64);
-      }
-
       if(allEqPhotos.length > 0 || allCvPhotos.length > 0){
-        if(y > 210){ docPdf.addPage(); y = 20; }
-
         let xPos = 18;
         
         for(const imgBase64 of allEqPhotos){
@@ -1849,7 +1862,7 @@ async function generatePDFForDate(targetDateIso){
             docPdf.text(`ÉQUIPE : ${eqAgent} (${eqTime})`, xPos + 2, y + 42.5);
 
             xPos += 58;
-            if(xPos > 140){ xPos = 18; y += 48; }
+            if(xPos > 140){ xPos = 18; y += 48; } // Passage à la ligne si trop de photos
           } catch(e){}
         }
 
@@ -1879,7 +1892,7 @@ async function generatePDFForDate(targetDateIso){
             if(xPos > 140){ xPos = 18; y += 48; }
           } catch(e){}
         }
-
+        // Ajout de l'espacement pour le bloc photo avant de passer à la tâche suivante
         y += 50;
       }
     }
