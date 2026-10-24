@@ -380,7 +380,7 @@ async function getGlobalConfig() {
   if (conf.enableEquipe === undefined) conf.enableEquipe = true;
   if (conf.appName === undefined) conf.appName = 'SASU SOAN';
   if (conf.reqPhotoEq === undefined) conf.reqPhotoEq = false;
-  if (conf.reqPhotoCtrl === undefined) conf.reqPhotoCtrl = false;
+  // Note: On ne gère plus reqPhotoCtrl car le Contrôleur DOIT toujours mettre une photo pour un NOK.
   return conf;
 }
 
@@ -707,13 +707,13 @@ async function checkPin(){
     } catch(e){}
   }
 
-  const errEl = document.getElementById('pinError');
   if(match){
     session = { role:pendingRole, agentId:match.id, nom:match.nom, lang: match.lang || 'fr', isAdmin: match.isAdmin === true };
     currentPin='';
     resetInactivityTimer();
     goToZones();
   } else {
+    const errEl = document.getElementById('pinError');
     if(errEl) {
        errEl.style.color = '#B23A34';
        errEl.textContent = t('Code incorrect');
@@ -1026,18 +1026,10 @@ async function renderMailScheduleAdmin(){
 
           <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px dashed #E7E1D6;">
             <div style="display:flex;flex-direction:column;">
-              <span style="font-size:12px;color:#211E1A;font-weight:600;">Photo obligatoire pour l'Équipe</span>
-              <span style="font-size:10px;color:#6B655C;">Pour valider une tâche (OK/NOK)</span>
+              <span style="font-size:12px;color:#211E1A;font-weight:600;">Photo obligatoire pour dire OK (Équipe)</span>
+              <span style="font-size:10px;color:#6B655C;">(Le bouton NOK exige TOUJOURS une photo)</span>
             </div>
             <input type="checkbox" id="reqPhotoEqCheck" ${mailConfig.reqPhotoEq?'checked':''} style="width:20px;height:20px;accent-color:#2B6E68;cursor:pointer;">
-          </div>
-
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px dashed #E7E1D6;">
-            <div style="display:flex;flex-direction:column;">
-              <span style="font-size:12px;color:#211E1A;font-weight:600;">Photo obligatoire pour le Contrôleur</span>
-              <span style="font-size:10px;color:#6B655C;">Exigée uniquement en cas d'anomalie (NOK)</span>
-            </div>
-            <input type="checkbox" id="reqPhotoCtrlCheck" ${mailConfig.reqPhotoCtrl?'checked':''} style="width:20px;height:20px;accent-color:#2B6E68;cursor:pointer;">
           </div>
         </div>
 
@@ -1203,7 +1195,6 @@ async function renderMailScheduleAdmin(){
     mailConfig.active = document.getElementById('mailActiveCheck').checked;
     mailConfig.enableEquipe = document.getElementById('enableEquipeCheck').checked;
     mailConfig.reqPhotoEq = document.getElementById('reqPhotoEqCheck').checked;
-    mailConfig.reqPhotoCtrl = document.getElementById('reqPhotoCtrlCheck').checked;
     mailConfig.time1 = document.getElementById('mailTime1').value;
 
     await pushToCloud('mail_schedule', 'global_config', mailConfig);
@@ -1356,27 +1347,21 @@ async function renderControle(){
           const isEquipeNok = enableEq && isContreVisite && !eqWasOk && (eqR.conforme !== undefined);
 
           let disableOk = isLockedByControl;
-          let disableNok = isLockedByControl;
-          let photoWarningText = t('Photos jointes (optionnel) :');
+          let disableNok = isLockedByControl || myPhotoIds.length === 0; // NOK EXIGE TOUJOURS UNE PHOTO
+          let photoWarningText = '';
           
           if(enableEq) {
             if(!isContreVisite) {
               if (!isLockedByControl && config.reqPhotoEq && myPhotoIds.length === 0) {
                   disableOk = true;
-                  disableNok = true;
               }
-              if(config.reqPhotoEq) photoWarningText = t('Photo obligatoire pour valider la tâche :');
+              if(config.reqPhotoEq) photoWarningText = t('Photo obligatoire pour toute saisie (OK ou NOK) :');
+              else photoWarningText = t('Photo obligatoire pour signaler une anomalie (NOK) :');
             } else {
-              if (config.reqPhotoCtrl && eqWasOk && myPhotoIds.length === 0) {
-                  disableNok = true;
-              }
-              if(config.reqPhotoCtrl) photoWarningText = t('Photo contrôleur exigée pour invalider (NOK) :');
+              photoWarningText = t('Photo contrôleur exigée pour invalider (NOK) :');
             }
           } else {
-            if (config.reqPhotoCtrl && myPhotoIds.length === 0) {
-                disableNok = true;
-            }
-            if(config.reqPhotoCtrl) photoWarningText = t('Photo exigée si passage en NOK :');
+            photoWarningText = t('Photo exigée pour signaler un NOK :');
           }
 
           if (isLockedByControl) photoWarningText = t('🔒 Saisie verrouillée (déjà contrôlée)');
@@ -1445,7 +1430,6 @@ async function renderControle(){
         }
     }
 
-    // --- AJOUT DU BILAN GÉNÉRAL/ZONE ---
     const zsId = 'zone_summary';
     const zsR = currentBranch.reponses[zsId] || { photos: [], commentaire: '' };
     const zsEqR = equipeReponses[zsId] || {};
@@ -1460,10 +1444,7 @@ async function renderControle(){
     for(let pid of zsCvPhotoIds) { zsCvPhotosBase64.push(await getPhotoBase64(pid)); }
 
     const zsMyPhotosBase64 = isContreVisite ? zsCvPhotosBase64 : zsEqPhotosBase64;
-    const zsMyPhotoIds = isContreVisite ? zsCvPhotoIds : zsEqPhotoIds;
     
-    // Pour le bilan, on ne verrouille pas la zone de texte de l'équipe (pas de OK/NOK qui écraserait)
-    // Mais on l'affiche pour qu'elle puisse voir la remarque du contrôleur.
     const zsIsLockedByControl = false; 
 
     const zsTitle = isGlobal ? t('📝 Bilan Global du Jour') : t('📝 Bilan de la zone (Optionnel)');
@@ -1539,23 +1520,17 @@ async function renderControle(){
             
             if(currentBranch.reponses[pId].photos.length === 0){
               const parentCard = document.querySelector(`.point-item[data-point="${pId}"]`);
-              if(parentCard){
+              if(parentCard && pId !== 'zone_summary'){
                 const rEqLoc = equipeReponses[pId] || {};
                 const eqWasOkLoc = (rEqLoc.conforme === true && (!config.reqPhotoEq || (rEqLoc.photos && rEqLoc.photos.length > 0)));
                 
                 parentCard.querySelectorAll('.toggle-btn').forEach(b => {
                   const isNokBtn = b.classList.contains('non-conforme');
+                  const isOkBtn = b.classList.contains('conforme');
                   let lock = false;
                   
-                  if(enableEq){
-                    if(!isContreVisite) {
-                      if(config.reqPhotoEq) lock = true;
-                    } else if(isNokBtn && eqWasOkLoc && config.reqPhotoCtrl) {
-                      lock = true;
-                    }
-                  } else {
-                    if(isNokBtn && config.reqPhotoCtrl) lock = true;
-                  }
+                  if(isNokBtn) lock = true; // NOK TOUJOURS VERROUILLÉ SANS PHOTO
+                  else if(isOkBtn && enableEq && !isContreVisite && config.reqPhotoEq) lock = true;
 
                   if(lock){
                     b.dataset.locked = 'true';
@@ -1587,12 +1562,10 @@ async function renderControle(){
              return;
           }
           if(btn.dataset.locked === 'true'){
-            if(!enableEq){
+            if(btn.classList.contains('non-conforme')) {
               toast('📷 Photo obligatoire pour signaler une anomalie (NOK)');
-            } else if(!isContreVisite){
-              toast('📷 Dépose au moins une photo pour valider');
             } else {
-              toast('📷 Photo contrôleur obligatoire pour invalider !');
+              toast('📷 Photo obligatoire pour valider cette tâche (OK)');
             }
             e.preventDefault();
             return;
@@ -1877,7 +1850,6 @@ async function generatePDFForDate(targetDateIso){
       const cvCtrl = rCv.controleurNom || cv.controleurNom || 'Contrôleur';
       const cvTime = rCv.heure || cv.heure || '--:--';
 
-      // ---- CALCUL EXACT DE LA HAUTEUR DU BLOC ----
       let neededHeight = 16; 
       if(enableEq && rEq.commentaire) neededHeight += 5;
       if(rCv.commentaire) neededHeight += 5;
