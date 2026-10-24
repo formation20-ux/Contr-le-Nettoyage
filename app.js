@@ -264,7 +264,7 @@ const LEGACY_TASKS_MAP = {
    MOTEUR DE STOCKAGE HYBRIDE & CONFIG GLOBALE
    ========================================================================= */
 const DB_NAME = 'soan-hybrid-db';
-const DB_VERSION = 3;
+const DB_VERSION = 4; // Version incrémentée pour la table des photos individuelles
 let dbPromise = null;
 
 function openDB(){
@@ -273,7 +273,7 @@ function openDB(){
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e)=>{
       const db = e.target.result;
-      const stores = ['controles', 'agents', 'task_schedule', 'sync_queue', 'mail_schedule', 'pdf_reports'];
+      const stores = ['controles', 'agents', 'task_schedule', 'sync_queue', 'mail_schedule', 'pdf_reports', 'photos'];
       stores.forEach(s => {
         if(!db.objectStoreNames.contains(s)){
           db.createObjectStore(s, { keyPath: (s === 'task_schedule' ? 'taskId' : 'id') });
@@ -382,6 +382,27 @@ async function getGlobalConfig() {
   if (conf.reqPhotoEq === undefined) conf.reqPhotoEq = false;
   if (conf.reqPhotoCtrl === undefined) conf.reqPhotoCtrl = false;
   return conf;
+}
+
+/* =========================================================================
+   GESTION OPTIMISÉE DES PHOTOS POUR DÉPASSER LA LIMITE DE 1 Mo FIREBASE
+   ========================================================================= */
+async function getPhotoBase64(photoId) {
+  if (!photoId) return '';
+  // Pont de compatibilité avec les anciens rapports (qui contenaient la photo directement)
+  if (photoId.startsWith('data:image')) return photoId; 
+  
+  let doc = await idbGet('photos', photoId);
+  if (!doc && navigator.onLine) {
+    try {
+      const snap = await db.collection('photos').doc(photoId).get();
+      if(snap.exists){
+        doc = snap.data();
+        await idbPut('photos', doc); // Mise en cache locale
+      }
+    } catch(e){}
+  }
+  return doc ? doc.base64 : '';
 }
 
 /* =========================================================================
@@ -552,7 +573,7 @@ function fileToResizedBase64(file, maxWidth){
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, targetW, targetH);
           
-          resolve(canvas.toDataURL('image/jpeg', 0.8));
+          resolve(canvas.toDataURL('image/jpeg', 0.8)); // Qualité maintenue haute
         } catch(err) {
           reject(err);
         }
@@ -1058,7 +1079,14 @@ async function renderMailScheduleAdmin(){
       const snap2 = await db.collection('pdf_reports').get();
       snap2.docs.forEach(d => totalStr += JSON.stringify(d.data()));
       
-      const sizeMB = (new Blob([totalStr]).size / (1024 * 1024)).toFixed(2);
+      let photosSize = 0;
+      const snap3 = await db.collection('photos').get();
+      snap3.docs.forEach(d => {
+         const data = d.data();
+         if(data.base64) photosSize += data.base64.length;
+      });
+      
+      const sizeMB = ((new Blob([totalStr]).size + photosSize) / (1024 * 1024)).toFixed(2);
       btn.style.display = 'none';
       badge.style.display = 'inline-block';
       badge.textContent = `${sizeMB} Mo`;
@@ -1265,9 +1293,18 @@ async function renderControle(){
     for(const p of activePoints){
       const r = currentBranch.reponses[p.id] || { conforme: null, photos:[], commentaire:'' };
 
-      const myPhotos = r.photos || [];
+      const myPhotoIds = r.photos || [];
+      const myPhotosBase64 = [];
+      for(let pid of myPhotoIds) {
+        myPhotosBase64.push(await getPhotoBase64(pid));
+      }
+
       const eqR = equipeReponses[p.id] || {};
-      const eqPhotos = isContreVisite ? (eqR.photos || []) : [];
+      const eqPhotoIds = isContreVisite ? (eqR.photos || []) : [];
+      const eqPhotosBase64 = [];
+      for(let pid of eqPhotoIds) {
+        eqPhotosBase64.push(await getPhotoBase64(pid));
+      }
 
       const eqWasOk = (eqR.conforme === true && (!config.reqPhotoEq || (eqR.photos && eqR.photos.length > 0)));
       const isEquipeNok = enableEq && isContreVisite && !eqWasOk;
@@ -1278,15 +1315,15 @@ async function renderControle(){
       
       if(enableEq) {
         if(!isContreVisite) {
-          disableOk = config.reqPhotoEq && myPhotos.length === 0;
-          disableNok = config.reqPhotoEq && myPhotos.length === 0;
+          disableOk = config.reqPhotoEq && myPhotosBase64.length === 0;
+          disableNok = config.reqPhotoEq && myPhotosBase64.length === 0;
           if(config.reqPhotoEq) photoWarningText = t('Photo obligatoire pour valider la tâche :');
         } else {
-          disableNok = config.reqPhotoCtrl && eqWasOk && myPhotos.length === 0;
+          disableNok = config.reqPhotoCtrl && eqWasOk && myPhotosBase64.length === 0;
           if(config.reqPhotoCtrl) photoWarningText = t('Photo contrôleur exigée pour invalider (NOK) :');
         }
       } else {
-        disableNok = config.reqPhotoCtrl && myPhotos.length === 0;
+        disableNok = config.reqPhotoCtrl && myPhotosBase64.length === 0;
         if(config.reqPhotoCtrl) photoWarningText = t('Photo exigée si passage en NOK :');
       }
 
@@ -1309,10 +1346,10 @@ async function renderControle(){
             </div>
           </div>
 
-          ${enableEq && isContreVisite && eqPhotos.length ? `
+          ${enableEq && isContreVisite && eqPhotosBase64.length ? `
             <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:8px;">${t('📸 Photos transmises par l\'Équipe :')}</div>
             <div class="point-photo-row" style="display:flex;gap:6px;overflow-x:auto;padding:6px;background:#DCEEEC;border-radius:8px;margin-top:4px;">
-              ${eqPhotos.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe - ${p.label}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
+              ${eqPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe - ${p.label}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
             </div>
           ` : ''}
 
@@ -1325,7 +1362,7 @@ async function renderControle(){
           </div>
           <div class="point-photo-row" id="photos_${p.id}" style="display:flex;align-items:center;overflow-x:auto;margin-top:4px;">
             <div class="my-photos-container" style="display:inline-flex;align-items:center;">
-              ${myPhotos.map((pSrc, idx) => renderSinglePhotoHtml(pSrc, p.id, idx)).join('')}
+              ${myPhotosBase64.map((pSrc, idx) => renderSinglePhotoHtml(pSrc, p.id, idx)).join('')}
             </div>
             <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
               ${t('📷 + Photo')}
@@ -1352,8 +1389,13 @@ async function renderControle(){
           const pId = btn.dataset.point;
           const idx = parseInt(btn.dataset.idx);
           if(currentBranch.reponses[pId] && currentBranch.reponses[pId].photos){
-            currentBranch.reponses[pId].photos.splice(idx, 1);
+            const deletedId = currentBranch.reponses[pId].photos.splice(idx, 1)[0];
             
+            if(deletedId && !deletedId.startsWith('data:image')){
+                idbDelete('photos', deletedId);
+                if(navigator.onLine) db.collection('photos').doc(deletedId).delete().catch(()=>{});
+            }
+
             const thumbItem = btn.closest('.photo-item-thumb');
             if(thumbItem) thumbItem.remove();
             
@@ -1445,8 +1487,13 @@ async function renderControle(){
         try {
           toast(t('Chargement…'));
           const file = fileInput.files[0];
+          // QUALITÉ MAXIMALE MAINTENUE (1200px, 80%)
           const dataUrl = await fileToResizedBase64(file, 1200);
           
+          // SOLUTION LIMITE 1MO FIREBASE: On enregistre la photo dans une collection à part
+          const photoId = uid('photo');
+          await pushToCloud('photos', photoId, { id: photoId, base64: dataUrl });
+
           if (!currentBranch.reponses[pId]) {
             currentBranch.reponses[pId] = { conforme: null, photos: [], commentaire: '' };
           }
@@ -1454,7 +1501,8 @@ async function renderControle(){
             currentBranch.reponses[pId].photos = [];
           }
           
-          currentBranch.reponses[pId].photos.push(dataUrl);
+          // On ne stocke plus le texte lourd, juste l'ID !
+          currentBranch.reponses[pId].photos.push(photoId);
 
           const myContainer = item.querySelector('.my-photos-container');
           if(myContainer){
@@ -1696,8 +1744,17 @@ async function generatePDFForDate(targetDateIso){
         }
       }
 
-      const allEqPhotos = enableEq ? (rEq.photos || []) : [];
-      const allCvPhotos = rCv.photos || [];
+      const allEqPhotos = [];
+      for(const pid of (enableEq ? (rEq.photos || []) : [])){
+         const b64 = await getPhotoBase64(pid);
+         if(b64) allEqPhotos.push(b64);
+      }
+      
+      const allCvPhotos = [];
+      for(const pid of (rCv.photos || [])){
+         const b64 = await getPhotoBase64(pid);
+         if(b64) allCvPhotos.push(b64);
+      }
 
       if(allEqPhotos.length > 0 || allCvPhotos.length > 0){
         if(y > 210){ docPdf.addPage(); y = 20; }
@@ -1879,10 +1936,22 @@ async function renderHistory(){
           const rEq = (eq.reponses && eq.reponses[p.id]) || {};
           const rCv = (cv.reponses && cv.reponses[p.id]) || {};
           
-          const eqPhotos = rEq.photos || [];
-          const cvPhotos = rCv.photos || [];
+          const eqPhotosIds = rEq.photos || [];
+          const cvPhotosIds = rCv.photos || [];
+          
+          const eqPhotos = [];
+          for(const pid of eqPhotosIds) {
+              const b64 = await getPhotoBase64(pid);
+              if(b64) eqPhotos.push(b64);
+          }
+          
+          const cvPhotos = [];
+          for(const pid of cvPhotosIds) {
+              const b64 = await getPhotoBase64(pid);
+              if(b64) cvPhotos.push(b64);
+          }
 
-          const eqOk = (!config.reqPhotoEq || eqPhotos.length > 0) ? (rEq.conforme !== false) : false;
+          const eqOk = (!config.reqPhotoEq || eqPhotosIds.length > 0) ? (rEq.conforme !== false) : false;
           const cvOk = (rCv.conforme === false) ? false : true;
 
           const isFinalOk = (cvOk === true);
@@ -1905,16 +1974,16 @@ async function renderHistory(){
               <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
                 ${enableEq ? `
                   <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${eqOk?'#2B6E68':'#B23A34'};color:#fff;">
-                    <span>${t('Équipe')} (${eqAgent}${eqTime}) :</span>
+                    <span>${t('Équipe')} (${eqAgent} ${eqTime}) :</span>
                     <strong>${eqOk?'✓ OK':'✕ NOK'}</strong>
                   </div>
                   <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${cvOk?'#2B6E68':'#B23A34'};color:#fff;">
-                    <span>${t('Contrôleur')} (${cvCtrl}${cvTime}) :</span>
+                    <span>${t('Contrôleur')} (${cvCtrl} ${cvTime}) :</span>
                     <strong>${cvOk?'✓ OK':'✕ NOK'}</strong>
                   </div>
                 ` : `
                   <div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 8px;border-radius:6px;font-weight:600;background:${cvOk?'#2B6E68':'#B23A34'};color:#fff;">
-                    <span>${t('Constat')} (${cvCtrl}${cvTime}) :</span>
+                    <span>${t('Constat')} (${cvCtrl} ${cvTime}) :</span>
                     <strong>${cvOk?'✓ OK':'✕ NOK'}</strong>
                   </div>
                 `}
@@ -2106,7 +2175,7 @@ async function renderStats(){
         <div style="background:#FAF8F3;padding:14px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
           <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">${t('Anomalies Relevées')}</div>
           <div style="font-size:20px;font-weight:800;color:#B23A34;margin-top:4px;">${currentStats.nokCount} NOK</div>
-          ${enableEq ? `<div style="font-size:12px;color:#6B655C;margin-top:2px;font-weight:600;">${t('dont')} ${currentStats.ecartsCount}${t('écart(s)')}</div>` : ''}
+          ${enableEq ? `<div style="font-size:12px;color:#6B655C;margin-top:2px;font-weight:600;">${t('dont')} ${currentStats.ecartsCount} ${t('écart(s)')}</div>` : ''}
         </div>
       </div>
 
