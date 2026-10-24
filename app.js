@@ -770,19 +770,25 @@ async function renderZones(){
       const c = await idbGet('controles', controleId);
 
       let remaining = 0;
-      if(isAgent && config.enableEquipe){
-        const eqReponses = (c && c.passageEquipe && c.passageEquipe.reponses) || {};
-        activePoints.forEach(p => {
-          const r = eqReponses[p.id];
-          if(!r || r.conforme === null || r.conforme === undefined) remaining++;
-        });
-      } else {
-        const cvReponses = (c && c.contreVisite && c.contreVisite.reponses) || {};
-        activePoints.forEach(p => {
+      const eqReponses = (c && c.passageEquipe && c.passageEquipe.reponses) || {};
+      const cvReponses = (c && c.contreVisite && c.contreVisite.reponses) || {};
+
+      activePoints.forEach(p => {
+        if(isAgent && config.enableEquipe){
+          const rEq = eqReponses[p.id];
+          const rCv = cvReponses[p.id];
+          const eqAnswered = rEq && rEq.conforme !== null && rEq.conforme !== undefined;
+          const cvAnswered = rCv && rCv.conforme !== null && rCv.conforme !== undefined;
+          
+          // Si l'équipe n'a pas répondu ET que le contrôleur n'a pas encore répondu non plus, ça reste à faire.
+          if (!eqAnswered && !cvAnswered) {
+            remaining++;
+          }
+        } else {
           const r = cvReponses[p.id];
           if(!r || r.conforme === undefined || r.conforme === null) remaining++;
-        });
-      }
+        }
+      });
 
       const badgeText = remaining === 0 ? t('✓ Complété') : `${remaining} ${t('restant(s)')}`;
       const badgeBg = remaining === 0 ? '#2B6E68' : '#C7791B';
@@ -1189,7 +1195,7 @@ async function renderMailScheduleAdmin(){
 /* =========================================================================
    SAISIE CONTRÔLE / PRESTATION ZONE
    ========================================================================= */
-let isPhotoUploading = false; // Variable pour empêcher de quitter pendant l'upload
+let isPhotoUploading = false; 
 
 async function renderControle(){
   clearRealtimeListeners();
@@ -1281,11 +1287,11 @@ async function renderControle(){
     await pushToCloud('controles', c.id, c);
   };
 
-  const renderSinglePhotoHtml = (src, pId, idx) => {
+  const renderSinglePhotoHtml = (src, pId, idx, locked) => {
     return `
       <div class="photo-item-thumb" data-idx="${idx}" style="position:relative;display:inline-block;margin-right:8px;margin-top:4px;">
         <img class="photo-thumb click-zoom" src="${src}" data-title="Photo - ${pId}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;">
-        <button class="del-photo-btn" data-point="${pId}" data-idx="${idx}">✕</button>
+        ${!locked ? `<button class="del-photo-btn" data-point="${pId}" data-idx="${idx}">✕</button>` : ''}
       </div>
     `;
   };
@@ -1296,39 +1302,51 @@ async function renderControle(){
     for(const p of activePoints){
       const r = currentBranch.reponses[p.id] || { conforme: null, photos:[], commentaire:'' };
 
-      const myPhotoIds = r.photos || [];
-      const myPhotosBase64 = [];
-      for(let pid of myPhotoIds) {
-        myPhotosBase64.push(await getPhotoBase64(pid));
-      }
-
       const eqR = equipeReponses[p.id] || {};
-      const eqPhotoIds = isContreVisite ? (eqR.photos || []) : [];
+      const cvR = (c.contreVisite && c.contreVisite.reponses && c.contreVisite.reponses[p.id]) || {};
+
+      const eqPhotoIds = eqR.photos || [];
       const eqPhotosBase64 = [];
-      for(let pid of eqPhotoIds) {
-        eqPhotosBase64.push(await getPhotoBase64(pid));
-      }
+      for(let pid of eqPhotoIds) { eqPhotosBase64.push(await getPhotoBase64(pid)); }
+
+      const cvPhotoIds = cvR.photos || [];
+      const cvPhotosBase64 = [];
+      for(let pid of cvPhotoIds) { cvPhotosBase64.push(await getPhotoBase64(pid)); }
+
+      const myPhotosBase64 = isContreVisite ? cvPhotosBase64 : eqPhotosBase64;
+      const myPhotoIds = isContreVisite ? cvPhotoIds : eqPhotoIds;
+
+      const isAlreadyControlled = cvR.conforme !== undefined && cvR.conforme !== null;
+      const isLockedByControl = !isContreVisite && isAlreadyControlled;
 
       const eqWasOk = (eqR.conforme === true && (!config.reqPhotoEq || (eqPhotoIds && eqPhotoIds.length > 0)));
-      const isEquipeNok = enableEq && isContreVisite && !eqWasOk;
+      const isEquipeNok = enableEq && isContreVisite && !eqWasOk && (eqR.conforme !== undefined);
 
-      let disableOk = false;
-      let disableNok = false;
+      let disableOk = isLockedByControl;
+      let disableNok = isLockedByControl;
       let photoWarningText = t('Photos jointes (optionnel) :');
       
       if(enableEq) {
         if(!isContreVisite) {
-          disableOk = config.reqPhotoEq && myPhotoIds.length === 0;
-          disableNok = config.reqPhotoEq && myPhotoIds.length === 0;
+          if (!isLockedByControl && config.reqPhotoEq && myPhotoIds.length === 0) {
+              disableOk = true;
+              disableNok = true;
+          }
           if(config.reqPhotoEq) photoWarningText = t('Photo obligatoire pour valider la tâche :');
         } else {
-          disableNok = config.reqPhotoCtrl && eqWasOk && myPhotoIds.length === 0;
+          if (config.reqPhotoCtrl && eqWasOk && myPhotoIds.length === 0) {
+              disableNok = true;
+          }
           if(config.reqPhotoCtrl) photoWarningText = t('Photo contrôleur exigée pour invalider (NOK) :');
         }
       } else {
-        disableNok = config.reqPhotoCtrl && myPhotoIds.length === 0;
+        if (config.reqPhotoCtrl && myPhotoIds.length === 0) {
+            disableNok = true;
+        }
         if(config.reqPhotoCtrl) photoWarningText = t('Photo exigée si passage en NOK :');
       }
+
+      if (isLockedByControl) photoWarningText = t('🔒 Saisie verrouillée (déjà contrôlée)');
 
       const freqLabel = p.freq==='J' ? t('Jour') : (p.freq==='H' ? t('Hebdo') : t('Mensuel'));
       const displayLabel = await translateDynamicText(p.label, userLang);
@@ -1344,8 +1362,8 @@ async function renderControle(){
             </div>
             
             <div class="point-toggle" style="display:flex; gap:6px; flex-shrink:0;">
-              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" data-locked="${disableOk ? 'true' : 'false'}" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===true?'#2B6E68':'#E7E1D6'}; background:${r.conforme===true?'#2B6E68':'#fff'}; color:${r.conforme===true?'#fff':'#6B655C'};">✓ OK</button>
-              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" data-locked="${disableNok ? 'true' : 'false'}" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===false?'#B23A34':'#E7E1D6'}; background:${r.conforme===false?'#B23A34':'#fff'}; color:${r.conforme===false?'#fff':'#6B655C'};">✕ NOK</button>
+              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" data-locked="${disableOk || isLockedByControl ? 'true' : 'false'}" data-locked-by-control="${isLockedByControl ? 'true' : 'false'}" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===true?'#2B6E68':'#E7E1D6'}; background:${r.conforme===true?'#2B6E68':'#fff'}; color:${r.conforme===true?'#fff':'#6B655C'}; ${disableOk || isLockedByControl ? 'opacity:0.4; cursor:not-allowed;' : ''}">✓ OK</button>
+              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" data-locked="${disableNok || isLockedByControl ? 'true' : 'false'}" data-locked-by-control="${isLockedByControl ? 'true' : 'false'}" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===false?'#B23A34':'#E7E1D6'}; background:${r.conforme===false?'#B23A34':'#fff'}; color:${r.conforme===false?'#fff':'#6B655C'}; ${disableNok || isLockedByControl ? 'opacity:0.4; cursor:not-allowed;' : ''}">✕ NOK</button>
             </div>
           </div>
 
@@ -1360,20 +1378,35 @@ async function renderControle(){
             <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">${t('💬 Obs. Équipe')} (${c.passageEquipe.agentNom||t('Équipe')}) : "${eqR.commentaire}"</div>
           ` : ''}
 
-          <div style="font-size:11px;color:#6B655C;margin-top:4px;">
+          ${enableEq && !isContreVisite && isAlreadyControlled ? `
+            <div style="font-size:11px;color:#C7791B;font-weight:700;margin-top:8px;padding:8px;background:#FAF8F3;border:1px dashed #C7791B;border-radius:8px;">
+              🔒 ${t('Tâche déjà contrôlée par')} ${c.contreVisite.controleurNom || t('le Contrôleur')} : 
+              <strong style="color:${cvR.conforme?'#2B6E68':'#B23A34'}; font-size:12px;">${cvR.conforme?'✓ OK':'✕ NOK'}</strong>
+              ${cvR.commentaire ? `<div style="margin-top:4px;font-style:italic;color:#4A453E;">💬 "${cvR.commentaire}"</div>` : ''}
+              ${cvPhotosBase64.length > 0 ? `
+                <div style="display:flex;gap:6px;overflow-x:auto;margin-top:6px;">
+                  ${cvPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Contrôleur" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #C7791B;cursor:pointer;">`).join('')}
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+
+          <div style="font-size:11px;color:#6B655C;margin-top:8px;">
             ${photoWarningText}
           </div>
           <div class="point-photo-row" id="photos_${p.id}" style="display:flex;align-items:center;overflow-x:auto;margin-top:4px;">
             <div class="my-photos-container" style="display:inline-flex;align-items:center;">
-              ${myPhotosBase64.map((pSrc, idx) => renderSinglePhotoHtml(pSrc, p.id, idx)).join('')}
+              ${myPhotosBase64.map((pSrc, idx) => renderSinglePhotoHtml(pSrc, p.id, idx, isLockedByControl)).join('')}
             </div>
-            <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
-              ${t('📷 + Photo')}
-              <input type="file" accept="image/*" style="display:none;" data-photo-input>
-            </label>
+            ${!isLockedByControl ? `
+              <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
+                ${t('📷 + Photo')}
+                <input type="file" accept="image/*" style="display:none;" data-photo-input>
+              </label>
+            ` : ''}
           </div>
           
-          <textarea class="point-comment" placeholder="${!enableEq ? t('Remarques (optionnel)') : (isContreVisite ? t('Remarques Contrôleur (optionnel)') : t('Remarques Équipe (optionnel)'))}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6; box-sizing:border-box;">${r.commentaire||''}</textarea>
+          <textarea class="point-comment" placeholder="${!enableEq ? t('Remarques (optionnel)') : (isContreVisite ? t('Remarques Contrôleur (optionnel)') : t('Remarques Équipe (optionnel)'))}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6; box-sizing:border-box;" ${isLockedByControl ? 'disabled' : ''}>${r.commentaire||''}</textarea>
         </div>
       `;
     }
@@ -1446,6 +1479,11 @@ async function renderControle(){
 
       item.querySelectorAll('.toggle-btn').forEach(btn=>{
         btn.onclick = async (e)=>{
+          if(btn.dataset.lockedByControl === 'true'){
+             toast('🔒 Cette tâche a déjà été contrôlée, modification impossible.');
+             e.preventDefault();
+             return;
+          }
           if(btn.dataset.locked === 'true'){
             if(!enableEq){
               toast('📷 Photo obligatoire pour signaler une anomalie (NOK)');
@@ -1484,53 +1522,55 @@ async function renderControle(){
       });
 
       const fileInput = item.querySelector('[data-photo-input]');
-      fileInput.onchange = async () => {
-        if (!fileInput.files || !fileInput.files.length) return;
-        
-        isPhotoUploading = true;
-        
-        try {
-          toast(t('Chargement de la photo...'));
-          const file = fileInput.files[0];
-          const dataUrl = await fileToResizedBase64(file, 1200);
-          
-          const photoId = uid('photo');
-          await pushToCloud('photos', photoId, { id: photoId, base64: dataUrl });
-
-          if (!currentBranch.reponses[pId]) {
-            currentBranch.reponses[pId] = { conforme: null, photos: [], commentaire: '' };
-          }
-          if (!currentBranch.reponses[pId].photos) {
-            currentBranch.reponses[pId].photos = [];
-          }
-          
-          currentBranch.reponses[pId].photos.push(photoId);
-
-          const myContainer = item.querySelector('.my-photos-container');
-          if(myContainer){
-            const newIdx = currentBranch.reponses[pId].photos.length - 1;
-            myContainer.insertAdjacentHTML('beforeend', renderSinglePhotoHtml(dataUrl, pId, newIdx));
+      if(fileInput) {
+          fileInput.onchange = async () => {
+            if (!fileInput.files || !fileInput.files.length) return;
             
-            const newImg = myContainer.lastElementChild.querySelector('.click-zoom');
-            if(newImg) newImg.onclick = () => openPhotoViewer(newImg.src, newImg.dataset.title);
+            isPhotoUploading = true;
             
-            attachDelButtons();
-          }
+            try {
+              toast(t('Chargement de la photo...'));
+              const file = fileInput.files[0];
+              const dataUrl = await fileToResizedBase64(file, 1200);
+              
+              const photoId = uid('photo');
+              await pushToCloud('photos', photoId, { id: photoId, base64: dataUrl });
 
-          item.querySelectorAll('.toggle-btn').forEach(b => {
-            b.dataset.locked = 'false';
-          });
+              if (!currentBranch.reponses[pId]) {
+                currentBranch.reponses[pId] = { conforme: null, photos: [], commentaire: '' };
+              }
+              if (!currentBranch.reponses[pId].photos) {
+                currentBranch.reponses[pId].photos = [];
+              }
+              
+              currentBranch.reponses[pId].photos.push(photoId);
 
-          await triggerAutoSave();
-          toast(t('Photo ajoutée'));
-          fileInput.value = '';
-        } catch (err) {
-          console.error("Erreur capture photo :", err);
-          toast("Erreur d'enregistrement photo");
-        } finally {
-          isPhotoUploading = false;
-        }
-      };
+              const myContainer = item.querySelector('.my-photos-container');
+              if(myContainer){
+                const newIdx = currentBranch.reponses[pId].photos.length - 1;
+                myContainer.insertAdjacentHTML('beforeend', renderSinglePhotoHtml(dataUrl, pId, newIdx, false));
+                
+                const newImg = myContainer.lastElementChild.querySelector('.click-zoom');
+                if(newImg) newImg.onclick = () => openPhotoViewer(newImg.src, newImg.dataset.title);
+                
+                attachDelButtons();
+              }
+
+              item.querySelectorAll('.toggle-btn').forEach(b => {
+                b.dataset.locked = 'false';
+              });
+
+              await triggerAutoSave();
+              toast(t('Photo ajoutée'));
+              fileInput.value = '';
+            } catch (err) {
+              console.error("Erreur capture photo :", err);
+              toast("Erreur d'enregistrement photo");
+            } finally {
+              isPhotoUploading = false;
+            }
+          };
+      }
 
       item.querySelector('.point-comment').oninput = (e)=>{
         r.commentaire = e.target.value;
@@ -1543,16 +1583,21 @@ async function renderControle(){
   };
 
   document.getElementById('saveBtn').onclick = async ()=>{
-    // Empêche la sortie si une photo est en cours d'envoi
     if(isPhotoUploading) {
       toast('⏳ Veuillez patienter, une photo est en cours de traitement...');
       return;
     }
 
-    // Vérifie si toutes les tâches sont complétées
     let missingTasks = 0;
     for(const p of activePoints){
       const r = currentBranch.reponses[p.id];
+      const cvR = (c.contreVisite && c.contreVisite.reponses && c.contreVisite.reponses[p.id]) || {};
+      const isAlreadyControlled = cvR.conforme !== undefined && cvR.conforme !== null;
+
+      if (!isContreVisite && isAlreadyControlled) {
+          continue; 
+      }
+
       if(!r || r.conforme === null || r.conforme === undefined){
         missingTasks++;
       }
@@ -1787,7 +1832,6 @@ async function generatePDFForDate(targetDateIso){
         
         for(const imgBase64 of allEqPhotos){
           try {
-            // PROPORTIONS RESPECTÉES POUR ÉVITER LES PHOTOS ÉCRASÉES DANS LE PDF
             const imgProps = docPdf.getImageProperties(imgBase64);
             let finalW = 55;
             let finalH = (imgProps.height * finalW) / imgProps.width;
@@ -1811,7 +1855,6 @@ async function generatePDFForDate(targetDateIso){
 
         for(const imgBase64 of allCvPhotos){
           try {
-            // PROPORTIONS RESPECTÉES POUR ÉVITER LES PHOTOS ÉCRASÉES DANS LE PDF
             const imgProps = docPdf.getImageProperties(imgBase64);
             let finalW = 55;
             let finalH = (imgProps.height * finalW) / imgProps.width;
