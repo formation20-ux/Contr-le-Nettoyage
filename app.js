@@ -264,7 +264,7 @@ const LEGACY_TASKS_MAP = {
    MOTEUR DE STOCKAGE HYBRIDE & CONFIG GLOBALE
    ========================================================================= */
 const DB_NAME = 'soan-hybrid-db';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 let dbPromise = null;
 
 function openDB(){
@@ -273,7 +273,7 @@ function openDB(){
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e)=>{
       const db = e.target.result;
-      const stores = ['controles', 'agents', 'task_schedule', 'sync_queue', 'mail_schedule', 'pdf_reports', 'photos'];
+      const stores = ['controles', 'agents', 'task_schedule', 'sync_queue', 'mail_schedule', 'pdf_reports', 'photos', 'global_reports'];
       stores.forEach(s => {
         if(!db.objectStoreNames.contains(s)){
           db.createObjectStore(s, { keyPath: (s === 'task_schedule' ? 'taskId' : 'id') });
@@ -474,6 +474,8 @@ async function getAllTasksMap(forceCloud = false){
 }
 
 async function getPointsForToday(zoneId, dateIso){
+  if (zoneId === 'global') return [];
+  
   const d = new Date(dateIso);
   const currentDay = d.getDay();
   const currentDate = d.getDate();
@@ -747,6 +749,7 @@ async function renderZones(){
       ${topbarHtml(roleLabel, fmtDate(date), config.appName)}
       <div class="section">
         <div class="section-title">${t('Zones de Prestation')}</div>
+        <button class="btn block" id="globalReportBtn" style="margin-bottom:12px; border-color:#211E1A; background:#211E1A; color:#fff; font-size:14px; padding:10px;">📝 ${t('Bilan Général du Jour')}</button>
         <div class="zone-grid" id="zoneGrid"></div>
       </div>
       
@@ -835,6 +838,16 @@ async function renderZones(){
   };
 
   await updateGridUI();
+
+  const globalBtn = document.getElementById('globalReportBtn');
+  if(globalBtn) {
+      globalBtn.onclick = () => {
+          activeZoneId = 'global';
+          activeControleId = `${date}__global`;
+          activeMode = (isAgent && config.enableEquipe) ? 'equipe' : 'contreVisite';
+          renderControle();
+      };
+  }
 
   if(navigator.onLine){
     window.zoneListeners = window.zoneListeners || [];
@@ -1224,6 +1237,8 @@ async function renderControle(){
   const config = await getGlobalConfig();
   const enableEq = config.enableEquipe;
 
+  const isGlobal = activeZoneId === 'global';
+
   let c = await idbGet('controles', activeControleId);
   
   if(!c) {
@@ -1249,30 +1264,32 @@ async function renderControle(){
   if (!c.passageEquipe.reponses) c.passageEquipe.reponses = {};
   if (!c.contreVisite.reponses) c.contreVisite.reponses = {};
 
-  const zone = ZONES.find(z=>z.id===activeZoneId);
-  const activePoints = await getPointsForToday(activeZoneId, date);
+  const zone = isGlobal ? { id: 'global', nom: 'Bilan Général du Jour' } : ZONES.find(z=>z.id===activeZoneId);
+  const activePoints = isGlobal ? [] : await getPointsForToday(activeZoneId, date);
   const isContreVisite = activeMode==='contreVisite';
   
   let currentBranch = isContreVisite ? c.contreVisite : c.passageEquipe;
   let equipeReponses = c.passageEquipe.reponses;
 
-  activePoints.forEach(p => {
-    if(!isContreVisite && enableEq){
-      if(currentHour >= 10){
-        if(!currentBranch.reponses[p.id]){
-          currentBranch.reponses[p.id] = { conforme: false, photos:[], commentaire: t('Non réalisé avant 10h') };
-        } else if(config.reqPhotoEq && (!currentBranch.reponses[p.id].photos || currentBranch.reponses[p.id].photos.length === 0)){
-          currentBranch.reponses[p.id].conforme = false;
+  if (!isGlobal) {
+    activePoints.forEach(p => {
+      if(!isContreVisite && enableEq){
+        if(currentHour >= 10){
+          if(!currentBranch.reponses[p.id]){
+            currentBranch.reponses[p.id] = { conforme: false, photos:[], commentaire: t('Non réalisé avant 10h') };
+          } else if(config.reqPhotoEq && (!currentBranch.reponses[p.id].photos || currentBranch.reponses[p.id].photos.length === 0)){
+            currentBranch.reponses[p.id].conforme = false;
+          }
         }
       }
-    }
-  });
+    });
+  }
 
   let viewSubtitle = '';
   if(!enableEq) viewSubtitle = t('Rapport de Constat');
   else viewSubtitle = isContreVisite ? t('Contre-visite Contrôleur') : t('Réalisation Prestation');
 
-  const translatedZoneName = await translateDynamicText(zone.nom, userLang);
+  const translatedZoneName = isGlobal ? t('Bilan Général du Jour') : await translateDynamicText(zone.nom, userLang);
 
   root.innerHTML = `
     <div class="wrap">
@@ -1314,117 +1331,187 @@ async function renderControle(){
   const refreshPointsListUI = async () => {
     let pointsHtml = '';
 
-    for(const p of activePoints){
-      const r = currentBranch.reponses[p.id] || { conforme: null, photos:[], commentaire:'' };
+    if (!isGlobal) {
+        for(const p of activePoints){
+          const r = currentBranch.reponses[p.id] || { conforme: null, photos:[], commentaire:'' };
 
-      const eqR = equipeReponses[p.id] || {};
-      const cvR = (c.contreVisite && c.contreVisite.reponses && c.contreVisite.reponses[p.id]) || {};
+          const eqR = equipeReponses[p.id] || {};
+          const cvR = (c.contreVisite && c.contreVisite.reponses && c.contreVisite.reponses[p.id]) || {};
 
-      const eqPhotoIds = eqR.photos || [];
-      const eqPhotosBase64 = [];
-      for(let pid of eqPhotoIds) { eqPhotosBase64.push(await getPhotoBase64(pid)); }
+          const eqPhotoIds = eqR.photos || [];
+          const eqPhotosBase64 = [];
+          for(let pid of eqPhotoIds) { eqPhotosBase64.push(await getPhotoBase64(pid)); }
 
-      const cvPhotoIds = cvR.photos || [];
-      const cvPhotosBase64 = [];
-      for(let pid of cvPhotoIds) { cvPhotosBase64.push(await getPhotoBase64(pid)); }
+          const cvPhotoIds = cvR.photos || [];
+          const cvPhotosBase64 = [];
+          for(let pid of cvPhotoIds) { cvPhotosBase64.push(await getPhotoBase64(pid)); }
 
-      const myPhotosBase64 = isContreVisite ? cvPhotosBase64 : eqPhotosBase64;
-      const myPhotoIds = isContreVisite ? cvPhotoIds : eqPhotoIds;
+          const myPhotosBase64 = isContreVisite ? cvPhotosBase64 : eqPhotosBase64;
+          const myPhotoIds = isContreVisite ? cvPhotoIds : eqPhotoIds;
 
-      const isAlreadyControlled = cvR.conforme !== undefined && cvR.conforme !== null;
-      const isLockedByControl = !isContreVisite && isAlreadyControlled;
+          const isAlreadyControlled = cvR.conforme !== undefined && cvR.conforme !== null;
+          const isLockedByControl = !isContreVisite && isAlreadyControlled;
 
-      const eqWasOk = (eqR.conforme === true && (!config.reqPhotoEq || (eqPhotoIds && eqPhotoIds.length > 0)));
-      const isEquipeNok = enableEq && isContreVisite && !eqWasOk && (eqR.conforme !== undefined);
+          const eqWasOk = (eqR.conforme === true && (!config.reqPhotoEq || (eqPhotoIds && eqPhotoIds.length > 0)));
+          const isEquipeNok = enableEq && isContreVisite && !eqWasOk && (eqR.conforme !== undefined);
 
-      let disableOk = isLockedByControl;
-      let disableNok = isLockedByControl;
-      let photoWarningText = t('Photos jointes (optionnel) :');
-      
-      if(enableEq) {
-        if(!isContreVisite) {
-          if (!isLockedByControl && config.reqPhotoEq && myPhotoIds.length === 0) {
-              disableOk = true;
-              disableNok = true;
-          }
-          if(config.reqPhotoEq) photoWarningText = t('Photo obligatoire pour valider la tâche :');
-        } else {
-          if (config.reqPhotoCtrl && eqWasOk && myPhotoIds.length === 0) {
-              disableNok = true;
-          }
-          if(config.reqPhotoCtrl) photoWarningText = t('Photo contrôleur exigée pour invalider (NOK) :');
-        }
-      } else {
-        if (config.reqPhotoCtrl && myPhotoIds.length === 0) {
-            disableNok = true;
-        }
-        if(config.reqPhotoCtrl) photoWarningText = t('Photo exigée si passage en NOK :');
-      }
-
-      if (isLockedByControl) photoWarningText = t('🔒 Saisie verrouillée (déjà contrôlée)');
-
-      const freqLabel = p.freq==='J' ? t('Jour') : (p.freq==='H' ? t('Hebdo') : t('Mensuel'));
-      const displayLabel = await translateDynamicText(p.label, userLang);
-
-      pointsHtml += `
-        <div class="point-item" data-point="${p.id}" style="border:1px solid ${isEquipeNok?'#B23A34':'#E7E1D6'};padding:12px;border-radius:10px;margin-bottom:12px;background:${isEquipeNok?'#F6DEDC':'#fff'};">
+          let disableOk = isLockedByControl;
+          let disableNok = isLockedByControl;
+          let photoWarningText = t('Photos jointes (optionnel) :');
           
-          <div class="point-head" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:8px;">
-            <div class="point-label" style="flex:1; font-weight:600; display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
-              <span style="line-height:1.3; color:#211E1A; margin-top:2px;">${displayLabel}</span>
-              <span style="background:#FAF8F3; border:1px solid #E7E1D6; color:#857F75; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; margin-top:2px;">${freqLabel}</span>
-              ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:bold;white-space:nowrap;margin-top:2px;">⚠️ ${t('Équipe').toUpperCase()} : NOK</span>` : ''}
-            </div>
-            
-            <div class="point-toggle" style="display:flex; gap:6px; flex-shrink:0;">
-              <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" data-locked="${disableOk || isLockedByControl ? 'true' : 'false'}" data-locked-by-control="${isLockedByControl ? 'true' : 'false'}" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===true?'#2B6E68':'#E7E1D6'}; background:${r.conforme===true?'#2B6E68':'#fff'}; color:${r.conforme===true?'#fff':'#6B655C'}; ${disableOk || isLockedByControl ? 'opacity:0.4; cursor:not-allowed;' : ''}">✓ OK</button>
-              <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" data-locked="${disableNok || isLockedByControl ? 'true' : 'false'}" data-locked-by-control="${isLockedByControl ? 'true' : 'false'}" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===false?'#B23A34':'#E7E1D6'}; background:${r.conforme===false?'#B23A34':'#fff'}; color:${r.conforme===false?'#fff':'#6B655C'}; ${disableNok || isLockedByControl ? 'opacity:0.4; cursor:not-allowed;' : ''}">✕ NOK</button>
-            </div>
-          </div>
+          if(enableEq) {
+            if(!isContreVisite) {
+              if (!isLockedByControl && config.reqPhotoEq && myPhotoIds.length === 0) {
+                  disableOk = true;
+                  disableNok = true;
+              }
+              if(config.reqPhotoEq) photoWarningText = t('Photo obligatoire pour valider la tâche :');
+            } else {
+              if (config.reqPhotoCtrl && eqWasOk && myPhotoIds.length === 0) {
+                  disableNok = true;
+              }
+              if(config.reqPhotoCtrl) photoWarningText = t('Photo contrôleur exigée pour invalider (NOK) :');
+            }
+          } else {
+            if (config.reqPhotoCtrl && myPhotoIds.length === 0) {
+                disableNok = true;
+            }
+            if(config.reqPhotoCtrl) photoWarningText = t('Photo exigée si passage en NOK :');
+          }
 
-          ${enableEq && isContreVisite && eqPhotosBase64.length ? `
-            <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:8px;">${t('📸 Photos transmises par l\'Équipe :')}</div>
-            <div class="point-photo-row" style="display:flex;gap:6px;overflow-x:auto;padding:6px;background:#DCEEEC;border-radius:8px;margin-top:4px;">
-              ${eqPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe - ${p.label}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
-            </div>
-          ` : ''}
+          if (isLockedByControl) photoWarningText = t('🔒 Saisie verrouillée (déjà contrôlée)');
 
-          ${enableEq && isContreVisite && eqR.commentaire ? `
-            <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">${t('💬 Obs. Équipe')} (${c.passageEquipe.agentNom||t('Équipe')}) : "${eqR.commentaire}"</div>
-          ` : ''}
+          const freqLabel = p.freq==='J' ? t('Jour') : (p.freq==='H' ? t('Hebdo') : t('Mensuel'));
+          const displayLabel = await translateDynamicText(p.label, userLang);
 
-          ${enableEq && !isContreVisite && isAlreadyControlled ? `
-            <div style="font-size:11px;color:#C7791B;font-weight:700;margin-top:8px;padding:8px;background:#FAF8F3;border:1px dashed #C7791B;border-radius:8px;">
-              🔒 ${t('Tâche déjà contrôlée par')} ${c.contreVisite.controleurNom || t('le Contrôleur')} : 
-              <strong style="color:${cvR.conforme?'#2B6E68':'#B23A34'}; font-size:12px;">${cvR.conforme?'✓ OK':'✕ NOK'}</strong>
-              ${cvR.commentaire ? `<div style="margin-top:4px;font-style:italic;color:#4A453E;">💬 "${cvR.commentaire}"</div>` : ''}
-              ${cvPhotosBase64.length > 0 ? `
-                <div style="display:flex;gap:6px;overflow-x:auto;margin-top:6px;">
-                  ${cvPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Contrôleur" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #C7791B;cursor:pointer;">`).join('')}
+          pointsHtml += `
+            <div class="point-item" data-point="${p.id}" style="border:1px solid ${isEquipeNok?'#B23A34':'#E7E1D6'};padding:12px;border-radius:10px;margin-bottom:12px;background:${isEquipeNok?'#F6DEDC':'#fff'};">
+              
+              <div class="point-head" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:8px;">
+                <div class="point-label" style="flex:1; font-weight:600; display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
+                  <span style="line-height:1.3; color:#211E1A; margin-top:2px;">${displayLabel}</span>
+                  <span style="background:#FAF8F3; border:1px solid #E7E1D6; color:#857F75; padding:2px 6px; border-radius:4px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; margin-top:2px;">${freqLabel}</span>
+                  ${isEquipeNok ? `<span style="background:#B23A34;color:#fff;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:bold;white-space:nowrap;margin-top:2px;">⚠️ ${t('Équipe').toUpperCase()} : NOK</span>` : ''}
+                </div>
+                
+                <div class="point-toggle" style="display:flex; gap:6px; flex-shrink:0;">
+                  <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" data-locked="${disableOk || isLockedByControl ? 'true' : 'false'}" data-locked-by-control="${isLockedByControl ? 'true' : 'false'}" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===true?'#2B6E68':'#E7E1D6'}; background:${r.conforme===true?'#2B6E68':'#fff'}; color:${r.conforme===true?'#fff':'#6B655C'}; ${disableOk || isLockedByControl ? 'opacity:0.4; cursor:not-allowed;' : ''}">✓ OK</button>
+                  <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" data-locked="${disableNok || isLockedByControl ? 'true' : 'false'}" data-locked-by-control="${isLockedByControl ? 'true' : 'false'}" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===false?'#B23A34':'#E7E1D6'}; background:${r.conforme===false?'#B23A34':'#fff'}; color:${r.conforme===false?'#fff':'#6B655C'}; ${disableNok || isLockedByControl ? 'opacity:0.4; cursor:not-allowed;' : ''}">✕ NOK</button>
+                </div>
+              </div>
+
+              ${enableEq && isContreVisite && eqPhotosBase64.length ? `
+                <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:8px;">${t('📸 Photos transmises par l\'Équipe :')}</div>
+                <div class="point-photo-row" style="display:flex;gap:6px;overflow-x:auto;padding:6px;background:#DCEEEC;border-radius:8px;margin-top:4px;">
+                  ${eqPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe - ${p.label}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
                 </div>
               ` : ''}
-            </div>
-          ` : ''}
 
-          <div style="font-size:11px;color:#6B655C;margin-top:8px;">
-            ${photoWarningText}
-          </div>
-          <div class="point-photo-row" id="photos_${p.id}" style="display:flex;align-items:center;overflow-x:auto;margin-top:4px;">
-            <div class="my-photos-container" style="display:inline-flex;align-items:center;">
-              ${myPhotosBase64.map((pSrc, idx) => renderSinglePhotoHtml(pSrc, p.id, idx, isLockedByControl)).join('')}
+              ${enableEq && isContreVisite && eqR.commentaire ? `
+                <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">${t('💬 Obs. Équipe')} (${c.passageEquipe.agentNom||t('Équipe')}) : "${eqR.commentaire}"</div>
+              ` : ''}
+
+              ${enableEq && !isContreVisite && isAlreadyControlled ? `
+                <div style="font-size:11px;color:#C7791B;font-weight:700;margin-top:8px;padding:8px;background:#FAF8F3;border:1px dashed #C7791B;border-radius:8px;">
+                  🔒 ${t('Tâche déjà contrôlée par')} ${c.contreVisite.controleurNom || t('le Contrôleur')} : 
+                  <strong style="color:${cvR.conforme?'#2B6E68':'#B23A34'}; font-size:12px;">${cvR.conforme?'✓ OK':'✕ NOK'}</strong>
+                  ${cvR.commentaire ? `<div style="margin-top:4px;font-style:italic;color:#4A453E;">💬 "${cvR.commentaire}"</div>` : ''}
+                  ${cvPhotosBase64.length > 0 ? `
+                    <div style="display:flex;gap:6px;overflow-x:auto;margin-top:6px;">
+                      ${cvPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Contrôleur" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #C7791B;cursor:pointer;">`).join('')}
+                    </div>
+                  ` : ''}
+                </div>
+              ` : ''}
+
+              <div style="font-size:11px;color:#6B655C;margin-top:8px;">
+                ${photoWarningText}
+              </div>
+              <div class="point-photo-row" id="photos_${p.id}" style="display:flex;align-items:center;overflow-x:auto;margin-top:4px;">
+                <div class="my-photos-container" style="display:inline-flex;align-items:center;">
+                  ${myPhotosBase64.map((pSrc, idx) => renderSinglePhotoHtml(pSrc, p.id, idx, isLockedByControl)).join('')}
+                </div>
+                ${!isLockedByControl ? `
+                  <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
+                    ${t('📷 + Photo')}
+                    <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
+                  </label>
+                ` : ''}
+              </div>
+              
+              <textarea class="point-comment" placeholder="${!enableEq ? t('Remarques (optionnel)') : (isContreVisite ? t('Remarques Contrôleur (optionnel)') : t('Remarques Équipe (optionnel)'))}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6; box-sizing:border-box;" ${isLockedByControl ? 'disabled' : ''}>${r.commentaire||''}</textarea>
             </div>
-            ${!isLockedByControl ? `
-              <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
-                ${t('📷 + Photo')}
-                <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
-              </label>
+          `;
+        }
+    }
+
+    // --- AJOUT DU BILAN GÉNÉRAL/ZONE ---
+    const zsId = 'zone_summary';
+    const zsR = currentBranch.reponses[zsId] || { photos: [], commentaire: '' };
+    const zsEqR = equipeReponses[zsId] || {};
+    const zsCvR = (c.contreVisite && c.contreVisite.reponses && c.contreVisite.reponses[zsId]) || {};
+
+    const zsEqPhotoIds = zsEqR.photos || [];
+    const zsEqPhotosBase64 = [];
+    for(let pid of zsEqPhotoIds) { zsEqPhotosBase64.push(await getPhotoBase64(pid)); }
+
+    const zsCvPhotoIds = zsCvR.photos || [];
+    const zsCvPhotosBase64 = [];
+    for(let pid of zsCvPhotoIds) { zsCvPhotosBase64.push(await getPhotoBase64(pid)); }
+
+    const zsMyPhotosBase64 = isContreVisite ? zsCvPhotosBase64 : zsEqPhotosBase64;
+    const zsMyPhotoIds = isContreVisite ? zsCvPhotoIds : zsEqPhotoIds;
+    
+    // Pour le bilan, on ne verrouille pas la zone de texte de l'équipe (pas de OK/NOK qui écraserait)
+    // Mais on l'affiche pour qu'elle puisse voir la remarque du contrôleur.
+    const zsIsLockedByControl = false; 
+
+    const zsTitle = isGlobal ? t('📝 Bilan Global du Jour') : t('📝 Bilan de la zone (Optionnel)');
+
+    pointsHtml += `
+      <div class="point-item" data-point="${zsId}" style="border:2px solid #C7791B;padding:12px;border-radius:10px;margin-bottom:12px;background:#FAF8F3;">
+        <div style="font-weight:800;font-size:14px;color:#C7791B;margin-bottom:8px;text-transform:uppercase;">
+          ${zsTitle}
+        </div>
+
+        ${enableEq && isContreVisite && zsEqPhotosBase64.length ? `
+          <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:8px;">${t('📸 Photos transmises par l\'Équipe :')}</div>
+          <div class="point-photo-row" style="display:flex;gap:6px;overflow-x:auto;padding:6px;background:#DCEEEC;border-radius:8px;margin-top:4px;">
+            ${zsEqPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe - Bilan" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
+          </div>
+        ` : ''}
+
+        ${enableEq && isContreVisite && zsEqR.commentaire ? `
+          <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">${t('💬 Obs. Équipe')} (${c.passageEquipe.agentNom||t('Équipe')}) : "${zsEqR.commentaire}"</div>
+        ` : ''}
+
+        ${enableEq && !isContreVisite && (zsCvR.commentaire || zsCvPhotosBase64.length > 0) ? `
+          <div style="font-size:11px;color:#C7791B;font-weight:700;margin-top:8px;padding:8px;background:#fff;border:1px dashed #C7791B;border-radius:8px;">
+            🔒 ${t('Bilan complété par')} ${c.contreVisite.controleurNom || t('le Contrôleur')}
+            ${zsCvR.commentaire ? `<div style="margin-top:4px;font-style:italic;color:#4A453E;">💬 "${zsCvR.commentaire}"</div>` : ''}
+            ${zsCvPhotosBase64.length > 0 ? `
+              <div style="display:flex;gap:6px;overflow-x:auto;margin-top:6px;">
+                ${zsCvPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Contrôleur" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #C7791B;cursor:pointer;">`).join('')}
+              </div>
             ` : ''}
           </div>
-          
-          <textarea class="point-comment" placeholder="${!enableEq ? t('Remarques (optionnel)') : (isContreVisite ? t('Remarques Contrôleur (optionnel)') : t('Remarques Équipe (optionnel)'))}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6; box-sizing:border-box;" ${isLockedByControl ? 'disabled' : ''}>${r.commentaire||''}</textarea>
+        ` : ''}
+
+        <div class="point-photo-row" id="photos_${zsId}" style="display:flex;align-items:center;overflow-x:auto;margin-top:8px;">
+          <div class="my-photos-container" style="display:inline-flex;align-items:center;">
+            ${zsMyPhotosBase64.map((pSrc, idx) => renderSinglePhotoHtml(pSrc, zsId, idx, zsIsLockedByControl)).join('')}
+          </div>
+          ${!zsIsLockedByControl ? `
+            <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
+              ${t('📷 + Photo')}
+              <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
+            </label>
+          ` : ''}
         </div>
-      `;
-    }
+        
+        <textarea class="point-comment" placeholder="${isGlobal ? t('Saisissez le bilan général ici (optionnel)...') : t('Remarques générales sur la zone (optionnel)')}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6; box-sizing:border-box; min-height:60px;" ${zsIsLockedByControl ? 'disabled' : ''}>${zsR.commentaire||''}</textarea>
+      </div>
+    `;
 
     const listEl = document.getElementById('pointsList');
     if(listEl) listEl.innerHTML = pointsHtml;
@@ -1604,18 +1691,20 @@ async function renderControle(){
     }
 
     let missingTasks = 0;
-    for(const p of activePoints){
-      const r = currentBranch.reponses[p.id];
-      const cvR = (c.contreVisite && c.contreVisite.reponses && c.contreVisite.reponses[p.id]) || {};
-      const isAlreadyControlled = cvR.conforme !== undefined && cvR.conforme !== null;
+    if (!isGlobal) {
+        for(const p of activePoints){
+          const r = currentBranch.reponses[p.id];
+          const cvR = (c.contreVisite && c.contreVisite.reponses && c.contreVisite.reponses[p.id]) || {};
+          const isAlreadyControlled = cvR.conforme !== undefined && cvR.conforme !== null;
 
-      if (!isContreVisite && isAlreadyControlled) {
-          continue; 
-      }
+          if (!isContreVisite && isAlreadyControlled) {
+              continue; 
+          }
 
-      if(!r || r.conforme === null || r.conforme === undefined){
-        missingTasks++;
-      }
+          if(!r || r.conforme === null || r.conforme === undefined){
+            missingTasks++;
+          }
+        }
     }
 
     if(missingTasks > 0){
@@ -1788,7 +1877,7 @@ async function generatePDFForDate(targetDateIso){
       const cvCtrl = rCv.controleurNom || cv.controleurNom || 'Contrôleur';
       const cvTime = rCv.heure || cv.heure || '--:--';
 
-      // ---- CORRECTION PDF : CALCUL EXACT DE LA HAUTEUR DU BLOC ----
+      // ---- CALCUL EXACT DE LA HAUTEUR DU BLOC ----
       let neededHeight = 16; 
       if(enableEq && rEq.commentaire) neededHeight += 5;
       if(rCv.commentaire) neededHeight += 5;
@@ -1796,15 +1885,13 @@ async function generatePDFForDate(targetDateIso){
       const totalPhotos = allEqPhotos.length + allCvPhotos.length;
       if (totalPhotos > 0) {
           const photoRows = Math.ceil(totalPhotos / 3);
-          neededHeight += (photoRows * 48); // 38px image + 10px margin
+          neededHeight += (photoRows * 48); 
       }
 
-      // Si le bloc complet ne rentre pas, on passe tout de suite à la page suivante
       if(y + neededHeight > 280){ 
           docPdf.addPage(); 
           y = 20; 
       }
-      // -------------------------------------------------------------
 
       if(isFinalOk){
         docPdf.setFillColor(...C_TEAL_BG);
@@ -1820,7 +1907,6 @@ async function generatePDFForDate(targetDateIso){
       docPdf.setFontSize(8.5);
       docPdf.setTextColor(...C_INK);
       
-      // Tronquer le titre pour éviter qu'il ne s'écrive sur les badges OK/NOK
       const maxLen = enableEq ? 58 : 70;
       const safeLabel = p.label.length > maxLen ? p.label.substring(0, maxLen - 3) + '...' : p.label;
       docPdf.text(safeLabel, 18, y + 6);
@@ -1909,22 +1995,199 @@ async function generatePDFForDate(targetDateIso){
           } catch(e){}
         }
 
-        // Ajoute la marge finale uniquement si on n'a pas déjà passé à la ligne
         if(xPos !== 18) {
             y += 48;
         }
       }
     }
-  }
 
-  docPdf.setPage(1);
-  for(const z of ZONES){
-    const info = zonePageMap[z.id];
-    if(info && info.pageTarget > 0){
-      docPdf.link(14, info.ySommaire, 182, 12, { pageNumber: info.pageTarget });
+    // --- IMPRESSION DU BILAN DE ZONE ---
+    const zsId = 'zone_summary';
+    const zsEq = eq.reponses ? eq.reponses[zsId] : null;
+    const zsCv = cv.reponses ? cv.reponses[zsId] : null;
+
+    if ((zsEq && (zsEq.commentaire || (zsEq.photos && zsEq.photos.length > 0))) || 
+        (zsCv && (zsCv.commentaire || (zsCv.photos && zsCv.photos.length > 0)))) {
+        
+        let neededHeight = 16;
+        if(enableEq && zsEq && zsEq.commentaire) neededHeight += 5;
+        if(zsCv && zsCv.commentaire) neededHeight += 5;
+        
+        let totalZPhotos = 0;
+        if(zsEq && zsEq.photos) totalZPhotos += zsEq.photos.length;
+        if(zsCv && zsCv.photos) totalZPhotos += zsCv.photos.length;
+        if(totalZPhotos > 0) neededHeight += (Math.ceil(totalZPhotos/3) * 48);
+
+        if(y + neededHeight > 280){ docPdf.addPage(); y = 20; }
+        
+        docPdf.setFillColor(250, 248, 243);
+        docPdf.setDrawColor(199, 121, 27);
+        docPdf.roundedRect(14, y, 182, 10, 2, 2, 'FD');
+        docPdf.setFont('helvetica', 'bold');
+        docPdf.setFontSize(9);
+        docPdf.setTextColor(199, 121, 27);
+        docPdf.text('BILAN DE LA ZONE', 18, y + 7);
+        y += 14;
+
+        if(zsEq && zsEq.commentaire || zsCv && zsCv.commentaire){
+            docPdf.setFontSize(8);
+            docPdf.setTextColor(80, 80, 80);
+            if(enableEq && zsEq && zsEq.commentaire){
+                docPdf.text(`• Bilan Équipe : ${zsEq.commentaire}`, 18, y);
+                y += 5;
+            }
+            if(zsCv && zsCv.commentaire){
+                const tag = enableEq ? 'Contrôleur' : 'Constat';
+                docPdf.text(`• Bilan ${tag} : ${zsCv.commentaire}`, 18, y);
+                y += 5;
+            }
+        }
+
+        const zsAllEqPhotos = [];
+        if(enableEq && zsEq && zsEq.photos) {
+            for(const pid of zsEq.photos) { const b = await getPhotoBase64(pid); if(b) zsAllEqPhotos.push(b); }
+        }
+        const zsAllCvPhotos = [];
+        if(zsCv && zsCv.photos) {
+            for(const pid of zsCv.photos) { const b = await getPhotoBase64(pid); if(b) zsAllCvPhotos.push(b); }
+        }
+
+        if(zsAllEqPhotos.length > 0 || zsAllCvPhotos.length > 0){
+            let xPos = 18;
+            for(const imgBase64 of zsAllEqPhotos){
+                try {
+                    const imgProps = docPdf.getImageProperties(imgBase64);
+                    let finalW = 55;
+                    let finalH = (imgProps.height * finalW) / imgProps.width;
+                    if(finalH > 38) { finalH = 38; finalW = (imgProps.width * finalH) / imgProps.height; }
+                    const offsetX = xPos + (55 - finalW) / 2;
+                    const offsetY = y + (38 - finalH) / 2;
+                    docPdf.addImage(imgBase64, 'JPEG', offsetX, offsetY, finalW, finalH);
+                    docPdf.setFillColor(...C_TEAL);
+                    docPdf.rect(xPos, y + 38, 55, 6, 'F');
+                    docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
+                    docPdf.text(`ÉQUIPE`, xPos + 2, y + 42.5);
+                    xPos += 58;
+                    if(xPos > 140){ xPos = 18; y += 48; }
+                } catch(e){}
+            }
+            for(const imgBase64 of zsAllCvPhotos){
+                try {
+                    const imgProps = docPdf.getImageProperties(imgBase64);
+                    let finalW = 55;
+                    let finalH = (imgProps.height * finalW) / imgProps.width;
+                    if(finalH > 38) { finalH = 38; finalW = (imgProps.width * finalH) / imgProps.height; }
+                    const offsetX = xPos + (55 - finalW) / 2;
+                    const offsetY = y + (38 - finalH) / 2;
+                    docPdf.addImage(imgBase64, 'JPEG', offsetX, offsetY, finalW, finalH);
+                    docPdf.setFillColor(...C_AMBER);
+                    docPdf.rect(xPos, y + 38, 55, 6, 'F');
+                    docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
+                    docPdf.text(enableEq ? `CTRL` : `CONSTAT`, xPos + 2, y + 42.5);
+                    xPos += 58;
+                    if(xPos > 140){ xPos = 18; y += 48; }
+                } catch(e){}
+            }
+            if(xPos !== 18) y += 48;
+        }
     }
   }
 
+  // --- IMPRESSION DU BILAN GÉNÉRAL EN FIN DE PDF ---
+  const globalId = `${date}__global`;
+  let globalC = await idbGet('controles', globalId);
+  if(navigator.onLine && !globalC){
+      try {
+          const doc = await db.collection('controles').doc(globalId).get();
+          if(doc.exists) globalC = doc.data();
+      } catch(e){}
+  }
+
+  if (globalC) {
+      const gEq = globalC.passageEquipe || {};
+      const gCv = globalC.contreVisite || {};
+      const gZsEq = gEq.reponses ? gEq.reponses['zone_summary'] : null;
+      const gZsCv = gCv.reponses ? gCv.reponses['zone_summary'] : null;
+      
+      if ((gZsEq && (gZsEq.commentaire || (gZsEq.photos && gZsEq.photos.length > 0))) || 
+          (gZsCv && (gZsCv.commentaire || (gZsCv.photos && gZsCv.photos.length > 0)))) {
+          
+          docPdf.addPage();
+          let y = 20;
+          docPdf.setFillColor(33, 30, 26);
+          docPdf.rect(14, y, 182, 10, 'F');
+          docPdf.setTextColor(255, 255, 255);
+          docPdf.setFont('helvetica', 'bold');
+          docPdf.setFontSize(10);
+          docPdf.text('BILAN GÉNÉRAL DE LA JOURNÉE', 18, y + 7);
+          y += 16;
+          
+          if(gZsEq && gZsEq.commentaire || gZsCv && gZsCv.commentaire){
+              docPdf.setFontSize(8);
+              docPdf.setTextColor(80, 80, 80);
+              if(enableEq && gZsEq && gZsEq.commentaire){
+                  docPdf.text(`• Bilan Équipe : ${gZsEq.commentaire}`, 18, y);
+                  y += 5;
+              }
+              if(gZsCv && gZsCv.commentaire){
+                  const tag = enableEq ? 'Contrôleur' : 'Constat';
+                  docPdf.text(`• Bilan ${tag} : ${gZsCv.commentaire}`, 18, y);
+                  y += 5;
+              }
+          }
+
+          const gAllEqPhotos = [];
+          if(enableEq && gZsEq && gZsEq.photos) {
+              for(const pid of gZsEq.photos) { const b = await getPhotoBase64(pid); if(b) gAllEqPhotos.push(b); }
+          }
+          const gAllCvPhotos = [];
+          if(gZsCv && gZsCv.photos) {
+              for(const pid of gZsCv.photos) { const b = await getPhotoBase64(pid); if(b) gAllCvPhotos.push(b); }
+          }
+
+          if(gAllEqPhotos.length > 0 || gAllCvPhotos.length > 0){
+              let xPos = 18;
+              for(const imgBase64 of gAllEqPhotos){
+                  try {
+                      if(y > 250){ docPdf.addPage(); y = 20; }
+                      const imgProps = docPdf.getImageProperties(imgBase64);
+                      let finalW = 55;
+                      let finalH = (imgProps.height * finalW) / imgProps.width;
+                      if(finalH > 38) { finalH = 38; finalW = (imgProps.width * finalH) / imgProps.height; }
+                      const offsetX = xPos + (55 - finalW) / 2;
+                      const offsetY = y + (38 - finalH) / 2;
+                      docPdf.addImage(imgBase64, 'JPEG', offsetX, offsetY, finalW, finalH);
+                      docPdf.setFillColor(...C_TEAL);
+                      docPdf.rect(xPos, y + 38, 55, 6, 'F');
+                      docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
+                      docPdf.text(`ÉQUIPE`, xPos + 2, y + 42.5);
+                      xPos += 58;
+                      if(xPos > 140){ xPos = 18; y += 48; }
+                  } catch(e){}
+              }
+              for(const imgBase64 of gAllCvPhotos){
+                  try {
+                      if(y > 250){ docPdf.addPage(); y = 20; }
+                      const imgProps = docPdf.getImageProperties(imgBase64);
+                      let finalW = 55;
+                      let finalH = (imgProps.height * finalW) / imgProps.width;
+                      if(finalH > 38) { finalH = 38; finalW = (imgProps.width * finalH) / imgProps.height; }
+                      const offsetX = xPos + (55 - finalW) / 2;
+                      const offsetY = y + (38 - finalH) / 2;
+                      docPdf.addImage(imgBase64, 'JPEG', offsetX, offsetY, finalW, finalH);
+                      docPdf.setFillColor(...C_AMBER);
+                      docPdf.rect(xPos, y + 38, 55, 6, 'F');
+                      docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
+                      docPdf.text(enableEq ? `CTRL` : `CONSTAT`, xPos + 2, y + 42.5);
+                      xPos += 58;
+                      if(xPos > 140){ xPos = 18; y += 48; }
+                  } catch(e){}
+              }
+          }
+      }
+  }
+
+  docPdf.setPage(1);
   docPdf.setFillColor(...(totalNok === 0 ? C_TEAL : C_RED));
   docPdf.roundedRect(14, 140, 182, 14, 3, 3, 'F');
   docPdf.setTextColor(255, 255, 255);
@@ -2133,8 +2396,127 @@ async function renderHistory(){
             </div>
           `;
         }
+        
+        // --- AFFICHAGE HISTORIQUE DU BILAN DE ZONE ---
+        const zsId = 'zone_summary';
+        const zsEq = eq.reponses ? eq.reponses[zsId] : null;
+        const zsCv = cv.reponses ? cv.reponses[zsId] : null;
+
+        if ((zsEq && (zsEq.commentaire || (zsEq.photos && zsEq.photos.length > 0))) || 
+            (zsCv && (zsCv.commentaire || (zsCv.photos && zsCv.photos.length > 0)))) {
+            
+            htmlContent += `
+              <div style="border:2px solid #C7791B;background:#FAF8F3;padding:12px;border-radius:8px;margin-bottom:10px;margin-top:20px;">
+                <div style="font-weight:800;font-size:13.5px;color:#C7791B;margin-bottom:8px;text-transform:uppercase;">📝 ${t('Bilan de la zone')}</div>
+                ${zsEq && zsEq.commentaire ? `<div style="font-size:11px;color:#2B6E68;margin-bottom:4px;font-style:italic;">💬 Obs. Équipe : "${zsEq.commentaire}"</div>` : ''}
+                ${zsCv && zsCv.commentaire ? `<div style="font-size:11px;color:#C7791B;margin-bottom:4px;font-style:italic;">💬 Obs. ${enableEq?'Contrôleur':'Constat'} : "${zsCv.commentaire}"</div>` : ''}
+            `;
+
+            let hasPhotos = false;
+            let photosHtml = '<div style="display:flex;gap:8px;margin-top:10px;overflow-x:auto;padding-bottom:4px;">';
+            if(zsEq && zsEq.photos) {
+                for(const pid of zsEq.photos) {
+                    const b64 = await getPhotoBase64(pid);
+                    if(b64) {
+                        hasPhotos = true;
+                        photosHtml += `
+                          <div style="position:relative;flex-shrink:0;">
+                            <img class="photo-thumb click-zoom" src="${b64}" data-title="Bilan Zone - Équipe" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
+                            <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">ÉQUIPE</span>
+                          </div>
+                        `;
+                    }
+                }
+            }
+            if(zsCv && zsCv.photos) {
+                for(const pid of zsCv.photos) {
+                    const b64 = await getPhotoBase64(pid);
+                    if(b64) {
+                        hasPhotos = true;
+                        photosHtml += `
+                          <div style="position:relative;flex-shrink:0;">
+                            <img class="photo-thumb click-zoom" src="${b64}" data-title="Bilan Zone - Contrôleur" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
+                            <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${enableEq?'CTRL':'CONST'}</span>
+                          </div>
+                        `;
+                    }
+                }
+            }
+            photosHtml += '</div>';
+            if(hasPhotos) htmlContent += photosHtml;
+            htmlContent += `</div>`;
+        }
+
         htmlContent += `</div></div>`;
       }
+    }
+
+    // --- AFFICHAGE HISTORIQUE DU BILAN GÉNÉRAL ---
+    const globalId = `${selectedDate}__global`;
+    let globalC = await idbGet('controles', globalId);
+    if(navigator.onLine && !globalC){
+        try {
+            const doc = await db.collection('controles').doc(globalId).get();
+            if(doc.exists) globalC = doc.data();
+        } catch(e){}
+    }
+
+    if(globalC) {
+        const gEq = globalC.passageEquipe || {};
+        const gCv = globalC.contreVisite || {};
+        const gZsEq = gEq.reponses ? gEq.reponses['zone_summary'] : null;
+        const gZsCv = gCv.reponses ? gCv.reponses['zone_summary'] : null;
+
+        if ((gZsEq && (gZsEq.commentaire || (gZsEq.photos && gZsEq.photos.length > 0))) || 
+            (gZsCv && (gZsCv.commentaire || (gZsCv.photos && gZsCv.photos.length > 0)))) {
+            
+            htmlContent += `
+              <div style="border:1px solid #E7E1D6;border-radius:12px;margin-bottom:20px;background:#fff;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+                <div style="background:#211E1A;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+                  <div style="font-weight:700;font-size:14px;color:#F3E2C6;">📝 ${t('BILAN GÉNÉRAL DU JOUR')}</div>
+                  <a href="#histSummary" style="color:#C7791B;font-size:11px;text-decoration:none;">↑ ${t('Sommaire')}</a>
+                </div>
+                <div style="padding:12px;">
+            `;
+
+            if(gZsEq && gZsEq.commentaire) htmlContent += `<div style="font-size:11px;color:#2B6E68;margin-bottom:4px;font-style:italic;">💬 Obs. Équipe : "${gZsEq.commentaire}"</div>`;
+            if(gZsCv && gZsCv.commentaire) htmlContent += `<div style="font-size:11px;color:#C7791B;margin-bottom:4px;font-style:italic;">💬 Obs. ${enableEq?'Contrôleur':'Constat'} : "${gZsCv.commentaire}"</div>`;
+
+            let hasPhotos = false;
+            let photosHtml = '<div style="display:flex;gap:8px;margin-top:10px;overflow-x:auto;padding-bottom:4px;">';
+            if(gZsEq && gZsEq.photos) {
+                for(const pid of gZsEq.photos) {
+                    const b64 = await getPhotoBase64(pid);
+                    if(b64) {
+                        hasPhotos = true;
+                        photosHtml += `
+                          <div style="position:relative;flex-shrink:0;">
+                            <img class="photo-thumb click-zoom" src="${b64}" data-title="Bilan Général - Équipe" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
+                            <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">ÉQUIPE</span>
+                          </div>
+                        `;
+                    }
+                }
+            }
+            if(gZsCv && gZsCv.photos) {
+                for(const pid of gZsCv.photos) {
+                    const b64 = await getPhotoBase64(pid);
+                    if(b64) {
+                        hasPhotos = true;
+                        photosHtml += `
+                          <div style="position:relative;flex-shrink:0;">
+                            <img class="photo-thumb click-zoom" src="${b64}" data-title="Bilan Général - Contrôleur" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
+                            <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${enableEq?'CTRL':'CONST'}</span>
+                          </div>
+                        `;
+                    }
+                }
+            }
+            photosHtml += '</div>';
+            if(hasPhotos) htmlContent += photosHtml;
+
+            htmlContent += `</div></div>`;
+        }
     }
 
     summaryHtml += `</div></div>`;
@@ -2213,6 +2595,8 @@ async function renderStats(){
       const cv = (c.contreVisite && c.contreVisite.reponses) || {};
 
       Object.keys(eq).forEach(pId => {
+        if(pId === 'zone_summary') return; // Exclut les bilans des statistiques
+        
         const rEq = eq[pId];
         const rCv = cv[pId];
         if(rEq || rCv){
