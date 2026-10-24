@@ -251,6 +251,15 @@ const DEFAULT_POINTS = {
   ]
 };
 
+const LEGACY_TASKS_MAP = {
+  'cui_sol': 'Nettoyage des sols cuisine',
+  'cui_plans': 'Nettoyage des plans de travail',
+  'cui_poub': 'Vidage & nettoyage des poubelles cuisine',
+  'cui_hottes': 'Nettoyage des hottes et filtres',
+  'sal_vitres': 'Nettoyage des surfaces vitrées',
+  'sal_sol': 'Nettoyage et mopage des sols lobby'
+};
+
 /* =========================================================================
    MOTEUR DE STOCKAGE HYBRIDE & CONFIG GLOBALE
    ========================================================================= */
@@ -2535,8 +2544,8 @@ async function renderStats(){
   document.getElementById('backBtn').onclick = goToZones;
   const contextSelect = document.getElementById('statsContextSelect');
 
-  let allControles = await idbGetAll('controles');
-  let dynamicTasks = await idbGetAll('task_schedule');
+  let allControles = await idbGetAll('controles') || [];
+  let dynamicTasks = await idbGetAll('task_schedule') || [];
 
   if(navigator.onLine){
     try {
@@ -2552,7 +2561,7 @@ async function renderStats(){
 
     ZONES.forEach(z => { zoneBreakdown[z.id] = { total:0, nok:0, nom:z.nom }; });
 
-    allControles.filter(c => c.date >= startDateIso && c.date <= endDateIso).forEach(c => {
+    (allControles || []).filter(c => c && c.date >= startDateIso && c.date <= endDateIso).forEach(c => {
       const eq = (c.passageEquipe && c.passageEquipe.reponses) || {};
       const cv = (c.contreVisite && c.contreVisite.reponses) || {};
 
@@ -2564,8 +2573,8 @@ async function renderStats(){
         const rEq = eq[pId];
         const rCv = cv[pId];
 
-        const eqAnswered = rEq && typeof rEq.conforme === 'boolean';
-        const cvAnswered = rCv && typeof rCv.conforme === 'boolean';
+        const eqAnswered = rEq && typeof rEq === 'object' && typeof rEq.conforme === 'boolean';
+        const cvAnswered = rCv && typeof rCv === 'object' && typeof rCv.conforme === 'boolean';
 
         if(eqAnswered || cvAnswered){
           totalChecked++;
@@ -2573,21 +2582,24 @@ async function renderStats(){
           if(!itemStatsMap[pId]) itemStatsMap[pId] = { checked: 0, nok: 0 };
           itemStatsMap[pId].checked++;
 
+          const eqOk = (eqAnswered && rEq.conforme !== false && (!config.reqPhotoEq || (rEq.photos && rEq.photos.length > 0)));
+          const cvOk = (cvAnswered ? rCv.conforme !== false : true);
+
           let isNok = false;
           let isEcart = false;
 
           if (enableEq) {
               if (cvAnswered) {
-                  isNok = (rCv.conforme === false);
-                  if (eqAnswered && rEq.conforme === true && rCv.conforme === false) {
+                  isNok = !cvOk;
+                  if (eqAnswered && eqOk && !cvOk) {
                       isEcart = true;
                   }
               } else if (eqAnswered) {
-                  isNok = (rEq.conforme === false);
+                  isNok = !eqOk;
               }
           } else {
               if (cvAnswered) {
-                  isNok = (rCv.conforme === false);
+                  isNok = !cvOk;
               }
           }
 
@@ -2610,122 +2622,131 @@ async function renderStats(){
   };
 
   const updateStatsUI = async () => {
-    const today = new Date();
-    const d7 = new Date(today); d7.setDate(d7.getDate() - 6);
-    const d14 = new Date(today); d14.setDate(d14.getDate() - 13);
+    try {
+      const today = new Date();
+      const d7 = new Date(today); d7.setDate(d7.getDate() - 6);
+      const d14 = new Date(today); d14.setDate(d14.getDate() - 13);
 
-    const currentStats = computePeriodStats(d7.toISOString().slice(0,10), todayISO());
-    const prevStats = computePeriodStats(d14.toISOString().slice(0,10), d7.toISOString().slice(0,10));
+      const currentStats = computePeriodStats(d7.toISOString().slice(0,10), todayISO());
+      const prevStats = computePeriodStats(d14.toISOString().slice(0,10), d7.toISOString().slice(0,10));
 
-    const mode = contextSelect.value;
-    const refNokRate = mode === 'target' ? 5 : prevStats.nokRate;
-    const refLabel = mode === 'target' ? t('vs Cible Max (5%)') : t('vs Semaine précédente');
+      const mode = contextSelect.value;
+      const refNokRate = mode === 'target' ? 5 : prevStats.nokRate;
+      const refLabel = mode === 'target' ? t('vs Cible Max (5%)') : t('vs Semaine précédente');
 
-    const deltaNok = currentStats.nokRate - refNokRate;
+      const deltaNok = currentStats.nokRate - refNokRate;
 
-    let rawTopItems = Object.keys(currentStats.itemStatsMap).map(id => {
-      let label = id;
-      
-      if(LEGACY_TASKS_MAP[id]){
-        label = LEGACY_TASKS_MAP[id];
-      } else {
-        Object.keys(DEFAULT_POINTS).forEach(zk => {
-          const found = DEFAULT_POINTS[zk].find(pt => pt.id === id);
-          if(found && found.label) label = found.label;
-        });
+      let rawTopItems = Object.keys(currentStats.itemStatsMap).map(id => {
+        let label = id;
+        
+        if(LEGACY_TASKS_MAP[id]){
+          label = LEGACY_TASKS_MAP[id];
+        } else {
+          Object.keys(DEFAULT_POINTS).forEach(zk => {
+            if (DEFAULT_POINTS[zk]) {
+                const found = DEFAULT_POINTS[zk].find(pt => pt && pt.id === id);
+                if(found && found.label) label = found.label;
+            }
+          });
 
-        const dynFound = dynamicTasks.find(dt => dt.taskId === id || dt.id === id);
-        if(dynFound && dynFound.label) label = dynFound.label;
+          if (Array.isArray(dynamicTasks)) {
+              const dynFound = dynamicTasks.find(dt => dt && (dt.taskId === id || dt.id === id));
+              if(dynFound && dynFound.label) label = dynFound.label;
+          }
+        }
+
+        const stat = currentStats.itemStatsMap[id];
+        const rate = stat.checked ? Math.round((stat.nok / stat.checked) * 100) : 0;
+
+        return { id, label, checked: stat.checked, nok: stat.nok, rate };
+      }).filter(item => item.nok > 0).sort((a,b) => b.nok - a.nok);
+
+      let topNokItems = [];
+      for(const item of rawTopItems){
+        const transLabel = await translateDynamicText(item.label, userLang);
+        topNokItems.push({ id: item.id, label: transLabel, checked: item.checked, nok: item.nok, rate: item.rate });
       }
 
-      const stat = currentStats.itemStatsMap[id];
-      const rate = stat.checked ? Math.round((stat.nok / stat.checked) * 100) : 0;
+      let html = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:15px;">
+          <div style="background:#FAF8F3;padding:14px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
+            <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">${t('Taux d\'Anomalies (NOK)')}</div>
+            <div style="font-size:26px;font-weight:800;color:#B23A34;margin-top:2px;">${currentStats.nokRate}%</div>
+            <div style="font-size:11px;font-weight:600;margin-top:2px;color:${deltaNok<=0?'#2B6E68':'#B23A34'};">
+              ${deltaNok<=0?'▼ ':'▲ +'}${deltaNok}% ${refLabel}
+            </div>
+          </div>
 
-      return { id, label, checked: stat.checked, nok: stat.nok, rate };
-    }).filter(item => item.nok > 0).sort((a,b) => b.nok - a.nok);
-
-    let topNokItems = [];
-    for(const item of rawTopItems){
-      const transLabel = await translateDynamicText(item.label, userLang);
-      topNokItems.push({ id: item.id, label: transLabel, checked: item.checked, nok: item.nok, rate: item.rate });
-    }
-
-    let html = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:15px;">
-        <div style="background:#FAF8F3;padding:14px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
-          <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">${t('Taux d\'Anomalies (NOK)')}</div>
-          <div style="font-size:26px;font-weight:800;color:#B23A34;margin-top:2px;">${currentStats.nokRate}%</div>
-          <div style="font-size:11px;font-weight:600;margin-top:2px;color:${deltaNok<=0?'#2B6E68':'#B23A34'};">
-            ${deltaNok<=0?'▼ ':'▲ +'}${deltaNok}% ${refLabel}
+          <div style="background:#FAF8F3;padding:14px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
+            <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">${t('Anomalies Relevées')}</div>
+            <div style="font-size:20px;font-weight:800;color:#B23A34;margin-top:4px;">${currentStats.nokCount} NOK</div>
+            ${enableEq ? `<div style="font-size:12px;color:#6B655C;margin-top:2px;font-weight:600;">${t('dont')} ${currentStats.ecartsCount} ${t('écart(s)')}</div>` : ''}
           </div>
         </div>
 
-        <div style="background:#FAF8F3;padding:14px;border-radius:10px;border:1px solid #E7E1D6;text-align:center;">
-          <div style="font-size:10px;color:#6B655C;text-transform:uppercase;font-weight:700;">${t('Anomalies Relevées')}</div>
-          <div style="font-size:20px;font-weight:800;color:#B23A34;margin-top:4px;">${currentStats.nokCount} NOK</div>
-          ${enableEq ? `<div style="font-size:12px;color:#6B655C;margin-top:2px;font-weight:600;">${t('dont')} ${currentStats.ecartsCount} ${t('écart(s)')}</div>` : ''}
-        </div>
-      </div>
+        <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
+          <div class="dash-chart-title" style="font-weight:700;font-size:13px;color:#211E1A;">📊 ${t('Analyse Comparative des Défauts (NOK)')}</div>
+          <div style="display:flex;align-items:flex-end;justify-style:space-around;height:120px;border-bottom:2px solid #E7E1D6;padding-bottom:5px;">
+            <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
+              <span style="font-size:11px;font-weight:700;color:#B23A34;margin-bottom:4px;">${currentStats.nokRate}% NOK</span>
+              <div style="width:100%;max-width:50px;background:#B23A34;height:${Math.min(80, Math.max(10, currentStats.nokRate * 0.8))}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
+              <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">${t('7j Actuels')}</span>
+            </div>
 
-      <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
-        <div class="dash-chart-title" style="font-weight:700;font-size:13px;color:#211E1A;">📊 ${t('Analyse Comparative des Défauts (NOK)')}</div>
-        <div style="display:flex;align-items:flex-end;justify-style:space-around;height:120px;border-bottom:2px solid #E7E1D6;padding-bottom:5px;">
-          <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
-            <span style="font-size:11px;font-weight:700;color:#B23A34;margin-bottom:4px;">${currentStats.nokRate}% NOK</span>
-            <div style="width:100%;max-width:50px;background:#B23A34;height:${Math.min(80, Math.max(10, currentStats.nokRate * 0.8))}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
-            <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">${t('7j Actuels')}</span>
-          </div>
-
-          <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
-            <span style="font-size:11px;font-weight:700;color:#C7791B;margin-bottom:4px;">${refNokRate}% NOK</span>
-            <div style="width:100%;max-width:50px;background:#C7791B;height:${Math.min(80, Math.max(10, refNokRate * 0.8))}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
-            <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">${mode==='target'?t('Seuil Cible'):t('7j Précédents')}</span>
+            <div style="display:flex;flex-direction:column;align-items:center;width:40%;">
+              <span style="font-size:11px;font-weight:700;color:#C7791B;margin-bottom:4px;">${refNokRate}% NOK</span>
+              <div style="width:100%;max-width:50px;background:#C7791B;height:${Math.min(80, Math.max(10, refNokRate * 0.8))}px;border-top-left-radius:6px;border-top-right-radius:6px;"></div>
+              <span style="font-size:10px;color:#6B655C;margin-top:6px;font-weight:600;">${mode==='target'?t('Seuil Cible'):t('7j Précédents')}</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
-        <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">${t('Répartition des NOK par Zone (7 derniers jours)')}</div>
-    `;
+        <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;margin-bottom:15px;">
+          <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">${t('Répartition des NOK par Zone (7 derniers jours)')}</div>
+      `;
 
-    for(const z of ZONES){
-      const zb = currentStats.zoneBreakdown[z.id];
-      const zNokRate = zb.total ? Math.round((zb.nok / zb.total) * 100) : 0;
-      const translatedZoneName = await translateDynamicText(z.nom, userLang);
+      for(const z of ZONES){
+        const zb = currentStats.zoneBreakdown[z.id];
+        const zNokRate = zb.total ? Math.round((zb.nok / zb.total) * 100) : 0;
+        const translatedZoneName = await translateDynamicText(z.nom, userLang);
+
+        html += `
+          <div style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+              <span style="font-weight:600;color:#211E1A;">${translatedZoneName}</span>
+              <strong style="color:${zNokRate===0?'#2B6E68':'#B23A34'};">${zNokRate}% NOK (${zb.nok}/${zb.total})</strong>
+            </div>
+            <div style="background:#E7E1D6;height:8px;border-radius:4px;overflow:hidden;">
+              <div style="background:${zNokRate===0?'#2B6E68':'#B23A34'};width:${zNokRate}%;height:100%;"></div>
+            </div>
+          </div>
+        `;
+      }
 
       html += `
-        <div style="margin-bottom:10px;">
-          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
-            <span style="font-weight:600;color:#211E1A;">${translatedZoneName}</span>
-            <strong style="color:${zNokRate===0?'#2B6E68':'#B23A34'};">${zNokRate}% NOK (${zb.nok}/${zb.total})</strong>
-          </div>
-          <div style="background:#E7E1D6;height:8px;border-radius:4px;overflow:hidden;">
-            <div style="background:${zNokRate===0?'#2B6E68':'#B23A34'};width:${zNokRate}%;height:100%;"></div>
-          </div>
+        </div>
+
+        <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;">
+          <div style="font-weight:700;font-size:13px;color:#B23A34;margin-bottom:14px;">⚠️ ${t('Analyse par Tâche (Tâches posant problème)')}</div>
+          ${topNokItems.length > 0 ? topNokItems.map(te => `
+            <div style="margin-bottom: 12px;">
+               <div style="display:flex; justify-content:space-between; align-items:flex-end; font-size:11px; margin-bottom:4px;">
+                   <span style="font-weight:600; color:#211E1A; line-height:1.2; flex:1; padding-right:10px;">${te.label}</span>
+                   <span style="font-weight:700; color:#B23A34; white-space:nowrap;">${te.rate}% (${te.nok}/${te.checked})</span>
+               </div>
+               <div style="background:#FEF2F2; height:6px; border-radius:3px; overflow:hidden;">
+                   <div style="background:#B23A34; width:${te.rate}%; height:100%; border-radius:3px;"></div>
+               </div>
+            </div>
+          `).join('') : `<div style="font-size:12px;color:#2B6E68;font-weight:600;">${t('Aucune anomalie NOK relevée sur cette période ! 🎉')}</div>`}
         </div>
       `;
+
+      document.getElementById('statsDashboard').innerHTML = html;
+    } catch (err) {
+      console.error("Dashboard error:", err);
+      document.getElementById('statsDashboard').innerHTML = `<div style="color:#B23A34; text-align:center; padding:20px;">Impossible de charger les statistiques. Données anciennes ou corrompues.</div>`;
     }
-
-    html += `
-      </div>
-
-      <div style="background:#fff;border:1px solid #E7E1D6;border-radius:10px;padding:14px;">
-        <div style="font-weight:700;font-size:13px;color:#B23A34;margin-bottom:14px;">⚠️ ${t('Analyse par Tâche (Tâches posant problème)')}</div>
-        ${topNokItems.length > 0 ? topNokItems.map(te => `
-          <div style="margin-bottom: 12px;">
-             <div style="display:flex; justify-content:space-between; align-items:flex-end; font-size:11px; margin-bottom:4px;">
-                 <span style="font-weight:600; color:#211E1A; line-height:1.2; flex:1; padding-right:10px;">${te.label}</span>
-                 <span style="font-weight:700; color:#B23A34; white-space:nowrap;">${te.rate}% (${te.nok}/${te.checked})</span>
-             </div>
-             <div style="background:#FEF2F2; height:6px; border-radius:3px; overflow:hidden;">
-                 <div style="background:#B23A34; width:${te.rate}%; height:100%; border-radius:3px;"></div>
-             </div>
-          </div>
-        `).join('') : `<div style="font-size:12px;color:#2B6E68;font-weight:600;">${t('Aucune anomalie NOK relevée sur cette période ! 🎉')}</div>`}
-      </div>
-    `;
-
-    document.getElementById('statsDashboard').innerHTML = html;
   };
 
   contextSelect.onchange = updateStatsUI;
