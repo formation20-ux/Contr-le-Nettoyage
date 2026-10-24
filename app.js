@@ -673,13 +673,24 @@ function renderPinPad(){
   }
 }
 
-function onPinKey(k){
+async function onPinKey(k){
   const errEl = document.getElementById('pinError');
-  if(k==='⌫'){ currentPin = currentPin.slice(0,-1); if(errEl) errEl.textContent=''; renderPinDots(); return; }
+  if(k==='⌫'){ 
+    currentPin = currentPin.slice(0,-1); 
+    if(errEl) { errEl.textContent=''; errEl.style.color = '#B23A34'; }
+    renderPinDots(); 
+    return; 
+  }
   if(currentPin.length>=4) return;
   currentPin += k;
   renderPinDots();
-  if(currentPin.length===4) checkPin();
+  if(currentPin.length===4) {
+    if(errEl) {
+      errEl.style.color = '#6B655C'; 
+      errEl.textContent = t('⏳ Vérification...');
+    }
+    await checkPin();
+  }
 }
 
 async function checkPin(){
@@ -694,14 +705,19 @@ async function checkPin(){
     } catch(e){}
   }
 
+  const errEl = document.getElementById('pinError');
   if(match){
     session = { role:pendingRole, agentId:match.id, nom:match.nom, lang: match.lang || 'fr', isAdmin: match.isAdmin === true };
     currentPin='';
     resetInactivityTimer();
     goToZones();
   } else {
-    const errEl = document.getElementById('pinError');
-    if(errEl) errEl.textContent = 'Code incorrect'; currentPin=''; setTimeout(renderPinDots,150);
+    if(errEl) {
+       errEl.style.color = '#B23A34';
+       errEl.textContent = t('Code incorrect');
+    }
+    currentPin=''; 
+    setTimeout(renderPinDots,150);
   }
 }
 
@@ -1400,7 +1416,7 @@ async function renderControle(){
             ${!isLockedByControl ? `
               <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
                 ${t('📷 + Photo')}
-                <input type="file" accept="image/*" style="display:none;" data-photo-input>
+                <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
               </label>
             ` : ''}
           </div>
@@ -1772,23 +1788,23 @@ async function generatePDFForDate(targetDateIso){
       const cvCtrl = rCv.controleurNom || cv.controleurNom || 'Contrôleur';
       const cvTime = rCv.heure || cv.heure || '--:--';
 
-      // ---- CORRECTION PDF : GESTION DES BLOCS INDIVISIBLES ----
-      // On calcule approximativement la hauteur nécessaire pour ce point (titre + texte + photos)
-      let neededHeight = 18; // Hauteur de base (titre + badge OK/NOK)
-      
+      // ---- CORRECTION PDF : CALCUL EXACT DE LA HAUTEUR DU BLOC ----
+      let neededHeight = 16; 
       if(enableEq && rEq.commentaire) neededHeight += 5;
       if(rCv.commentaire) neededHeight += 5;
-      
-      if(allEqPhotos.length > 0 || allCvPhotos.length > 0) {
-        neededHeight += 50; 
+
+      const totalPhotos = allEqPhotos.length + allCvPhotos.length;
+      if (totalPhotos > 0) {
+          const photoRows = Math.ceil(totalPhotos / 3);
+          neededHeight += (photoRows * 48); // 38px image + 10px margin
       }
 
-      // Si le bloc ne rentre pas sur la page actuelle, on passe à la suivante
+      // Si le bloc complet ne rentre pas, on passe tout de suite à la page suivante
       if(y + neededHeight > 280){ 
-        docPdf.addPage(); 
-        y = 20; 
+          docPdf.addPage(); 
+          y = 20; 
       }
-      // --------------------------------------------------------
+      // -------------------------------------------------------------
 
       if(isFinalOk){
         docPdf.setFillColor(...C_TEAL_BG);
@@ -1803,14 +1819,18 @@ async function generatePDFForDate(targetDateIso){
       docPdf.setFont('helvetica', 'bold');
       docPdf.setFontSize(8.5);
       docPdf.setTextColor(...C_INK);
-      docPdf.text(p.label, 18, y + 6);
+      
+      // Tronquer le titre pour éviter qu'il ne s'écrive sur les badges OK/NOK
+      const maxLen = enableEq ? 58 : 70;
+      const safeLabel = p.label.length > maxLen ? p.label.substring(0, maxLen - 3) + '...' : p.label;
+      docPdf.text(safeLabel, 18, y + 6);
 
       docPdf.setFont('helvetica', 'normal');
       docPdf.setFontSize(8);
       
       if(enableEq) {
-        docPdf.text(`Équipe: ${eqConformeCalculated?'OK':'NOK'}`, 125, y + 6);
-        docPdf.text(`Contrôleur: ${cvConformeCalculated?'OK':'NOK'}`, 150, y + 6);
+        docPdf.text(`Équipe: ${eqConformeCalculated?'OK':'NOK'}`, 120, y + 6);
+        docPdf.text(`Contrôleur: ${cvConformeCalculated?'OK':'NOK'}`, 146, y + 6);
       } else {
         docPdf.text(`Constat: ${cvConformeCalculated?'OK':'NOK'}`, 150, y + 6);
       }
@@ -1840,7 +1860,7 @@ async function generatePDFForDate(targetDateIso){
         }
       }
 
-      if(allEqPhotos.length > 0 || allCvPhotos.length > 0){
+      if(totalPhotos > 0){
         let xPos = 18;
         
         for(const imgBase64 of allEqPhotos){
@@ -1859,10 +1879,10 @@ async function generatePDFForDate(targetDateIso){
             docPdf.setFillColor(...C_TEAL);
             docPdf.rect(xPos, y + 38, 55, 6, 'F');
             docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
-            docPdf.text(`ÉQUIPE : ${eqAgent} (${eqTime})`, xPos + 2, y + 42.5);
+            docPdf.text(`ÉQUIPE : ${eqAgent}`, xPos + 2, y + 42.5);
 
             xPos += 58;
-            if(xPos > 140){ xPos = 18; y += 48; } // Passage à la ligne si trop de photos
+            if(xPos > 140){ xPos = 18; y += 48; }
           } catch(e){}
         }
 
@@ -1882,18 +1902,17 @@ async function generatePDFForDate(targetDateIso){
             docPdf.setFillColor(...C_AMBER);
             docPdf.rect(xPos, y + 38, 55, 6, 'F');
             docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
-            if(enableEq){
-              docPdf.text(`CTRL : ${cvCtrl} (${cvTime})`, xPos + 2, y + 42.5);
-            } else {
-              docPdf.text(`CONSTAT : ${cvCtrl} (${cvTime})`, xPos + 2, y + 42.5);
-            }
+            docPdf.text(enableEq ? `CTRL : ${cvCtrl}` : `CONSTAT : ${cvCtrl}`, xPos + 2, y + 42.5);
 
             xPos += 58;
             if(xPos > 140){ xPos = 18; y += 48; }
           } catch(e){}
         }
-        // Ajout de l'espacement pour le bloc photo avant de passer à la tâche suivante
-        y += 50;
+
+        // Ajoute la marge finale uniquement si on n'a pas déjà passé à la ligne
+        if(xPos !== 18) {
+            y += 48;
+        }
       }
     }
   }
