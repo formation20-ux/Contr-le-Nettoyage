@@ -264,7 +264,7 @@ const LEGACY_TASKS_MAP = {
    MOTEUR DE STOCKAGE HYBRIDE & CONFIG GLOBALE
    ========================================================================= */
 const DB_NAME = 'soan-hybrid-db';
-const DB_VERSION = 4; // Version incrémentée pour la table des photos individuelles
+const DB_VERSION = 4;
 let dbPromise = null;
 
 function openDB(){
@@ -389,7 +389,6 @@ async function getGlobalConfig() {
    ========================================================================= */
 async function getPhotoBase64(photoId) {
   if (!photoId) return '';
-  // Pont de compatibilité avec les anciens rapports (qui contenaient la photo directement)
   if (photoId.startsWith('data:image')) return photoId; 
   
   let doc = await idbGet('photos', photoId);
@@ -398,7 +397,7 @@ async function getPhotoBase64(photoId) {
       const snap = await db.collection('photos').doc(photoId).get();
       if(snap.exists){
         doc = snap.data();
-        await idbPut('photos', doc); // Mise en cache locale
+        await idbPut('photos', doc); 
       }
     } catch(e){}
   }
@@ -573,7 +572,7 @@ function fileToResizedBase64(file, maxWidth){
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, targetW, targetH);
           
-          resolve(canvas.toDataURL('image/jpeg', 0.8)); // Qualité maintenue haute
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
         } catch(err) {
           reject(err);
         }
@@ -1190,9 +1189,13 @@ async function renderMailScheduleAdmin(){
 /* =========================================================================
    SAISIE CONTRÔLE / PRESTATION ZONE
    ========================================================================= */
+let isPhotoUploading = false; // Variable pour empêcher de quitter pendant l'upload
+
 async function renderControle(){
   clearRealtimeListeners();
   resetInactivityTimer();
+  isPhotoUploading = false;
+  
   const date = todayISO();
   const currentHour = new Date().getHours();
   const userLang = (session && session.lang) ? session.lang : 'fr';
@@ -1306,7 +1309,7 @@ async function renderControle(){
         eqPhotosBase64.push(await getPhotoBase64(pid));
       }
 
-      const eqWasOk = (eqR.conforme === true && (!config.reqPhotoEq || (eqR.photos && eqR.photos.length > 0)));
+      const eqWasOk = (eqR.conforme === true && (!config.reqPhotoEq || (eqPhotoIds && eqPhotoIds.length > 0)));
       const isEquipeNok = enableEq && isContreVisite && !eqWasOk;
 
       let disableOk = false;
@@ -1315,15 +1318,15 @@ async function renderControle(){
       
       if(enableEq) {
         if(!isContreVisite) {
-          disableOk = config.reqPhotoEq && myPhotosBase64.length === 0;
-          disableNok = config.reqPhotoEq && myPhotosBase64.length === 0;
+          disableOk = config.reqPhotoEq && myPhotoIds.length === 0;
+          disableNok = config.reqPhotoEq && myPhotoIds.length === 0;
           if(config.reqPhotoEq) photoWarningText = t('Photo obligatoire pour valider la tâche :');
         } else {
-          disableNok = config.reqPhotoCtrl && eqWasOk && myPhotosBase64.length === 0;
+          disableNok = config.reqPhotoCtrl && eqWasOk && myPhotoIds.length === 0;
           if(config.reqPhotoCtrl) photoWarningText = t('Photo contrôleur exigée pour invalider (NOK) :');
         }
       } else {
-        disableNok = config.reqPhotoCtrl && myPhotosBase64.length === 0;
+        disableNok = config.reqPhotoCtrl && myPhotoIds.length === 0;
         if(config.reqPhotoCtrl) photoWarningText = t('Photo exigée si passage en NOK :');
       }
 
@@ -1484,13 +1487,13 @@ async function renderControle(){
       fileInput.onchange = async () => {
         if (!fileInput.files || !fileInput.files.length) return;
         
+        isPhotoUploading = true;
+        
         try {
-          toast(t('Chargement…'));
+          toast(t('Chargement de la photo...'));
           const file = fileInput.files[0];
-          // QUALITÉ MAXIMALE MAINTENUE (1200px, 80%)
           const dataUrl = await fileToResizedBase64(file, 1200);
           
-          // SOLUTION LIMITE 1MO FIREBASE: On enregistre la photo dans une collection à part
           const photoId = uid('photo');
           await pushToCloud('photos', photoId, { id: photoId, base64: dataUrl });
 
@@ -1501,7 +1504,6 @@ async function renderControle(){
             currentBranch.reponses[pId].photos = [];
           }
           
-          // On ne stocke plus le texte lourd, juste l'ID !
           currentBranch.reponses[pId].photos.push(photoId);
 
           const myContainer = item.querySelector('.my-photos-container');
@@ -1525,6 +1527,8 @@ async function renderControle(){
         } catch (err) {
           console.error("Erreur capture photo :", err);
           toast("Erreur d'enregistrement photo");
+        } finally {
+          isPhotoUploading = false;
         }
       };
 
@@ -1539,6 +1543,26 @@ async function renderControle(){
   };
 
   document.getElementById('saveBtn').onclick = async ()=>{
+    // Empêche la sortie si une photo est en cours d'envoi
+    if(isPhotoUploading) {
+      toast('⏳ Veuillez patienter, une photo est en cours de traitement...');
+      return;
+    }
+
+    // Vérifie si toutes les tâches sont complétées
+    let missingTasks = 0;
+    for(const p of activePoints){
+      const r = currentBranch.reponses[p.id];
+      if(!r || r.conforme === null || r.conforme === undefined){
+        missingTasks++;
+      }
+    }
+
+    if(missingTasks > 0){
+       toast(`⚠️ Impossible de terminer : Il reste ${missingTasks} tâche(s) à valider (OK/NOK).`);
+       return;
+    }
+
     await triggerAutoSave();
     goToZones();
   };
@@ -1763,7 +1787,18 @@ async function generatePDFForDate(targetDateIso){
         
         for(const imgBase64 of allEqPhotos){
           try {
-            docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 38);
+            // PROPORTIONS RESPECTÉES POUR ÉVITER LES PHOTOS ÉCRASÉES DANS LE PDF
+            const imgProps = docPdf.getImageProperties(imgBase64);
+            let finalW = 55;
+            let finalH = (imgProps.height * finalW) / imgProps.width;
+            if(finalH > 38) {
+               finalH = 38;
+               finalW = (imgProps.width * finalH) / imgProps.height;
+            }
+            const offsetX = xPos + (55 - finalW) / 2;
+            const offsetY = y + (38 - finalH) / 2;
+
+            docPdf.addImage(imgBase64, 'JPEG', offsetX, offsetY, finalW, finalH);
             docPdf.setFillColor(...C_TEAL);
             docPdf.rect(xPos, y + 38, 55, 6, 'F');
             docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
@@ -1776,7 +1811,18 @@ async function generatePDFForDate(targetDateIso){
 
         for(const imgBase64 of allCvPhotos){
           try {
-            docPdf.addImage(imgBase64, 'JPEG', xPos, y, 55, 38);
+            // PROPORTIONS RESPECTÉES POUR ÉVITER LES PHOTOS ÉCRASÉES DANS LE PDF
+            const imgProps = docPdf.getImageProperties(imgBase64);
+            let finalW = 55;
+            let finalH = (imgProps.height * finalW) / imgProps.width;
+            if(finalH > 38) {
+               finalH = 38;
+               finalW = (imgProps.width * finalH) / imgProps.height;
+            }
+            const offsetX = xPos + (55 - finalW) / 2;
+            const offsetY = y + (38 - finalH) / 2;
+
+            docPdf.addImage(imgBase64, 'JPEG', offsetX, offsetY, finalW, finalH);
             docPdf.setFillColor(...C_AMBER);
             docPdf.rect(xPos, y + 38, 55, 6, 'F');
             docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
