@@ -15,6 +15,7 @@ const styleFix = document.createElement('style');
 styleFix.innerHTML = `
   body, #app-root {
     padding-bottom: 90px !important;
+    background-color: #FAF8F3 !important; /* Force le fond clair dès le chargement pour éviter l'écran noir */
   }
   button, .pin-key, .role-btn, .zone-card, .back-link {
     touch-action: manipulation !important;
@@ -45,6 +46,7 @@ styleFix.innerHTML = `
     justify-content: center !important;
     box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
     z-index: 10 !important;
+    cursor: pointer;
   }
   .dash-chart-title {
     display: flex !important;
@@ -99,7 +101,6 @@ const SUPPORTED_LANGUAGES = {
 };
 
 const STATIC_TRANSLATIONS = {};
-
 const translationCache = {};
 
 function t(text){
@@ -113,11 +114,9 @@ function t(text){
 
 async function translateDynamicText(text, targetLang){
   if(!text || targetLang === 'fr') return text;
-  
   if(STATIC_TRANSLATIONS[targetLang] && STATIC_TRANSLATIONS[targetLang][text]){
     return STATIC_TRANSLATIONS[targetLang][text];
   }
-
   const cacheKey = `${targetLang}_${text}`;
   if(translationCache[cacheKey]) return translationCache[cacheKey];
 
@@ -273,7 +272,7 @@ function openDB(){
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e)=>{
       const db = e.target.result;
-      const stores = ['controles', 'agents', 'task_schedule', 'sync_queue', 'mail_schedule', 'pdf_reports', 'photos'];
+      const stores = ['controles', 'agents', 'task_schedule', 'sync_queue', 'mail_schedule', 'pdf_reports', 'photos', 'global_reports'];
       stores.forEach(s => {
         if(!db.objectStoreNames.contains(s)){
           db.createObjectStore(s, { keyPath: (s === 'task_schedule' ? 'taskId' : 'id') });
@@ -362,24 +361,19 @@ async function syncPendingQueue(){
 
 window.addEventListener('online', syncPendingQueue);
 
+// LECTURE NON-BLOQUANTE DE LA CONFIGURATION
 async function getGlobalConfig() {
-  let conf = await idbGet('mail_schedule', 'global_config');
-  if(navigator.onLine){
-    try {
-      const doc = await db.collection('mail_schedule').doc('global_config').get();
-      if(doc.exists) {
-        conf = doc.data();
-        await idbPut('mail_schedule', conf);
-      }
-    } catch(e){}
-  }
-  if (!conf) conf = {};
-  if (conf.active === undefined) conf.active = true;
-  if (!conf.time1) conf.time1 = '18:00';
-  if (!conf.emails) conf.emails = [];
-  if (conf.enableEquipe === undefined) conf.enableEquipe = true;
-  if (conf.appName === undefined) conf.appName = 'SASU SOAN';
-  if (conf.reqPhotoEq === undefined) conf.reqPhotoEq = false;
+  let conf = { active: true, time1: '18:00', emails: [], enableEquipe: true, appName: 'SASU SOAN', reqPhotoEq: false, reqPhotoCtrl: false };
+  try {
+    let localConf = await idbGet('mail_schedule', 'global_config');
+    if (localConf) conf = Object.assign(conf, localConf);
+    // Requête Cloud silencieuse en arrière-plan
+    if(navigator.onLine){
+      db.collection('mail_schedule').doc('global_config').get().then(doc => {
+        if(doc.exists) idbPut('mail_schedule', doc.data());
+      }).catch(()=>{});
+    }
+  } catch(e) {}
   return conf;
 }
 
@@ -418,18 +412,9 @@ function clearRealtimeListeners() {
 }
 
 /* =========================================================================
-   RÉCUPÉRATION DYNAMIQUE DES TÂCHES
+   RÉCUPÉRATION DYNAMIQUE DES TÂCHES NON BLOQUANTE
    ========================================================================= */
-async function getAllTasksMap(forceCloud = false){
-  if(navigator.onLine && forceCloud){
-    try {
-      const snap = await db.collection('task_schedule').get();
-      for (const doc of snap.docs) {
-        await idbPut('task_schedule', doc.data());
-      }
-    } catch(e) {}
-  }
-
+async function getAllTasksMap(forceCloud = false, callback = null){
   let tasksMap = JSON.parse(JSON.stringify(DEFAULT_POINTS));
   
   Object.keys(tasksMap).forEach(zId => {
@@ -468,6 +453,14 @@ async function getAllTasksMap(forceCloud = false){
   Object.keys(tasksMap).forEach(zId => {
     tasksMap[zId].sort((a, b) => (a.order || 0) - (b.order || 0));
   });
+
+  // Fetch Cloud asynchrone sans figer l'écran
+  if(navigator.onLine && forceCloud){
+    db.collection('task_schedule').get().then(async snap => {
+      for (const doc of snap.docs) { await idbPut('task_schedule', doc.data()); }
+      if (callback) callback(); // Déclenche un raffraichissement léger si modifications détectées
+    }).catch(()=>{});
+  }
 
   return tasksMap;
 }
@@ -731,8 +724,6 @@ async function renderZones(){
   clearRealtimeListeners();
   resetInactivityTimer();
   
-  await getAllTasksMap(true);
-  
   const date = todayISO();
   const roleTitle = session.role==='agent' ? t('Équipe') : t('Contrôleur');
   const roleLabel = `${roleTitle} · ${session.nom}`;
@@ -749,7 +740,9 @@ async function renderZones(){
       <div class="section">
         <div class="section-title">${t('Zones de Prestation')}</div>
         <button class="btn block" id="globalReportBtn" style="margin-bottom:12px; border-color:#211E1A; background:#211E1A; color:#fff; font-size:14px; padding:10px;">📝 ${t('Bilan Général du Jour')}</button>
-        <div class="zone-grid" id="zoneGrid"></div>
+        <div class="zone-grid" id="zoneGrid">
+          <div style="text-align:center;padding:30px;"><div class="loading-spinner"></div></div>
+        </div>
       </div>
       
       <div style="display:flex;gap:10px;margin-bottom:12px;">
@@ -773,13 +766,6 @@ async function renderZones(){
   const grid = document.getElementById('zoneGrid');
   const isAgent = session.role === 'agent';
 
-  grid.innerHTML = `
-    <div style="text-align:center;padding:30px;grid-column:1/-1;">
-      <div class="loading-spinner"></div>
-      <div style="font-size:12px;color:#6B655C;margin-top:10px;">${t('Chargement…')}</div>
-    </div>
-  `;
-
   const updateGridUI = async () => {
     let html = '';
     for(const z of ZONES){
@@ -798,9 +784,7 @@ async function renderZones(){
           const eqAnswered = rEq && rEq.conforme !== null && rEq.conforme !== undefined;
           const cvAnswered = rCv && rCv.conforme !== null && rCv.conforme !== undefined;
           
-          if (!eqAnswered && !cvAnswered) {
-            remaining++;
-          }
+          if (!eqAnswered && !cvAnswered) remaining++;
         } else {
           const r = cvReponses[p.id];
           if(!r || r.conforme === undefined || r.conforme === null) remaining++;
@@ -836,7 +820,12 @@ async function renderZones(){
     });
   };
 
+  // Affichage immédiat des données locales
+  await getAllTasksMap(false);
   await updateGridUI();
+
+  // Mise à jour silencieuse du Cloud en arrière-plan sans bloquer l'écran
+  getAllTasksMap(true, updateGridUI);
 
   const globalBtn = document.getElementById('globalReportBtn');
   if(globalBtn) {
@@ -1211,14 +1200,18 @@ async function renderMailScheduleAdmin(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE
+   SAISIE CONTRÔLE / PRESTATION ZONE (OPTIMISÉE ANTI-LAG)
    ========================================================================= */
 let isPhotoUploading = false; 
+let isInteracting = false; 
+let interactionTimer = null;
+let autoSaveTimer = null;
 
 async function renderControle(){
   clearRealtimeListeners();
   resetInactivityTimer();
   isPhotoUploading = false;
+  isInteracting = false;
   
   const date = todayISO();
   const currentHour = new Date().getHours();
@@ -1229,8 +1222,8 @@ async function renderControle(){
 
   const isGlobal = activeZoneId === 'global';
 
+  // Chargement Local Immédiat
   let c = await idbGet('controles', activeControleId);
-  
   if(!c) {
     c = {
       id: activeControleId, zoneId: activeZoneId, date,
@@ -1239,18 +1232,7 @@ async function renderControle(){
     };
   }
 
-  if(navigator.onLine){
-    try {
-      const doc = await db.collection('controles').doc(activeControleId).get();
-      if(doc.exists) {
-        const data = doc.data();
-        if(data.passageEquipe) c.passageEquipe = data.passageEquipe;
-        if(data.contreVisite) c.contreVisite = data.contreVisite;
-        await idbPut('controles', c); 
-      }
-    } catch(e){}
-  }
-
+  // Vérification de la structure
   if (!c.passageEquipe.reponses) c.passageEquipe.reponses = {};
   if (!c.contreVisite.reponses) c.contreVisite.reponses = {};
 
@@ -1299,14 +1281,24 @@ async function renderControle(){
 
   document.getElementById('backBtn').onclick = goToZones;
 
+  // Optimisation de la sauvegarde : Sauvegarde locale immédiate, cloud différé
   const triggerAutoSave = async () => {
+    isInteracting = true;
+    clearTimeout(interactionTimer);
+    interactionTimer = setTimeout(() => { isInteracting = false; }, 3000);
+
     const currentTime = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
     currentBranch.heure = currentTime;
     
     if(isContreVisite) currentBranch.controleurNom = session.nom;
     else currentBranch.agentNom = session.nom;
 
-    await pushToCloud('controles', c.id, c);
+    await idbPut('controles', c); // Local direct (très rapide)
+
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => {
+        pushToCloud('controles', c.id, c); // Cloud en différé (évite les lags réseau)
+    }, 1000);
   };
 
   const renderSinglePhotoHtml = (src, pId, idx, locked) => {
@@ -1531,15 +1523,12 @@ async function renderControle(){
                   if(isNokBtn) lock = true; 
                   else if(isOkBtn && enableEq && !isContreVisite && config.reqPhotoEq) lock = true;
 
-                  if(lock){
-                    b.dataset.locked = 'true';
-                  }
+                  if(lock){ b.dataset.locked = 'true'; }
                 });
               }
             }
             
             await triggerAutoSave();
-            toast(t('Photo supprimée'));
           }
         };
       });
@@ -1555,9 +1544,9 @@ async function renderControle(){
 
       item.querySelectorAll('.toggle-btn').forEach(btn=>{
         btn.onclick = async (e)=>{
+          e.preventDefault();
           if(btn.dataset.lockedByControl === 'true'){
              toast('🔒 Cette tâche a déjà été contrôlée, modification impossible.');
-             e.preventDefault();
              return;
           }
           if(btn.dataset.locked === 'true'){
@@ -1566,12 +1555,12 @@ async function renderControle(){
             } else {
               toast('📷 Photo obligatoire pour valider cette tâche (OK)');
             }
-            e.preventDefault();
             return;
           }
 
           r.conforme = btn.dataset.val==='true';
           
+          // Mise à jour visuelle instantanée
           item.querySelectorAll('.toggle-btn').forEach(b=>{
              b.classList.remove('active');
              b.style.background = '#fff';
@@ -1590,8 +1579,7 @@ async function renderControle(){
              btn.style.borderColor = '#B23A34';
           }
           
-          await triggerAutoSave();
-          toast(t('Enregistré'));
+          triggerAutoSave(); // Sauvegarde non-bloquante
         };
       });
 
@@ -1599,9 +1587,7 @@ async function renderControle(){
       if(fileInput) {
           fileInput.onchange = async () => {
             if (!fileInput.files || !fileInput.files.length) return;
-            
             isPhotoUploading = true;
-            
             try {
               toast(t('Chargement de la photo...'));
               const file = fileInput.files[0];
@@ -1610,12 +1596,8 @@ async function renderControle(){
               const photoId = uid('photo');
               await pushToCloud('photos', photoId, { id: photoId, base64: dataUrl });
 
-              if (!currentBranch.reponses[pId]) {
-                currentBranch.reponses[pId] = { conforme: null, photos: [], commentaire: '' };
-              }
-              if (!currentBranch.reponses[pId].photos) {
-                currentBranch.reponses[pId].photos = [];
-              }
+              if (!currentBranch.reponses[pId]) currentBranch.reponses[pId] = { conforme: null, photos: [], commentaire: '' };
+              if (!currentBranch.reponses[pId].photos) currentBranch.reponses[pId].photos = [];
               
               currentBranch.reponses[pId].photos.push(photoId);
 
@@ -1634,11 +1616,8 @@ async function renderControle(){
                 b.dataset.locked = 'false';
               });
 
-              await triggerAutoSave();
-              toast(t('Photo ajoutée'));
-              fileInput.value = '';
+              triggerAutoSave();
             } catch (err) {
-              console.error("Erreur capture photo :", err);
               toast("Erreur d'enregistrement photo");
             } finally {
               isPhotoUploading = false;
@@ -1648,9 +1627,10 @@ async function renderControle(){
 
       item.querySelector('.point-comment').oninput = (e)=>{
         r.commentaire = e.target.value;
+        isInteracting = true;
         clearTimeout(item.__commentTimer);
-        item.__commentTimer = setTimeout(async ()=>{
-          await triggerAutoSave();
+        item.__commentTimer = setTimeout(()=>{
+          triggerAutoSave();
         }, 800);
       };
     });
@@ -1669,9 +1649,7 @@ async function renderControle(){
           const cvR = (c.contreVisite && c.contreVisite.reponses && c.contreVisite.reponses[p.id]) || {};
           const isAlreadyControlled = cvR.conforme !== undefined && cvR.conforme !== null;
 
-          if (!isContreVisite && isAlreadyControlled) {
-              continue; 
-          }
+          if (!isContreVisite && isAlreadyControlled) continue; 
 
           if(!r || r.conforme === null || r.conforme === undefined){
             missingTasks++;
@@ -1688,6 +1666,10 @@ async function renderControle(){
     goToZones();
   };
 
+  // Affichage initial immédiat
+  await refreshPointsListUI();
+
+  // Mise à jour discrète en arrière-plan
   if(navigator.onLine){
     window.controleListener = db.collection('controles').doc(activeControleId).onSnapshot(doc => {
       if(doc.exists) {
@@ -1699,15 +1681,12 @@ async function renderControle(){
         currentBranch = isContreVisite ? c.contreVisite : c.passageEquipe;
         equipeReponses = c.passageEquipe.reponses;
 
-        if(document.getElementById('pointsList') && (!document.activeElement || document.activeElement.tagName !== 'TEXTAREA')) {
+        // Ne rafraichit pas si l'utilisateur est en train de modifier
+        if(document.getElementById('pointsList') && !isInteracting && !isPhotoUploading) {
             refreshPointsListUI();
         }
-      } else {
-        refreshPointsListUI();
       }
     });
-  } else {
-    refreshPointsListUI();
   }
 }
 
@@ -2573,6 +2552,8 @@ async function renderStats(){
         const rEq = eq[pId];
         const rCv = cv[pId];
 
+        // MOTEUR D'ANALYSE BLINDÉ : 
+        // Accepte que l'équipe OU le contrôleur ait répondu pour comptabiliser
         const eqAnswered = rEq && typeof rEq === 'object' && typeof rEq.conforme === 'boolean';
         const cvAnswered = rCv && typeof rCv === 'object' && typeof rCv.conforme === 'boolean';
 
@@ -2582,7 +2563,10 @@ async function renderStats(){
           if(!itemStatsMap[pId]) itemStatsMap[pId] = { checked: 0, nok: 0 };
           itemStatsMap[pId].checked++;
 
+          // Définition d'un OK pour l'équipe (inclut la vérif photo si active)
           const eqOk = (eqAnswered && rEq.conforme !== false && (!config.reqPhotoEq || (rEq.photos && rEq.photos.length > 0)));
+          
+          // Définition d'un OK pour le contrôleur (un NOK = false. L'absence de bouton contrôlé = true par défaut si l'équipe a dit OK en mode contre-visite partiel)
           const cvOk = (cvAnswered ? rCv.conforme !== false : true);
 
           let isNok = false;
@@ -2592,12 +2576,13 @@ async function renderStats(){
               if (cvAnswered) {
                   isNok = !cvOk;
                   if (eqAnswered && eqOk && !cvOk) {
-                      isEcart = true;
+                      isEcart = true; // Le contrôleur contredit l'équipe
                   }
               } else if (eqAnswered) {
-                  isNok = !eqOk;
+                  isNok = !eqOk; // Si le contrôleur n'a pas répondu, la note de l'équipe fait foi
               }
           } else {
+              // Mode "Constat" simple
               if (cvAnswered) {
                   isNok = !cvOk;
               }
@@ -3151,7 +3136,12 @@ if('serviceWorker' in navigator){
 }
 
 (function init(){
-  renderLogin();
+  try {
+    renderLogin();
+  } catch(e) {
+    document.getElementById('app-root').innerHTML = '<div style="padding:20px;text-align:center;">Démarrage... Veuillez patienter.</div>';
+    setTimeout(renderLogin, 1000);
+  }
 })();
 
 })();
