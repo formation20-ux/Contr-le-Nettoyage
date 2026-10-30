@@ -250,15 +250,6 @@ const DEFAULT_POINTS = {
   ]
 };
 
-const LEGACY_TASKS_MAP = {
-  'cui_sol': 'Nettoyage des sols cuisine',
-  'cui_plans': 'Nettoyage des plans de travail',
-  'cui_poub': 'Vidage & nettoyage des poubelles cuisine',
-  'cui_hottes': 'Nettoyage des hottes et filtres',
-  'sal_vitres': 'Nettoyage des surfaces vitrées',
-  'sal_sol': 'Nettoyage et mopage des sols lobby'
-};
-
 /* =========================================================================
    MOTEUR DE STOCKAGE HYBRIDE & CONFIG GLOBALE
    ========================================================================= */
@@ -337,12 +328,16 @@ async function idbDelete(store, id){
   } catch(e) {}
 }
 
+// CORRECTION IMPORTANTE : ON AWAIT BIEN LE "SET" DE FIREBASE POUR GARANTIR LE RETOUR UTILISATEUR
 async function pushToCloud(collection, id, data){
   await idbPut(collection, data);
   if(navigator.onLine){
-    db.collection(collection).doc(id).set(data, { merge: true })
-      .then(() => idbDelete('sync_queue', `${collection}_${id}`))
-      .catch(() => idbPut('sync_queue', { id: `${collection}_${id}`, collection, docId: id, data }));
+    try {
+      await db.collection(collection).doc(id).set(data, { merge: true });
+      await idbDelete('sync_queue', `${collection}_${id}`);
+    } catch(err) {
+      await idbPut('sync_queue', { id: `${collection}_${id}`, collection, docId: id, data });
+    }
   } else {
     await idbPut('sync_queue', { id: `${collection}_${id}`, collection, docId: id, data });
   }
@@ -1230,7 +1225,6 @@ async function renderControle(){
 
   const isGlobal = activeZoneId === 'global';
 
-  // Chargement Local Immédiat
   let c = await idbGet('controles', activeControleId);
   if(!c) {
     c = {
@@ -1240,7 +1234,6 @@ async function renderControle(){
     };
   }
 
-  // Vérification de la structure
   if (!c.passageEquipe.reponses) c.passageEquipe.reponses = {};
   if (!c.contreVisite.reponses) c.contreVisite.reponses = {};
 
@@ -1271,7 +1264,6 @@ async function renderControle(){
 
   const translatedZoneName = isGlobal ? t('Bilan Général du Jour') : await translateDynamicText(zone.nom, userLang);
 
-  // AJOUT DU BOUTON FORCER SAUVEGARDE EN HAUT
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml(translatedZoneName, viewSubtitle, config.appName)}
@@ -1295,7 +1287,6 @@ async function renderControle(){
 
   document.getElementById('backBtn').onclick = goToZones;
 
-  // Optimisation de la sauvegarde : Sauvegarde locale immédiate, cloud différé ou forcé
   const triggerAutoSave = async (immediate = false) => {
     isInteracting = true;
     clearTimeout(interactionTimer);
@@ -1307,7 +1298,7 @@ async function renderControle(){
     if(isContreVisite) currentBranch.controleurNom = session.nom;
     else currentBranch.agentNom = session.nom;
 
-    await idbPut('controles', c); // Local direct (très rapide)
+    await idbPut('controles', c); 
 
     clearTimeout(autoSaveTimer);
     if (immediate) {
@@ -1319,7 +1310,6 @@ async function renderControle(){
     }
   };
 
-  // ACTION DU BOUTON FORCER LA SAUVEGARDE
   document.getElementById('forceSaveBtn').onclick = async () => {
     if(isPhotoUploading) {
       toast('⏳ Veuillez patienter, une photo est en cours de traitement...');
@@ -1450,7 +1440,7 @@ async function renderControle(){
                 ${!isLockedByControl ? `
                   <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
                     ${t('📷 + Photo')}
-                    <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
+                    <input type="file" accept="image/*" style="display:none;" data-photo-input>
                   </label>
                 ` : ''}
               </div>
@@ -1516,7 +1506,7 @@ async function renderControle(){
           ${!zsIsLockedByControl ? `
             <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
               ${t('📷 + Photo')}
-              <input type="file" accept="image/*" capture="environment" style="display:none;" data-photo-input>
+              <input type="file" accept="image/*" style="display:none;" data-photo-input>
             </label>
           ` : ''}
         </div>
@@ -2597,8 +2587,6 @@ async function renderStats(){
         const rEq = eq[pId];
         const rCv = cv[pId];
 
-        // MOTEUR D'ANALYSE BLINDÉ : 
-        // Accepte que l'équipe OU le contrôleur ait répondu pour comptabiliser
         const eqAnswered = rEq && typeof rEq === 'object' && typeof rEq.conforme === 'boolean';
         const cvAnswered = rCv && typeof rCv === 'object' && typeof rCv.conforme === 'boolean';
 
@@ -2608,10 +2596,7 @@ async function renderStats(){
           if(!itemStatsMap[pId]) itemStatsMap[pId] = { checked: 0, nok: 0 };
           itemStatsMap[pId].checked++;
 
-          // Définition d'un OK pour l'équipe (inclut la vérif photo si active)
           const eqOk = (eqAnswered && rEq.conforme !== false && (!config.reqPhotoEq || (rEq.photos && rEq.photos.length > 0)));
-          
-          // Définition d'un OK pour le contrôleur (un NOK = false. L'absence de bouton contrôlé = true par défaut si l'équipe a dit OK en mode contre-visite partiel)
           const cvOk = (cvAnswered ? rCv.conforme !== false : true);
 
           let isNok = false;
