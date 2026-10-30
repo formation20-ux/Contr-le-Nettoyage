@@ -15,7 +15,7 @@ const styleFix = document.createElement('style');
 styleFix.innerHTML = `
   body, #app-root {
     padding-bottom: 90px !important;
-    background-color: #FAF8F3 !important; /* Force le fond clair dès le chargement pour éviter l'écran noir */
+    background-color: #FAF8F3 !important;
   }
   button, .pin-key, .role-btn, .zone-card, .back-link {
     touch-action: manipulation !important;
@@ -361,19 +361,24 @@ async function syncPendingQueue(){
 
 window.addEventListener('online', syncPendingQueue);
 
-// LECTURE NON-BLOQUANTE DE LA CONFIGURATION
 async function getGlobalConfig() {
-  let conf = { active: true, time1: '18:00', emails: [], enableEquipe: true, appName: 'SASU SOAN', reqPhotoEq: false, reqPhotoCtrl: false };
-  try {
-    let localConf = await idbGet('mail_schedule', 'global_config');
-    if (localConf) conf = Object.assign(conf, localConf);
-    // Requête Cloud silencieuse en arrière-plan
-    if(navigator.onLine){
-      db.collection('mail_schedule').doc('global_config').get().then(doc => {
-        if(doc.exists) idbPut('mail_schedule', doc.data());
-      }).catch(()=>{});
-    }
-  } catch(e) {}
+  let conf = await idbGet('mail_schedule', 'global_config');
+  if(navigator.onLine){
+    try {
+      const doc = await db.collection('mail_schedule').doc('global_config').get();
+      if(doc.exists) {
+        conf = doc.data();
+        await idbPut('mail_schedule', conf);
+      }
+    } catch(e){}
+  }
+  if (!conf) conf = {};
+  if (conf.active === undefined) conf.active = true;
+  if (!conf.time1) conf.time1 = '18:00';
+  if (!conf.emails) conf.emails = [];
+  if (conf.enableEquipe === undefined) conf.enableEquipe = true;
+  if (conf.appName === undefined) conf.appName = 'SASU SOAN';
+  if (conf.reqPhotoEq === undefined) conf.reqPhotoEq = false;
   return conf;
 }
 
@@ -412,9 +417,18 @@ function clearRealtimeListeners() {
 }
 
 /* =========================================================================
-   RÉCUPÉRATION DYNAMIQUE DES TÂCHES NON BLOQUANTE
+   RÉCUPÉRATION DYNAMIQUE DES TÂCHES
    ========================================================================= */
-async function getAllTasksMap(forceCloud = false, callback = null){
+async function getAllTasksMap(forceCloud = false){
+  if(navigator.onLine && forceCloud){
+    try {
+      const snap = await db.collection('task_schedule').get();
+      for (const doc of snap.docs) {
+        await idbPut('task_schedule', doc.data());
+      }
+    } catch(e) {}
+  }
+
   let tasksMap = JSON.parse(JSON.stringify(DEFAULT_POINTS));
   
   Object.keys(tasksMap).forEach(zId => {
@@ -453,14 +467,6 @@ async function getAllTasksMap(forceCloud = false, callback = null){
   Object.keys(tasksMap).forEach(zId => {
     tasksMap[zId].sort((a, b) => (a.order || 0) - (b.order || 0));
   });
-
-  // Fetch Cloud asynchrone sans figer l'écran
-  if(navigator.onLine && forceCloud){
-    db.collection('task_schedule').get().then(async snap => {
-      for (const doc of snap.docs) { await idbPut('task_schedule', doc.data()); }
-      if (callback) callback(); // Déclenche un raffraichissement léger si modifications détectées
-    }).catch(()=>{});
-  }
 
   return tasksMap;
 }
@@ -723,6 +729,8 @@ async function goToZones(){ activeZoneId=null; await renderZones(); }
 async function renderZones(){
   clearRealtimeListeners();
   resetInactivityTimer();
+  
+  await getAllTasksMap(true);
   
   const date = todayISO();
   const roleTitle = session.role==='agent' ? t('Équipe') : t('Contrôleur');
@@ -1263,10 +1271,16 @@ async function renderControle(){
 
   const translatedZoneName = isGlobal ? t('Bilan Général du Jour') : await translateDynamicText(zone.nom, userLang);
 
+  // AJOUT DU BOUTON FORCER SAUVEGARDE EN HAUT
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml(translatedZoneName, viewSubtitle, config.appName)}
-      <div class="back-link" id="backBtn">${t('← Retour aux zones')}</div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <div class="back-link" id="backBtn" style="margin:0;">${t('← Retour')}</div>
+        <button class="btn ghost small" id="forceSaveBtn" style="border-color:#2B6E68; color:#2B6E68; display:flex; align-items:center; gap:6px;">
+          💾 ${t('Sauvegarder')}
+        </button>
+      </div>
       <div class="section">
         <div id="pointsList">
           <div style="text-align:center;padding:30px;">
@@ -1281,8 +1295,8 @@ async function renderControle(){
 
   document.getElementById('backBtn').onclick = goToZones;
 
-  // Optimisation de la sauvegarde : Sauvegarde locale immédiate, cloud différé
-  const triggerAutoSave = async () => {
+  // Optimisation de la sauvegarde : Sauvegarde locale immédiate, cloud différé ou forcé
+  const triggerAutoSave = async (immediate = false) => {
     isInteracting = true;
     clearTimeout(interactionTimer);
     interactionTimer = setTimeout(() => { isInteracting = false; }, 3000);
@@ -1296,9 +1310,35 @@ async function renderControle(){
     await idbPut('controles', c); // Local direct (très rapide)
 
     clearTimeout(autoSaveTimer);
-    autoSaveTimer = setTimeout(() => {
-        pushToCloud('controles', c.id, c); // Cloud en différé (évite les lags réseau)
-    }, 1000);
+    if (immediate) {
+        if(navigator.onLine) await pushToCloud('controles', c.id, c);
+    } else {
+        autoSaveTimer = setTimeout(() => {
+            if(navigator.onLine) pushToCloud('controles', c.id, c);
+        }, 1000);
+    }
+  };
+
+  // ACTION DU BOUTON FORCER LA SAUVEGARDE
+  document.getElementById('forceSaveBtn').onclick = async () => {
+    if(isPhotoUploading) {
+      toast('⏳ Veuillez patienter, une photo est en cours de traitement...');
+      return;
+    }
+    const btn = document.getElementById('forceSaveBtn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '⏳ En cours...';
+    btn.disabled = true;
+    
+    await triggerAutoSave(true);
+    
+    btn.innerHTML = '✅ Terminé';
+    toast('Données synchronisées avec succès sur le Cloud !');
+    
+    setTimeout(() => {
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+    }, 2000);
   };
 
   const renderSinglePhotoHtml = (src, pId, idx, locked) => {
@@ -1523,12 +1563,14 @@ async function renderControle(){
                   if(isNokBtn) lock = true; 
                   else if(isOkBtn && enableEq && !isContreVisite && config.reqPhotoEq) lock = true;
 
-                  if(lock){ b.dataset.locked = 'true'; }
+                  if(lock){
+                    b.dataset.locked = 'true';
+                  }
                 });
               }
             }
             
-            await triggerAutoSave();
+            triggerAutoSave();
           }
         };
       });
@@ -1560,7 +1602,6 @@ async function renderControle(){
 
           r.conforme = btn.dataset.val==='true';
           
-          // Mise à jour visuelle instantanée
           item.querySelectorAll('.toggle-btn').forEach(b=>{
              b.classList.remove('active');
              b.style.background = '#fff';
@@ -1579,7 +1620,7 @@ async function renderControle(){
              btn.style.borderColor = '#B23A34';
           }
           
-          triggerAutoSave(); // Sauvegarde non-bloquante
+          triggerAutoSave();
         };
       });
 
@@ -1587,7 +1628,9 @@ async function renderControle(){
       if(fileInput) {
           fileInput.onchange = async () => {
             if (!fileInput.files || !fileInput.files.length) return;
+            
             isPhotoUploading = true;
+            
             try {
               toast(t('Chargement de la photo...'));
               const file = fileInput.files[0];
@@ -1596,8 +1639,12 @@ async function renderControle(){
               const photoId = uid('photo');
               await pushToCloud('photos', photoId, { id: photoId, base64: dataUrl });
 
-              if (!currentBranch.reponses[pId]) currentBranch.reponses[pId] = { conforme: null, photos: [], commentaire: '' };
-              if (!currentBranch.reponses[pId].photos) currentBranch.reponses[pId].photos = [];
+              if (!currentBranch.reponses[pId]) {
+                currentBranch.reponses[pId] = { conforme: null, photos: [], commentaire: '' };
+              }
+              if (!currentBranch.reponses[pId].photos) {
+                currentBranch.reponses[pId].photos = [];
+              }
               
               currentBranch.reponses[pId].photos.push(photoId);
 
@@ -1618,6 +1665,7 @@ async function renderControle(){
 
               triggerAutoSave();
             } catch (err) {
+              console.error("Erreur capture photo :", err);
               toast("Erreur d'enregistrement photo");
             } finally {
               isPhotoUploading = false;
@@ -1662,14 +1710,12 @@ async function renderControle(){
        return;
     }
 
-    await triggerAutoSave();
+    await triggerAutoSave(true);
     goToZones();
   };
 
-  // Affichage initial immédiat
   await refreshPointsListUI();
 
-  // Mise à jour discrète en arrière-plan
   if(navigator.onLine){
     window.controleListener = db.collection('controles').doc(activeControleId).onSnapshot(doc => {
       if(doc.exists) {
@@ -1681,7 +1727,6 @@ async function renderControle(){
         currentBranch = isContreVisite ? c.contreVisite : c.passageEquipe;
         equipeReponses = c.passageEquipe.reponses;
 
-        // Ne rafraichit pas si l'utilisateur est en train de modifier
         if(document.getElementById('pointsList') && !isInteracting && !isPhotoUploading) {
             refreshPointsListUI();
         }
