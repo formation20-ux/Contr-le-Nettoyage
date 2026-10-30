@@ -383,11 +383,65 @@ async function getGlobalConfig() {
 }
 
 /* =========================================================================
+   AUTO-NETTOYEUR DE CACHE (SILENCIEUX)
+   ========================================================================= */
+async function autoCleanCache() {
+  try {
+    const today = new Date();
+    const keepDays = 15; 
+    let allControles = await idbGetAll('controles');
+    let activePhotoIds = new Set();
+    
+    for (let c of allControles) {
+      const cDate = new Date(c.date);
+      const diffTime = Math.abs(today - cDate);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays > keepDays) {
+        await idbDelete('controles', c.id);
+      } else {
+        if (c.passageEquipe && c.passageEquipe.reponses) {
+          Object.values(c.passageEquipe.reponses).forEach(r => {
+            if (r.photos) r.photos.forEach(pid => activePhotoIds.add(pid));
+          });
+        }
+        if (c.contreVisite && c.contreVisite.reponses) {
+          Object.values(c.contreVisite.reponses).forEach(r => {
+            if (r.photos) r.photos.forEach(pid => activePhotoIds.add(pid));
+          });
+        }
+      }
+    }
+
+    let allReports = await idbGetAll('pdf_reports');
+    for (let rep of allReports) {
+      if(rep.dateIso) {
+        const rDate = new Date(rep.dateIso);
+        const diffTime = Math.abs(today - rDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        if (diffDays > keepDays) {
+          await idbDelete('pdf_reports', rep.id);
+        }
+      }
+    }
+
+    let allPhotos = await idbGetAll('photos');
+    for (let p of allPhotos) {
+      if (!activePhotoIds.has(p.id)) {
+        await idbDelete('photos', p.id);
+      }
+    }
+  } catch(e) {}
+}
+
+/* =========================================================================
    GESTION OPTIMISÉE DES PHOTOS POUR DÉPASSER LA LIMITE DE 1 Mo FIREBASE
    ========================================================================= */
-async function getPhotoBase64(photoId) {
-  if (!photoId) return '';
-  if (photoId.startsWith('data:image')) return photoId; 
+async function getPhotoData(photoId, fallbackAuthor = 'Agent', fallbackTime = '--:--') {
+  if (!photoId) return null;
+  if (photoId.startsWith('data:image')) {
+      return { base64: photoId, author: fallbackAuthor, time: fallbackTime };
+  }
   
   let doc = await idbGet('photos', photoId);
   if (!doc && navigator.onLine) {
@@ -399,25 +453,33 @@ async function getPhotoBase64(photoId) {
       }
     } catch(e){}
   }
-  return doc ? doc.base64 : '';
+  
+  if(doc) {
+      return { 
+          base64: doc.base64, 
+          author: doc.author || fallbackAuthor, 
+          time: doc.timestamp || fallbackTime 
+      };
+  }
+  return null;
 }
 
 /* =========================================================================
    NOUVEAU SLIDER PHOTO INTELLIGENT
    ========================================================================= */
-function openPhotoViewerSlider(photos, currentIndex, itemLabel, zoneName) {
-  if (!photos || photos.length === 0) return;
+function openPhotoViewerSlider(photosInfo, currentIndex, itemLabel, zoneName) {
+  if (!photosInfo || photosInfo.length === 0) return;
   
   const backdrop = document.createElement('div');
   backdrop.className = 'pv-backdrop';
   backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;padding:10px;';
   
   let navHtml = '';
-  if (photos.length > 1) {
+  if (photosInfo.length > 1) {
     navHtml = `
       <div style="display:flex; gap:20px; margin-top:20px; align-items:center; width:100%; justify-content:center;">
         <button id="pv-prev" class="btn ghost" style="color:#fff; border:1px solid rgba(255,255,255,0.3); background:rgba(255,255,255,0.1); padding:10px 20px; border-radius:50px; cursor:pointer;">◀</button>
-        <span id="pv-counter" style="color:#fff; font-family:var(--mono); font-size:14px; font-weight:bold; min-width:50px; text-align:center;">${currentIndex + 1} / ${photos.length}</span>
+        <span id="pv-counter" style="color:#fff; font-family:var(--mono); font-size:14px; font-weight:bold; min-width:50px; text-align:center;">${currentIndex + 1} / ${photosInfo.length}</span>
         <button id="pv-next" class="btn ghost" style="color:#fff; border:1px solid rgba(255,255,255,0.3); background:rgba(255,255,255,0.1); padding:10px 20px; border-radius:50px; cursor:pointer;">▶</button>
       </div>
     `;
@@ -428,11 +490,14 @@ function openPhotoViewerSlider(photos, currentIndex, itemLabel, zoneName) {
     
     <div style="width:100%; padding: 0 40px 15px; text-align:center; border-bottom:1px solid rgba(255,255,255,0.1); margin-bottom:15px; flex-shrink:0;">
         <div style="color:#C7791B; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">${zoneName}</div>
-        <div style="color:#fff; font-size:14px; font-weight:500; line-height:1.4;">${itemLabel}</div>
+        <div style="color:#fff; font-size:14px; font-weight:500; line-height:1.4; margin-bottom:6px;">${itemLabel}</div>
+        <div id="pv-meta" style="color:#A39E98; font-size:11px; font-weight:600;">
+           📸 ${photosInfo[currentIndex].author} - ${photosInfo[currentIndex].time}
+        </div>
     </div>
     
     <div id="pv-img-container" style="position:relative; display:flex; justify-content:center; align-items:center; width:100%; flex:1; overflow:hidden;">
-        <img id="pv-main-img" src="${photos[currentIndex]}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.6); transition: opacity 0.2s ease;">
+        <img id="pv-main-img" src="${photosInfo[currentIndex].src}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.6); transition: opacity 0.2s ease;">
     </div>
     
     ${navHtml}
@@ -442,26 +507,28 @@ function openPhotoViewerSlider(photos, currentIndex, itemLabel, zoneName) {
 
   const mainImg = backdrop.querySelector('#pv-main-img');
   const counter = backdrop.querySelector('#pv-counter');
+  const meta = backdrop.querySelector('#pv-meta');
   let current = currentIndex;
 
   const updateImg = () => {
     mainImg.style.opacity = 0.3;
     setTimeout(() => {
-        mainImg.src = photos[current];
-        if(counter) counter.textContent = `${current + 1} / ${photos.length}`;
+        mainImg.src = photosInfo[current].src;
+        if(meta) meta.innerHTML = `📸 ${photosInfo[current].author} - ${photosInfo[current].time}`;
+        if(counter) counter.textContent = `${current + 1} / ${photosInfo.length}`;
         mainImg.style.opacity = 1;
-    }, 200);
+    }, 150);
   };
 
-  if (photos.length > 1) {
+  if (photosInfo.length > 1) {
     backdrop.querySelector('#pv-prev').onclick = (e) => {
       e.stopPropagation();
-      current = (current - 1 + photos.length) % photos.length;
+      current = (current - 1 + photosInfo.length) % photosInfo.length;
       updateImg();
     };
     backdrop.querySelector('#pv-next').onclick = (e) => {
       e.stopPropagation();
-      current = (current + 1) % photos.length;
+      current = (current + 1) % photosInfo.length;
       updateImg();
     };
 
@@ -476,11 +543,11 @@ function openPhotoViewerSlider(photos, currentIndex, itemLabel, zoneName) {
     imgContainer.addEventListener('touchend', e => {
         touchEndX = e.changedTouches[0].screenX;
         if (touchEndX < touchStartX - 40) {
-            current = (current + 1) % photos.length;
+            current = (current + 1) % photosInfo.length;
             updateImg();
         }
         if (touchEndX > touchStartX + 40) {
-            current = (current - 1 + photos.length) % photos.length;
+            current = (current - 1 + photosInfo.length) % photosInfo.length;
             updateImg();
         }
     }, {passive: true});
@@ -492,20 +559,22 @@ function openPhotoViewerSlider(photos, currentIndex, itemLabel, zoneName) {
   };
 }
 
-// Fonction pour lier tous les événements clics sur les images et grouper celles d'un même item
 function attachSliderListeners(containerElement) {
     if (!containerElement) return;
     
-    // Groupements des photos (tâches normales, bilans, historique...)
     containerElement.querySelectorAll('.point-item, .history-task-item').forEach(itemCard => {
         const images = Array.from(itemCard.querySelectorAll('.click-zoom'));
         images.forEach((img, idx) => {
             img.onclick = (e) => {
                 e.stopPropagation();
-                const photos = images.map(i => i.src);
+                const photosInfo = images.map(i => ({
+                    src: i.src,
+                    author: i.getAttribute('data-author') || 'Inconnu',
+                    time: i.getAttribute('data-time') || '--:--'
+                }));
                 const zone = img.getAttribute('data-zone') || 'Zone';
                 const label = img.getAttribute('data-label') || 'Tâche / Bilan';
-                openPhotoViewerSlider(photos, idx, label, zone);
+                openPhotoViewerSlider(photosInfo, idx, label, zone);
             };
         });
     });
@@ -1301,7 +1370,7 @@ async function renderMailScheduleAdmin(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE
+   SAISIE CONTRÔLE / PRESTATION ZONE (OPTIMISÉE ANTI-LAG)
    ========================================================================= */
 let isPhotoUploading = false; 
 let isInteracting = false; 
@@ -1360,14 +1429,14 @@ async function renderControle(){
   if(!enableEq) viewSubtitle = t('Rapport de Constat');
   else viewSubtitle = isContreVisite ? t('Contre-visite Contrôleur') : t('Réalisation Prestation');
 
-  const translatedZoneName = isGlobal ? t('Bilan Général du Jour') : await translateDynamicText(zone.nom, userLang);
+  const translatedZoneName = isGlobal ? t('📝 Bilan / Infos (Général)') : await translateDynamicText(zone.nom, userLang);
 
   root.innerHTML = `
     <div class="wrap">
       ${topbarHtml(translatedZoneName, viewSubtitle, config.appName)}
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <div class="back-link" id="backBtn" style="margin:0;">${t('← Retour')}</div>
-        <button class="btn ghost small" id="forceSaveBtn" style="border-color:#2B6E68; color:#2B6E68; display:flex; align-items:center; gap:6px;">
+        <button class="btn ghost small" id="backBtn" style="margin:0; padding:6px 0; border:none; font-family:var(--mono); font-weight:600; font-size:12px;">${t('← Retour')}</button>
+        <button class="btn ghost small" id="forceSaveBtn" style="border-color:#2B6E68; color:#2B6E68; display:flex; align-items:center; gap:6px; font-size:11px; padding:6px 10px;">
           💾 ${t('Sauvegarder')}
         </button>
       </div>
@@ -1383,16 +1452,13 @@ async function renderControle(){
     </div>
   `;
 
-  document.getElementById('backBtn').onclick = goToZones;
-
-  const triggerAutoSave = async (immediate = false) => {
+  const triggerAutoSave = async (immediate = false, uiElement = null) => {
     isInteracting = true;
     clearTimeout(interactionTimer);
     interactionTimer = setTimeout(() => { isInteracting = false; }, 3000);
 
     const currentTime = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
     currentBranch.heure = currentTime;
-    
     if(isContreVisite) currentBranch.controleurNom = session.nom;
     else currentBranch.agentNom = session.nom;
 
@@ -1400,41 +1466,113 @@ async function renderControle(){
 
     clearTimeout(autoSaveTimer);
     if (immediate) {
-        if(navigator.onLine) await pushToCloud('controles', c.id, c);
+        let originalText = '';
+        let originalW = '';
+        if (uiElement) {
+            originalText = uiElement.innerHTML;
+            originalW = uiElement.style.width;
+            uiElement.style.width = uiElement.offsetWidth + 'px'; 
+            uiElement.innerHTML = '⏳...';
+            uiElement.style.opacity = '0.6';
+            uiElement.style.pointerEvents = 'none';
+        }
+        
+        if(navigator.onLine) {
+            try {
+                await db.collection('controles').doc(c.id).set(c, {merge: true});
+                await idbDelete('sync_queue', `controles_${c.id}`);
+            } catch(e) {
+                await idbPut('sync_queue', { id: `controles_${c.id}`, collection: 'controles', docId: c.id, data: c });
+            }
+        } else {
+            await idbPut('sync_queue', { id: `controles_${c.id}`, collection: 'controles', docId: c.id, data: c });
+        }
+        
+        if (uiElement) {
+            uiElement.innerHTML = '✅ OK';
+            await new Promise(r => setTimeout(r, 600));
+            uiElement.innerHTML = originalText;
+            uiElement.style.width = originalW;
+            uiElement.style.opacity = '1';
+            uiElement.style.pointerEvents = 'auto';
+        }
     } else {
         autoSaveTimer = setTimeout(() => {
             if(navigator.onLine) pushToCloud('controles', c.id, c);
-        }, 1000);
+        }, 1500);
     }
+  };
+
+  // Met à jour la personne exacte qui fait l'action sur une tâche précise
+  const updateItemMeta = (r) => {
+    const tNow = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+    if(isContreVisite) {
+      r.controleurNom = session.nom;
+      r.heure = tNow;
+    } else {
+      r.agentNom = session.nom;
+      r.heure = tNow;
+    }
+  };
+
+  document.getElementById('backBtn').onclick = async () => {
+    if(isPhotoUploading) {
+      toast('⏳ Veuillez patienter, photo en cours de traitement...');
+      return;
+    }
+    const btn = document.getElementById('backBtn');
+    await triggerAutoSave(true, btn);
+    goToZones();
   };
 
   document.getElementById('forceSaveBtn').onclick = async () => {
     if(isPhotoUploading) {
-      toast('⏳ Veuillez patienter, une photo est en cours de traitement...');
+      toast('⏳ Veuillez patienter, photo en cours de traitement...');
       return;
     }
     const btn = document.getElementById('forceSaveBtn');
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '⏳ En cours...';
-    btn.disabled = true;
-    
-    await triggerAutoSave(true);
-    
-    btn.innerHTML = '✅ Terminé';
-    toast('Données synchronisées avec succès sur le Cloud !');
-    
-    setTimeout(() => {
-      btn.innerHTML = originalText;
-      btn.disabled = false;
-    }, 2000);
+    await triggerAutoSave(true, btn);
   };
 
-  const renderSinglePhotoHtml = (src, pId, idx, locked, zoneName, itemLabel) => {
-    const safeZone = zoneName.replace(/"/g, '&quot;');
-    const safeLabel = itemLabel.replace(/"/g, '&quot;');
+  document.getElementById('saveBtn').onclick = async ()=>{
+    if(isPhotoUploading) {
+      toast('⏳ Veuillez patienter, photo en cours de traitement...');
+      return;
+    }
+
+    let missingTasks = 0;
+    if (!isGlobal) {
+        for(const p of activePoints){
+          const r = currentBranch.reponses[p.id];
+          const cvR = (c.contreVisite && c.contreVisite.reponses && c.contreVisite.reponses[p.id]) || {};
+          const isAlreadyControlled = cvR.conforme !== undefined && cvR.conforme !== null;
+
+          if (!isContreVisite && isAlreadyControlled) continue; 
+
+          if(!r || r.conforme === null || r.conforme === undefined){
+            missingTasks++;
+          }
+        }
+    }
+
+    if(missingTasks > 0){
+       toast(`⚠️ Impossible de terminer : Il reste ${missingTasks} tâche(s) à valider (OK/NOK).`);
+       return;
+    }
+
+    const btn = document.getElementById('saveBtn');
+    await triggerAutoSave(true, btn);
+    goToZones();
+  };
+
+  const renderSinglePhotoHtml = (src, pId, idx, locked, zoneName, itemLabel, author, time) => {
+    const safeZone = (zoneName||'').replace(/"/g, '&quot;');
+    const safeLabel = (itemLabel||'').replace(/"/g, '&quot;');
+    const safeAuthor = (author||'').replace(/"/g, '&quot;');
+    const safeTime = (time||'').replace(/"/g, '&quot;');
     return `
       <div class="photo-item-thumb" data-idx="${idx}" style="position:relative;display:inline-block;margin-right:8px;margin-top:4px;">
-        <img class="photo-thumb click-zoom" src="${src}" data-zone="${safeZone}" data-label="${safeLabel}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;">
+        <img class="photo-thumb click-zoom" src="${src}" data-zone="${safeZone}" data-label="${safeLabel}" data-author="${safeAuthor}" data-time="${safeTime}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;">
         ${!locked ? `<button class="del-photo-btn" data-point="${pId}" data-idx="${idx}">✕</button>` : ''}
       </div>
     `;
@@ -1451,14 +1589,20 @@ async function renderControle(){
           const cvR = (c.contreVisite && c.contreVisite.reponses && c.contreVisite.reponses[p.id]) || {};
 
           const eqPhotoIds = eqR.photos || [];
-          const eqPhotosBase64 = [];
-          for(let pid of eqPhotoIds) { eqPhotosBase64.push(await getPhotoBase64(pid)); }
+          const eqPhotosData = [];
+          for(let pid of eqPhotoIds) { 
+              const d = await getPhotoData(pid, eqR.agentNom || c.passageEquipe.agentNom, eqR.heure || c.passageEquipe.heure); 
+              if(d) eqPhotosData.push(d); 
+          }
 
           const cvPhotoIds = cvR.photos || [];
-          const cvPhotosBase64 = [];
-          for(let pid of cvPhotoIds) { cvPhotosBase64.push(await getPhotoBase64(pid)); }
+          const cvPhotosData = [];
+          for(let pid of cvPhotoIds) { 
+              const d = await getPhotoData(pid, cvR.controleurNom || c.contreVisite.controleurNom, cvR.heure || c.contreVisite.heure); 
+              if(d) cvPhotosData.push(d); 
+          }
 
-          const myPhotosBase64 = isContreVisite ? cvPhotosBase64 : eqPhotosBase64;
+          const myPhotosData = isContreVisite ? cvPhotosData : eqPhotosData;
           const myPhotoIds = isContreVisite ? cvPhotoIds : eqPhotoIds;
 
           const isAlreadyControlled = cvR.conforme !== undefined && cvR.conforme !== null;
@@ -1506,25 +1650,25 @@ async function renderControle(){
                 </div>
               </div>
 
-              ${enableEq && isContreVisite && eqPhotosBase64.length ? `
+              ${enableEq && isContreVisite && eqPhotosData.length ? `
                 <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:8px;">${t('📸 Photos transmises par l\'Équipe :')}</div>
                 <div class="point-photo-row" style="display:flex;gap:6px;overflow-x:auto;padding:6px;background:#DCEEEC;border-radius:8px;margin-top:4px;">
-                  ${eqPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${displayLabel.replace(/"/g, '&quot;')}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
+                  ${eqPhotosData.map(pData=>`<img class="photo-thumb click-zoom" src="${pData.base64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${displayLabel.replace(/"/g, '&quot;')}" data-author="${(pData.author||'').replace(/"/g, '&quot;')}" data-time="${(pData.time||'').replace(/"/g, '&quot;')}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
                 </div>
               ` : ''}
 
               ${enableEq && isContreVisite && eqR.commentaire ? `
-                <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">${t('💬 Obs. Équipe')} (${c.passageEquipe.agentNom||t('Équipe')}) : "${eqR.commentaire}"</div>
+                <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">${t('💬 Obs. Équipe')} (${eqR.agentNom||t('Équipe')}) : "${eqR.commentaire}"</div>
               ` : ''}
 
               ${enableEq && !isContreVisite && isAlreadyControlled ? `
                 <div style="font-size:11px;color:#C7791B;font-weight:700;margin-top:8px;padding:8px;background:#FAF8F3;border:1px dashed #C7791B;border-radius:8px;">
-                  🔒 ${t('Tâche déjà contrôlée par')} ${c.contreVisite.controleurNom || t('le Contrôleur')} : 
+                  🔒 ${t('Tâche déjà contrôlée par')} ${cvR.controleurNom || t('le Contrôleur')} : 
                   <strong style="color:${cvR.conforme?'#2B6E68':'#B23A34'}; font-size:12px;">${cvR.conforme?'✓ OK':'✕ NOK'}</strong>
                   ${cvR.commentaire ? `<div style="margin-top:4px;font-style:italic;color:#4A453E;">💬 "${cvR.commentaire}"</div>` : ''}
-                  ${cvPhotosBase64.length > 0 ? `
+                  ${cvPhotosData.length > 0 ? `
                     <div style="display:flex;gap:6px;overflow-x:auto;margin-top:6px;">
-                      ${cvPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${displayLabel.replace(/"/g, '&quot;')}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #C7791B;cursor:pointer;">`).join('')}
+                      ${cvPhotosData.map(pData=>`<img class="photo-thumb click-zoom" src="${pData.base64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${displayLabel.replace(/"/g, '&quot;')}" data-author="${(pData.author||'').replace(/"/g, '&quot;')}" data-time="${(pData.time||'').replace(/"/g, '&quot;')}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #C7791B;cursor:pointer;">`).join('')}
                     </div>
                   ` : ''}
                 </div>
@@ -1535,7 +1679,7 @@ async function renderControle(){
               </div>
               <div class="point-photo-row" id="photos_${p.id}" style="display:flex;align-items:center;overflow-x:auto;margin-top:4px;">
                 <div class="my-photos-container" style="display:inline-flex;align-items:center;">
-                  ${myPhotosBase64.map((pSrc, idx) => renderSinglePhotoHtml(pSrc, p.id, idx, isLockedByControl, translatedZoneName, displayLabel)).join('')}
+                  ${myPhotosData.map((pData, idx) => renderSinglePhotoHtml(pData.base64, p.id, idx, isLockedByControl, translatedZoneName, displayLabel, pData.author, pData.time)).join('')}
                 </div>
                 ${!isLockedByControl ? `
                   <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
@@ -1557,18 +1701,17 @@ async function renderControle(){
     const zsCvR = (c.contreVisite && c.contreVisite.reponses && c.contreVisite.reponses[zsId]) || {};
 
     const zsEqPhotoIds = zsEqR.photos || [];
-    const zsEqPhotosBase64 = [];
-    for(let pid of zsEqPhotoIds) { zsEqPhotosBase64.push(await getPhotoBase64(pid)); }
+    const zsEqPhotosData = [];
+    for(let pid of zsEqPhotoIds) { const d = await getPhotoData(pid, zsEqR.agentNom || c.passageEquipe.agentNom, zsEqR.heure || c.passageEquipe.heure); if(d) zsEqPhotosData.push(d); }
 
     const zsCvPhotoIds = zsCvR.photos || [];
-    const zsCvPhotosBase64 = [];
-    for(let pid of zsCvPhotoIds) { zsCvPhotosBase64.push(await getPhotoBase64(pid)); }
+    const zsCvPhotosData = [];
+    for(let pid of zsCvPhotoIds) { const d = await getPhotoData(pid, zsCvR.controleurNom || c.contreVisite.controleurNom, zsCvR.heure || c.contreVisite.heure); if(d) zsCvPhotosData.push(d); }
 
-    const zsMyPhotosBase64 = isContreVisite ? zsCvPhotosBase64 : zsEqPhotosBase64;
+    const zsMyPhotosData = isContreVisite ? zsCvPhotosData : zsEqPhotosData;
     
     const zsIsLockedByControl = false; 
-
-    const zsTitle = isGlobal ? t('📝 Bilan Global du Jour') : t('📝 Bilan de la zone (Optionnel)');
+    const zsTitle = isGlobal ? t('📝 Bilan / Infos (Général)') : t('📝 Bilan / Infos (Zone)');
 
     pointsHtml += `
       <div class="point-item" data-point="${zsId}" style="border:2px solid #C7791B;padding:12px;border-radius:10px;margin-bottom:12px;background:#FAF8F3;">
@@ -1576,24 +1719,24 @@ async function renderControle(){
           ${zsTitle}
         </div>
 
-        ${enableEq && isContreVisite && zsEqPhotosBase64.length ? `
+        ${enableEq && isContreVisite && zsEqPhotosData.length ? `
           <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:8px;">${t('📸 Photos transmises par l\'Équipe :')}</div>
           <div class="point-photo-row" style="display:flex;gap:6px;overflow-x:auto;padding:6px;background:#DCEEEC;border-radius:8px;margin-top:4px;">
-            ${zsEqPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${zsTitle.replace(/"/g, '&quot;')}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
+            ${zsEqPhotosData.map(pData=>`<img class="photo-thumb click-zoom" src="${pData.base64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${zsTitle.replace(/"/g, '&quot;')}" data-author="${(pData.author||'').replace(/"/g, '&quot;')}" data-time="${(pData.time||'').replace(/"/g, '&quot;')}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
           </div>
         ` : ''}
 
         ${enableEq && isContreVisite && zsEqR.commentaire ? `
-          <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">${t('💬 Obs. Équipe')} (${c.passageEquipe.agentNom||t('Équipe')}) : "${zsEqR.commentaire}"</div>
+          <div style="font-size:11px;color:#2B6E68;margin-top:4px;font-style:italic;">${t('💬 Obs. Équipe')} (${zsEqR.agentNom||t('Équipe')}) : "${zsEqR.commentaire}"</div>
         ` : ''}
 
-        ${enableEq && !isContreVisite && (zsCvR.commentaire || zsCvPhotosBase64.length > 0) ? `
+        ${enableEq && !isContreVisite && (zsCvR.commentaire || zsCvPhotosData.length > 0) ? `
           <div style="font-size:11px;color:#C7791B;font-weight:700;margin-top:8px;padding:8px;background:#fff;border:1px dashed #C7791B;border-radius:8px;">
-            🔒 ${t('Bilan complété par')} ${c.contreVisite.controleurNom || t('le Contrôleur')}
+            🔒 ${t('Bilan complété par')} ${zsCvR.controleurNom || t('le Contrôleur')}
             ${zsCvR.commentaire ? `<div style="margin-top:4px;font-style:italic;color:#4A453E;">💬 "${zsCvR.commentaire}"</div>` : ''}
-            ${zsCvPhotosBase64.length > 0 ? `
+            ${zsCvPhotosData.length > 0 ? `
               <div style="display:flex;gap:6px;overflow-x:auto;margin-top:6px;">
-                ${zsCvPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${zsTitle.replace(/"/g, '&quot;')}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #C7791B;cursor:pointer;">`).join('')}
+                ${zsCvPhotosData.map(pData=>`<img class="photo-thumb click-zoom" src="${pData.base64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${zsTitle.replace(/"/g, '&quot;')}" data-author="${(pData.author||'').replace(/"/g, '&quot;')}" data-time="${(pData.time||'').replace(/"/g, '&quot;')}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #C7791B;cursor:pointer;">`).join('')}
               </div>
             ` : ''}
           </div>
@@ -1601,7 +1744,7 @@ async function renderControle(){
 
         <div class="point-photo-row" id="photos_${zsId}" style="display:flex;align-items:center;overflow-x:auto;margin-top:8px;">
           <div class="my-photos-container" style="display:inline-flex;align-items:center;">
-            ${zsMyPhotosBase64.map((pSrc, idx) => renderSinglePhotoHtml(pSrc, zsId, idx, zsIsLockedByControl, translatedZoneName, zsTitle)).join('')}
+            ${zsMyPhotosData.map((pData, idx) => renderSinglePhotoHtml(pData.base64, zsId, idx, zsIsLockedByControl, translatedZoneName, zsTitle, pData.author, pData.time)).join('')}
           </div>
           ${!zsIsLockedByControl ? `
             <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
@@ -1611,7 +1754,7 @@ async function renderControle(){
           ` : ''}
         </div>
         
-        <textarea class="point-comment" placeholder="${isGlobal ? t('Saisissez le bilan général ici (optionnel)...') : t('Remarques générales sur la zone (optionnel)')}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6; box-sizing:border-box; min-height:60px;" ${zsIsLockedByControl ? 'disabled' : ''}>${zsR.commentaire||''}</textarea>
+        <textarea class="point-comment" placeholder="${isGlobal ? t('Saisissez le bilan général ici (optionnel)...') : t('Remarques (optionnel)')}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6; box-sizing:border-box; min-height:60px;" ${zsIsLockedByControl ? 'disabled' : ''}>${zsR.commentaire||''}</textarea>
       </div>
     `;
 
@@ -1629,6 +1772,7 @@ async function renderControle(){
           const idx = parseInt(btn.dataset.idx);
           if(currentBranch.reponses[pId] && currentBranch.reponses[pId].photos){
             const deletedId = currentBranch.reponses[pId].photos.splice(idx, 1)[0];
+            updateItemMeta(currentBranch.reponses[pId]);
             
             if(deletedId && !deletedId.startsWith('data:image')){
                 idbDelete('photos', deletedId);
@@ -1658,7 +1802,6 @@ async function renderControle(){
                 });
               }
             }
-            
             triggerAutoSave();
           }
         };
@@ -1690,6 +1833,7 @@ async function renderControle(){
           }
 
           r.conforme = btn.dataset.val==='true';
+          updateItemMeta(r);
           
           item.querySelectorAll('.toggle-btn').forEach(b=>{
              b.classList.remove('active');
@@ -1726,7 +1870,13 @@ async function renderControle(){
               const dataUrl = await fileToResizedBase64(file, 1200);
               
               const photoId = uid('photo');
-              await pushToCloud('photos', photoId, { id: photoId, base64: dataUrl });
+              const currentTime = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+              await pushToCloud('photos', photoId, { 
+                  id: photoId, 
+                  base64: dataUrl,
+                  author: session.nom,
+                  timestamp: currentTime
+              });
 
               if (!currentBranch.reponses[pId]) {
                 currentBranch.reponses[pId] = { conforme: null, photos: [], commentaire: '' };
@@ -1736,16 +1886,15 @@ async function renderControle(){
               }
               
               currentBranch.reponses[pId].photos.push(photoId);
+              updateItemMeta(currentBranch.reponses[pId]);
 
               const myContainer = item.querySelector('.my-photos-container');
               if(myContainer){
                 const newIdx = currentBranch.reponses[pId].photos.length - 1;
-                
                 let tempZoneName = translatedZoneName;
                 let tempItemLabel = pId === 'zone_summary' ? zsTitle : await translateDynamicText(item.querySelector('.point-label span').textContent, userLang);
 
-                myContainer.insertAdjacentHTML('beforeend', renderSinglePhotoHtml(dataUrl, pId, newIdx, false, tempZoneName, tempItemLabel));
-                
+                myContainer.insertAdjacentHTML('beforeend', renderSinglePhotoHtml(dataUrl, pId, newIdx, false, tempZoneName, tempItemLabel, session.nom, currentTime));
                 attachSliderListeners(item);
                 attachDelButtons();
               }
@@ -1766,6 +1915,7 @@ async function renderControle(){
 
       item.querySelector('.point-comment').oninput = (e)=>{
         r.commentaire = e.target.value;
+        updateItemMeta(r);
         isInteracting = true;
         clearTimeout(item.__commentTimer);
         item.__commentTimer = setTimeout(()=>{
@@ -1773,36 +1923,6 @@ async function renderControle(){
         }, 800);
       };
     });
-  };
-
-  document.getElementById('saveBtn').onclick = async ()=>{
-    if(isPhotoUploading) {
-      toast('⏳ Veuillez patienter, une photo est en cours de traitement...');
-      return;
-    }
-
-    let missingTasks = 0;
-    if (!isGlobal) {
-        for(const p of activePoints){
-          const r = currentBranch.reponses[p.id];
-          const cvR = (c.contreVisite && c.contreVisite.reponses && c.contreVisite.reponses[p.id]) || {};
-          const isAlreadyControlled = cvR.conforme !== undefined && cvR.conforme !== null;
-
-          if (!isContreVisite && isAlreadyControlled) continue; 
-
-          if(!r || r.conforme === null || r.conforme === undefined){
-            missingTasks++;
-          }
-        }
-    }
-
-    if(missingTasks > 0){
-       toast(`⚠️ Impossible de terminer : Il reste ${missingTasks} tâche(s) à valider (OK/NOK).`);
-       return;
-    }
-
-    await triggerAutoSave(true);
-    goToZones();
   };
 
   await refreshPointsListUI();
@@ -1942,22 +2062,22 @@ async function generatePDFForDate(targetDateIso){
       if(!isFinalOk) totalNok++;
       if(isRealEcart) totalEcarts++;
 
-      const allEqPhotos = [];
-      for(const pid of (enableEq ? (rEq.photos || []) : [])){
-         const b64 = await getPhotoBase64(pid);
-         if(b64) allEqPhotos.push(b64);
-      }
-      
-      const allCvPhotos = [];
-      for(const pid of (rCv.photos || [])){
-         const b64 = await getPhotoBase64(pid);
-         if(b64) allCvPhotos.push(b64);
-      }
-
       const eqAgent = rEq.agentNom || eq.agentNom || 'Agent';
       const eqTime = rEq.heure || eq.heure || '--:--';
       const cvCtrl = rCv.controleurNom || cv.controleurNom || 'Contrôleur';
       const cvTime = rCv.heure || cv.heure || '--:--';
+
+      const allEqPhotos = [];
+      for(const pid of (enableEq ? (rEq.photos || []) : [])){
+         const pData = await getPhotoData(pid, eqAgent, eqTime);
+         if(pData && pData.base64) allEqPhotos.push(pData);
+      }
+      
+      const allCvPhotos = [];
+      for(const pid of (rCv.photos || [])){
+         const pData = await getPhotoData(pid, cvCtrl, cvTime);
+         if(pData && pData.base64) allCvPhotos.push(pData);
+      }
 
       let neededHeight = 16; 
       if(enableEq && rEq.commentaire) neededHeight += 5;
@@ -2030,9 +2150,9 @@ async function generatePDFForDate(targetDateIso){
       if(totalPhotos > 0){
         let xPos = 18;
         
-        for(const imgBase64 of allEqPhotos){
+        for(const pData of allEqPhotos){
           try {
-            const imgProps = docPdf.getImageProperties(imgBase64);
+            const imgProps = docPdf.getImageProperties(pData.base64);
             let finalW = 55;
             let finalH = (imgProps.height * finalW) / imgProps.width;
             if(finalH > 38) {
@@ -2042,20 +2162,23 @@ async function generatePDFForDate(targetDateIso){
             const offsetX = xPos + (55 - finalW) / 2;
             const offsetY = y + (38 - finalH) / 2;
 
-            docPdf.addImage(imgBase64, 'JPEG', offsetX, offsetY, finalW, finalH);
+            docPdf.addImage(pData.base64, 'JPEG', offsetX, offsetY, finalW, finalH);
             docPdf.setFillColor(...C_TEAL);
             docPdf.rect(xPos, y + 38, 55, 6, 'F');
-            docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
-            docPdf.text(`ÉQUIPE : ${eqAgent}`, xPos + 2, y + 42.5);
+            docPdf.setFontSize(6); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
+            
+            let shortAuth = pData.author || '';
+            if(shortAuth.length > 9) shortAuth = shortAuth.substring(0,8) + '.';
+            docPdf.text(`EQ: ${shortAuth} (${pData.time})`, xPos + 2, y + 42.5);
 
             xPos += 58;
             if(xPos > 140){ xPos = 18; y += 48; }
           } catch(e){}
         }
 
-        for(const imgBase64 of allCvPhotos){
+        for(const pData of allCvPhotos){
           try {
-            const imgProps = docPdf.getImageProperties(imgBase64);
+            const imgProps = docPdf.getImageProperties(pData.base64);
             let finalW = 55;
             let finalH = (imgProps.height * finalW) / imgProps.width;
             if(finalH > 38) {
@@ -2065,11 +2188,14 @@ async function generatePDFForDate(targetDateIso){
             const offsetX = xPos + (55 - finalW) / 2;
             const offsetY = y + (38 - finalH) / 2;
 
-            docPdf.addImage(imgBase64, 'JPEG', offsetX, offsetY, finalW, finalH);
+            docPdf.addImage(pData.base64, 'JPEG', offsetX, offsetY, finalW, finalH);
             docPdf.setFillColor(...C_AMBER);
             docPdf.rect(xPos, y + 38, 55, 6, 'F');
-            docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
-            docPdf.text(enableEq ? `CTRL : ${cvCtrl}` : `CONSTAT : ${cvCtrl}`, xPos + 2, y + 42.5);
+            docPdf.setFontSize(6); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
+            
+            let shortAuth = pData.author || '';
+            if(shortAuth.length > 9) shortAuth = shortAuth.substring(0,8) + '.';
+            docPdf.text(`${enableEq ? 'CTRL' : 'CONST'}: ${shortAuth} (${pData.time})`, xPos + 2, y + 42.5);
 
             xPos += 58;
             if(xPos > 140){ xPos = 18; y += 48; }
@@ -2107,64 +2233,77 @@ async function generatePDFForDate(targetDateIso){
         docPdf.setFont('helvetica', 'bold');
         docPdf.setFontSize(9);
         docPdf.setTextColor(199, 121, 27);
-        docPdf.text('BILAN DE LA ZONE', 18, y + 7);
+        docPdf.text('BILAN / INFOS (ZONE)', 18, y + 7);
         y += 14;
+
+        const zsEqAgent = zsEq ? (zsEq.agentNom || eq.agentNom || 'Agent') : '';
+        const zsEqTime = zsEq ? (zsEq.heure || eq.heure || '--:--') : '';
+        const zsCvCtrl = zsCv ? (zsCv.controleurNom || cv.controleurNom || 'Contrôleur') : '';
+        const zsCvTime = zsCv ? (zsCv.heure || cv.heure || '--:--') : '';
 
         if(zsEq && zsEq.commentaire || zsCv && zsCv.commentaire){
             docPdf.setFontSize(8);
             docPdf.setTextColor(80, 80, 80);
             if(enableEq && zsEq && zsEq.commentaire){
-                docPdf.text(`• Bilan Équipe : ${zsEq.commentaire}`, 18, y);
+                docPdf.text(`• Bilan Équipe [${zsEqAgent} à ${zsEqTime}] : ${zsEq.commentaire}`, 18, y);
                 y += 5;
             }
             if(zsCv && zsCv.commentaire){
                 const tag = enableEq ? 'Contrôleur' : 'Constat';
-                docPdf.text(`• Bilan ${tag} : ${zsCv.commentaire}`, 18, y);
+                docPdf.text(`• Bilan ${tag} [${zsCvCtrl} à ${zsCvTime}] : ${zsCv.commentaire}`, 18, y);
                 y += 5;
             }
         }
 
         const zsAllEqPhotos = [];
         if(enableEq && zsEq && zsEq.photos) {
-            for(const pid of zsEq.photos) { const b = await getPhotoBase64(pid); if(b) zsAllEqPhotos.push(b); }
+            for(const pid of zsEq.photos) { const pData = await getPhotoData(pid, zsEqAgent, zsEqTime); if(pData && pData.base64) zsAllEqPhotos.push(pData); }
         }
         const zsAllCvPhotos = [];
         if(zsCv && zsCv.photos) {
-            for(const pid of zsCv.photos) { const b = await getPhotoBase64(pid); if(b) zsAllCvPhotos.push(b); }
+            for(const pid of zsCv.photos) { const pData = await getPhotoData(pid, zsCvCtrl, zsCvTime); if(pData && pData.base64) zsAllCvPhotos.push(pData); }
         }
 
         if(zsAllEqPhotos.length > 0 || zsAllCvPhotos.length > 0){
             let xPos = 18;
-            for(const imgBase64 of zsAllEqPhotos){
+            for(const pData of zsAllEqPhotos){
                 try {
-                    const imgProps = docPdf.getImageProperties(imgBase64);
+                    const imgProps = docPdf.getImageProperties(pData.base64);
                     let finalW = 55;
                     let finalH = (imgProps.height * finalW) / imgProps.width;
                     if(finalH > 38) { finalH = 38; finalW = (imgProps.width * finalH) / imgProps.height; }
                     const offsetX = xPos + (55 - finalW) / 2;
                     const offsetY = y + (38 - finalH) / 2;
-                    docPdf.addImage(imgBase64, 'JPEG', offsetX, offsetY, finalW, finalH);
+                    docPdf.addImage(pData.base64, 'JPEG', offsetX, offsetY, finalW, finalH);
                     docPdf.setFillColor(...C_TEAL);
                     docPdf.rect(xPos, y + 38, 55, 6, 'F');
-                    docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
-                    docPdf.text(`ÉQUIPE`, xPos + 2, y + 42.5);
+                    docPdf.setFontSize(6); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
+                    
+                    let shortAuth = pData.author || '';
+                    if(shortAuth.length > 9) shortAuth = shortAuth.substring(0,8) + '.';
+                    docPdf.text(`EQ: ${shortAuth} (${pData.time})`, xPos + 2, y + 42.5);
+                    
                     xPos += 58;
                     if(xPos > 140){ xPos = 18; y += 48; }
                 } catch(e){}
             }
-            for(const imgBase64 of zsAllCvPhotos){
+            for(const pData of zsAllCvPhotos){
                 try {
-                    const imgProps = docPdf.getImageProperties(imgBase64);
+                    const imgProps = docPdf.getImageProperties(pData.base64);
                     let finalW = 55;
                     let finalH = (imgProps.height * finalW) / imgProps.width;
                     if(finalH > 38) { finalH = 38; finalW = (imgProps.width * finalH) / imgProps.height; }
                     const offsetX = xPos + (55 - finalW) / 2;
                     const offsetY = y + (38 - finalH) / 2;
-                    docPdf.addImage(imgBase64, 'JPEG', offsetX, offsetY, finalW, finalH);
+                    docPdf.addImage(pData.base64, 'JPEG', offsetX, offsetY, finalW, finalH);
                     docPdf.setFillColor(...C_AMBER);
                     docPdf.rect(xPos, y + 38, 55, 6, 'F');
-                    docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
-                    docPdf.text(enableEq ? `CTRL` : `CONSTAT`, xPos + 2, y + 42.5);
+                    docPdf.setFontSize(6); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
+                    
+                    let shortAuth = pData.author || '';
+                    if(shortAuth.length > 9) shortAuth = shortAuth.substring(0,8) + '.';
+                    docPdf.text(`${enableEq ? 'CTRL' : 'CONST'}: ${shortAuth} (${pData.time})`, xPos + 2, y + 42.5);
+                    
                     xPos += 58;
                     if(xPos > 140){ xPos = 18; y += 48; }
                 } catch(e){}
@@ -2200,66 +2339,79 @@ async function generatePDFForDate(targetDateIso){
           docPdf.setTextColor(255, 255, 255);
           docPdf.setFont('helvetica', 'bold');
           docPdf.setFontSize(10);
-          docPdf.text('BILAN GÉNÉRAL DE LA JOURNÉE', 18, y + 7);
+          docPdf.text('BILAN / INFOS (GÉNÉRAL)', 18, y + 7);
           y += 16;
+
+          const zsEqAgent = gZsEq ? (gZsEq.agentNom || gEq.agentNom || 'Agent') : '';
+          const zsEqTime = gZsEq ? (gZsEq.heure || gEq.heure || '--:--') : '';
+          const zsCvCtrl = gZsCv ? (gZsCv.controleurNom || gCv.controleurNom || 'Contrôleur') : '';
+          const zsCvTime = gZsCv ? (gZsCv.heure || gCv.heure || '--:--') : '';
           
           if(gZsEq && gZsEq.commentaire || gZsCv && gZsCv.commentaire){
               docPdf.setFontSize(8);
               docPdf.setTextColor(80, 80, 80);
               if(enableEq && gZsEq && gZsEq.commentaire){
-                  docPdf.text(`• Bilan Équipe : ${gZsEq.commentaire}`, 18, y);
+                  docPdf.text(`• Bilan Équipe [${zsEqAgent} à ${zsEqTime}] : ${gZsEq.commentaire}`, 18, y);
                   y += 5;
               }
               if(gZsCv && gZsCv.commentaire){
                   const tag = enableEq ? 'Contrôleur' : 'Constat';
-                  docPdf.text(`• Bilan ${tag} : ${gZsCv.commentaire}`, 18, y);
+                  docPdf.text(`• Bilan ${tag} [${zsCvCtrl} à ${zsCvTime}] : ${gZsCv.commentaire}`, 18, y);
                   y += 5;
               }
           }
 
           const gAllEqPhotos = [];
           if(enableEq && gZsEq && gZsEq.photos) {
-              for(const pid of gZsEq.photos) { const b = await getPhotoBase64(pid); if(b) gAllEqPhotos.push(b); }
+              for(const pid of gZsEq.photos) { const pData = await getPhotoData(pid, zsEqAgent, zsEqTime); if(pData && pData.base64) gAllEqPhotos.push(pData); }
           }
           const gAllCvPhotos = [];
           if(gZsCv && gZsCv.photos) {
-              for(const pid of gZsCv.photos) { const b = await getPhotoBase64(pid); if(b) gAllCvPhotos.push(b); }
+              for(const pid of gZsCv.photos) { const pData = await getPhotoData(pid, zsCvCtrl, zsCvTime); if(pData && pData.base64) gAllCvPhotos.push(pData); }
           }
 
           if(gAllEqPhotos.length > 0 || gAllCvPhotos.length > 0){
               let xPos = 18;
-              for(const imgBase64 of gAllEqPhotos){
+              for(const pData of gAllEqPhotos){
                   try {
                       if(y > 250){ docPdf.addPage(); y = 20; }
-                      const imgProps = docPdf.getImageProperties(imgBase64);
+                      const imgProps = docPdf.getImageProperties(pData.base64);
                       let finalW = 55;
                       let finalH = (imgProps.height * finalW) / imgProps.width;
                       if(finalH > 38) { finalH = 38; finalW = (imgProps.width * finalH) / imgProps.height; }
                       const offsetX = xPos + (55 - finalW) / 2;
                       const offsetY = y + (38 - finalH) / 2;
-                      docPdf.addImage(imgBase64, 'JPEG', offsetX, offsetY, finalW, finalH);
+                      docPdf.addImage(pData.base64, 'JPEG', offsetX, offsetY, finalW, finalH);
                       docPdf.setFillColor(...C_TEAL);
                       docPdf.rect(xPos, y + 38, 55, 6, 'F');
-                      docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
-                      docPdf.text(`ÉQUIPE`, xPos + 2, y + 42.5);
+                      docPdf.setFontSize(6); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
+                      
+                      let shortAuth = pData.author || '';
+                      if(shortAuth.length > 9) shortAuth = shortAuth.substring(0,8) + '.';
+                      docPdf.text(`EQ: ${shortAuth} (${pData.time})`, xPos + 2, y + 42.5);
+
                       xPos += 58;
                       if(xPos > 140){ xPos = 18; y += 48; }
                   } catch(e){}
               }
-              for(const imgBase64 of gAllCvPhotos){
+              for(const pData of gAllCvPhotos){
                   try {
                       if(y > 250){ docPdf.addPage(); y = 20; }
-                      const imgProps = docPdf.getImageProperties(imgBase64);
+                      const imgProps = docPdf.getImageProperties(pData.base64);
                       let finalW = 55;
                       let finalH = (imgProps.height * finalW) / imgProps.width;
                       if(finalH > 38) { finalH = 38; finalW = (imgProps.width * finalH) / imgProps.height; }
                       const offsetX = xPos + (55 - finalW) / 2;
                       const offsetY = y + (38 - finalH) / 2;
-                      docPdf.addImage(imgBase64, 'JPEG', offsetX, offsetY, finalW, finalH);
+                      docPdf.addImage(pData.base64, 'JPEG', offsetX, offsetY, finalW, finalH);
                       docPdf.setFillColor(...C_AMBER);
                       docPdf.rect(xPos, y + 38, 55, 6, 'F');
-                      docPdf.setFontSize(6.5); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
-                      docPdf.text(enableEq ? `CTRL` : `CONSTAT`, xPos + 2, y + 42.5);
+                      docPdf.setFontSize(6); docPdf.setTextColor(255, 255, 255); docPdf.setFont('helvetica', 'bold');
+                      
+                      let shortAuth = pData.author || '';
+                      if(shortAuth.length > 9) shortAuth = shortAuth.substring(0,8) + '.';
+                      docPdf.text(`${enableEq ? 'CTRL' : 'CONST'}: ${shortAuth} (${pData.time})`, xPos + 2, y + 42.5);
+
                       xPos += 58;
                       if(xPos > 140){ xPos = 18; y += 48; }
                   } catch(e){}
@@ -2415,16 +2567,21 @@ async function renderHistory(){
           const eqPhotosIds = rEq.photos || [];
           const cvPhotosIds = rCv.photos || [];
           
+          const eqAgent = rEq.agentNom || eq.agentNom || t('Équipe');
+          const eqTime = rEq.heure || eq.heure || '--:--';
+          const cvCtrl = rCv.controleurNom || cv.controleurNom || (enableEq ? t('Contrôleur') : t('Constat'));
+          const cvTime = rCv.heure || cv.heure || '--:--';
+
           const eqPhotos = [];
           for(const pid of eqPhotosIds) {
-              const b64 = await getPhotoBase64(pid);
-              if(b64) eqPhotos.push(b64);
+              const pData = await getPhotoData(pid, eqAgent, eqTime);
+              if(pData && pData.base64) eqPhotos.push(pData);
           }
           
           const cvPhotos = [];
           for(const pid of cvPhotosIds) {
-              const b64 = await getPhotoBase64(pid);
-              if(b64) cvPhotos.push(b64);
+              const pData = await getPhotoData(pid, cvCtrl, cvTime);
+              if(pData && pData.base64) cvPhotos.push(pData);
           }
 
           const eqOk = (!config.reqPhotoEq || eqPhotosIds.length > 0) ? (rEq.conforme !== false) : false;
@@ -2432,11 +2589,6 @@ async function renderHistory(){
 
           const isFinalOk = (cvOk === true);
           const isRealEcart = enableEq ? (eqOk === true && cvOk === false) : false;
-
-          const eqAgent = rEq.agentNom || eq.agentNom || t('Équipe');
-          const eqTime = rEq.heure || eq.heure || '--:--';
-          const cvCtrl = rCv.controleurNom || cv.controleurNom || (enableEq ? t('Contrôleur') : t('Constat'));
-          const cvTime = rCv.heure || cv.heure || '--:--';
 
           const translatedLabel = await translateDynamicText(p.label, userLang);
 
@@ -2465,22 +2617,22 @@ async function renderHistory(){
                 `}
               </div>
 
-              ${enableEq && rEq.commentaire ? `<div style="font-size:11px;color:#4A453E;margin-top:4px;">💬 <em>Obs. ${t('Équipe')} [${eqAgent} à ${eqTime}] :</em> "${rEq.commentaire}"</div>` : ''}
+              ${enableEq && rEq.commentaire ? `<div style="font-size:11px;color:#4A453E;margin-top:4px;">💬 <em>Obs. Équipe [${eqAgent} à ${eqTime}] :</em> "${rEq.commentaire}"</div>` : ''}
               ${rCv.commentaire ? `<div style="font-size:11px;color:#C7791B;margin-top:4px;">💬 <em>Obs. ${enableEq ? t('Contrôleur') : t('Constat')} [${cvCtrl} à ${cvTime}] :</em> "${rCv.commentaire}"</div>` : ''}
 
-              ${((enableEq && eqPhotos.length) || cvPhotos.length) ? `
+              ${(eqPhotos.length > 0 || cvPhotos.length > 0) ? `
                 <div style="display:flex;gap:8px;margin-top:10px;overflow-x:auto;padding-bottom:4px;">
-                  ${enableEq ? eqPhotos.map(pSrc => `
+                  ${enableEq ? eqPhotos.map(pData => `
                     <div style="position:relative;flex-shrink:0;">
-                      <img class="photo-thumb click-zoom" src="${pSrc}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${translatedLabel.replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
-                      <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${eqAgent} (${eqTime})</span>
+                      <img class="photo-thumb click-zoom" src="${pData.base64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${translatedLabel.replace(/"/g, '&quot;')}" data-author="${(pData.author||'').replace(/"/g, '&quot;')}" data-time="${(pData.time||'').replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
+                      <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${pData.author} (${pData.time})</span>
                     </div>
                   `).join('') : ''}
 
-                  ${cvPhotos.map(pSrc => `
+                  ${cvPhotos.map(pData => `
                     <div style="position:relative;flex-shrink:0;">
-                      <img class="photo-thumb click-zoom" src="${pSrc}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${translatedLabel.replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
-                      <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${enableEq?'CTRL':'CONST'}: ${cvCtrl} (${cvTime})</span>
+                      <img class="photo-thumb click-zoom" src="${pData.base64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${translatedLabel.replace(/"/g, '&quot;')}" data-author="${(pData.author||'').replace(/"/g, '&quot;')}" data-time="${(pData.time||'').replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
+                      <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${enableEq?'CTRL':'CONST'}: ${pData.author} (${pData.time})</span>
                     </div>
                   `).join('')}
                 </div>
@@ -2497,25 +2649,30 @@ async function renderHistory(){
         if ((zsEq && (zsEq.commentaire || (zsEq.photos && zsEq.photos.length > 0))) || 
             (zsCv && (zsCv.commentaire || (zsCv.photos && zsCv.photos.length > 0)))) {
             
-            const zsTitle = t('Bilan de la zone');
+            const zsTitle = t('Bilan / Infos (Zone)');
+            const zsEqAgent = zsEq ? (zsEq.agentNom || eq.agentNom || t('Équipe')) : '';
+            const zsEqTime = zsEq ? (zsEq.heure || eq.heure || '--:--') : '';
+            const zsCvCtrl = zsCv ? (zsCv.controleurNom || cv.controleurNom || (enableEq ? t('Contrôleur') : t('Constat'))) : '';
+            const zsCvTime = zsCv ? (zsCv.heure || cv.heure || '--:--') : '';
+
             htmlContent += `
               <div class="history-task-item" style="border:2px solid #C7791B;background:#FAF8F3;padding:12px;border-radius:8px;margin-bottom:10px;margin-top:20px;">
                 <div style="font-weight:800;font-size:13.5px;color:#C7791B;margin-bottom:8px;text-transform:uppercase;">📝 ${zsTitle}</div>
-                ${zsEq && zsEq.commentaire ? `<div style="font-size:11px;color:#2B6E68;margin-bottom:4px;font-style:italic;">💬 Obs. Équipe : "${zsEq.commentaire}"</div>` : ''}
-                ${zsCv && zsCv.commentaire ? `<div style="font-size:11px;color:#C7791B;margin-bottom:4px;font-style:italic;">💬 Obs. ${enableEq?'Contrôleur':'Constat'} : "${zsCv.commentaire}"</div>` : ''}
+                ${zsEq && zsEq.commentaire ? `<div style="font-size:11px;color:#2B6E68;margin-bottom:4px;font-style:italic;">💬 Obs. Équipe [${zsEqAgent} à ${zsEqTime}] : "${zsEq.commentaire}"</div>` : ''}
+                ${zsCv && zsCv.commentaire ? `<div style="font-size:11px;color:#C7791B;margin-bottom:4px;font-style:italic;">💬 Obs. ${enableEq?'Contrôleur':'Constat'} [${zsCvCtrl} à ${zsCvTime}] : "${zsCv.commentaire}"</div>` : ''}
             `;
 
             let hasPhotos = false;
             let photosHtml = '<div style="display:flex;gap:8px;margin-top:10px;overflow-x:auto;padding-bottom:4px;">';
             if(zsEq && zsEq.photos) {
                 for(const pid of zsEq.photos) {
-                    const b64 = await getPhotoBase64(pid);
-                    if(b64) {
+                    const pData = await getPhotoData(pid, zsEqAgent, zsEqTime);
+                    if(pData && pData.base64) {
                         hasPhotos = true;
                         photosHtml += `
                           <div style="position:relative;flex-shrink:0;">
-                            <img class="photo-thumb click-zoom" src="${b64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${zsTitle.replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
-                            <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">ÉQUIPE</span>
+                            <img class="photo-thumb click-zoom" src="${pData.base64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${zsTitle.replace(/"/g, '&quot;')}" data-author="${(pData.author||'').replace(/"/g, '&quot;')}" data-time="${(pData.time||'').replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
+                            <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${pData.author}</span>
                           </div>
                         `;
                     }
@@ -2523,13 +2680,13 @@ async function renderHistory(){
             }
             if(zsCv && zsCv.photos) {
                 for(const pid of zsCv.photos) {
-                    const b64 = await getPhotoBase64(pid);
-                    if(b64) {
+                    const pData = await getPhotoData(pid, zsCvCtrl, zsCvTime);
+                    if(pData && pData.base64) {
                         hasPhotos = true;
                         photosHtml += `
                           <div style="position:relative;flex-shrink:0;">
-                            <img class="photo-thumb click-zoom" src="${b64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${zsTitle.replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
-                            <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${enableEq?'CTRL':'CONST'}</span>
+                            <img class="photo-thumb click-zoom" src="${pData.base64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${zsTitle.replace(/"/g, '&quot;')}" data-author="${(pData.author||'').replace(/"/g, '&quot;')}" data-time="${(pData.time||'').replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
+                            <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${pData.author}</span>
                           </div>
                         `;
                     }
@@ -2563,31 +2720,35 @@ async function renderHistory(){
         if ((gZsEq && (gZsEq.commentaire || (gZsEq.photos && gZsEq.photos.length > 0))) || 
             (gZsCv && (gZsCv.commentaire || (gZsCv.photos && gZsCv.photos.length > 0)))) {
             
-            const gTitle = t('BILAN GÉNÉRAL DU JOUR');
+            const gTitle = t('Bilan / Infos (Général)');
+            const gZsEqAgent = gZsEq ? (gZsEq.agentNom || gEq.agentNom || t('Équipe')) : '';
+            const gZsEqTime = gZsEq ? (gZsEq.heure || gEq.heure || '--:--') : '';
+            const gZsCvCtrl = gZsCv ? (gZsCv.controleurNom || gCv.controleurNom || (enableEq ? t('Contrôleur') : t('Constat'))) : '';
+            const gZsCvTime = gZsCv ? (gZsCv.heure || gCv.heure || '--:--') : '';
 
             htmlContent += `
               <div class="history-task-item" style="border:1px solid #E7E1D6;border-radius:12px;margin-bottom:20px;background:#fff;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
                 <div style="background:#211E1A;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
-                  <div style="font-weight:700;font-size:14px;color:#F3E2C6;">📝 ${gTitle}</div>
+                  <div style="font-weight:700;font-size:14px;color:#F3E2C6;">📝 ${gTitle.toUpperCase()}</div>
                   <a href="#histSummary" style="color:#C7791B;font-size:11px;text-decoration:none;">↑ ${t('Sommaire')}</a>
                 </div>
                 <div style="padding:12px;">
             `;
 
-            if(gZsEq && gZsEq.commentaire) htmlContent += `<div style="font-size:11px;color:#2B6E68;margin-bottom:4px;font-style:italic;">💬 Obs. Équipe : "${gZsEq.commentaire}"</div>`;
-            if(gZsCv && gZsCv.commentaire) htmlContent += `<div style="font-size:11px;color:#C7791B;margin-bottom:4px;font-style:italic;">💬 Obs. ${enableEq?'Contrôleur':'Constat'} : "${gZsCv.commentaire}"</div>`;
+            if(gZsEq && gZsEq.commentaire) htmlContent += `<div style="font-size:11px;color:#2B6E68;margin-bottom:4px;font-style:italic;">💬 Obs. Équipe [${gZsEqAgent} à ${gZsEqTime}] : "${gZsEq.commentaire}"</div>`;
+            if(gZsCv && gZsCv.commentaire) htmlContent += `<div style="font-size:11px;color:#C7791B;margin-bottom:4px;font-style:italic;">💬 Obs. ${enableEq?'Contrôleur':'Constat'} [${gZsCvCtrl} à ${gZsCvTime}] : "${gZsCv.commentaire}"</div>`;
 
             let hasPhotos = false;
             let photosHtml = '<div style="display:flex;gap:8px;margin-top:10px;overflow-x:auto;padding-bottom:4px;">';
             if(gZsEq && gZsEq.photos) {
                 for(const pid of gZsEq.photos) {
-                    const b64 = await getPhotoBase64(pid);
-                    if(b64) {
+                    const pData = await getPhotoData(pid, gZsEqAgent, gZsEqTime);
+                    if(pData && pData.base64) {
                         hasPhotos = true;
                         photosHtml += `
                           <div style="position:relative;flex-shrink:0;">
-                            <img class="photo-thumb click-zoom" src="${b64}" data-zone="${t('Bilan Général').replace(/"/g, '&quot;')}" data-label="${gTitle.replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
-                            <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">ÉQUIPE</span>
+                            <img class="photo-thumb click-zoom" src="${pData.base64}" data-zone="${t('Bilan Général').replace(/"/g, '&quot;')}" data-label="${gTitle.replace(/"/g, '&quot;')}" data-author="${(pData.author||'').replace(/"/g, '&quot;')}" data-time="${(pData.time||'').replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
+                            <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${pData.author}</span>
                           </div>
                         `;
                     }
@@ -2595,13 +2756,13 @@ async function renderHistory(){
             }
             if(gZsCv && gZsCv.photos) {
                 for(const pid of gZsCv.photos) {
-                    const b64 = await getPhotoBase64(pid);
-                    if(b64) {
+                    const pData = await getPhotoData(pid, gZsCvCtrl, gZsCvTime);
+                    if(pData && pData.base64) {
                         hasPhotos = true;
                         photosHtml += `
                           <div style="position:relative;flex-shrink:0;">
-                            <img class="photo-thumb click-zoom" src="${b64}" data-zone="${t('Bilan Général').replace(/"/g, '&quot;')}" data-label="${gTitle.replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
-                            <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${enableEq?'CTRL':'CONST'}</span>
+                            <img class="photo-thumb click-zoom" src="${pData.base64}" data-zone="${t('Bilan Général').replace(/"/g, '&quot;')}" data-label="${gTitle.replace(/"/g, '&quot;')}" data-author="${(pData.author||'').replace(/"/g, '&quot;')}" data-time="${(pData.time||'').replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
+                            <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${pData.author}</span>
                           </div>
                         `;
                     }
@@ -2699,18 +2860,13 @@ async function renderStats(){
         const rEq = eq[pId];
         const rCv = cv[pId];
 
-        const eqAnswered = rEq && typeof rEq === 'object' && typeof rEq.conforme === 'boolean';
-        const cvAnswered = rCv && typeof rCv === 'object' && typeof rCv.conforme === 'boolean';
+        // Vérification robuste des anciennes données (où conforme pouvait être juste un string)
+        const eqAnswered = rEq && rEq.conforme !== undefined && rEq.conforme !== null;
+        const cvAnswered = rCv && rCv.conforme !== undefined && rCv.conforme !== null;
 
         if(eqAnswered || cvAnswered){
           totalChecked++;
-          
-          if(!zoneBreakdown[c.zoneId]) {
-              const zObj = ZONES.find(z => z.id === c.zoneId);
-              zoneBreakdown[c.zoneId] = { total: 0, nok: 0, nom: zObj ? zObj.nom : (c.zoneId === 'global' ? 'Bilan Général' : c.zoneId) };
-          }
-          zoneBreakdown[c.zoneId].total++;
-          
+          if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].total++;
           if(!itemStatsMap[pId]) itemStatsMap[pId] = { checked: 0, nok: 0 };
           itemStatsMap[pId].checked++;
 
@@ -2728,7 +2884,7 @@ async function renderStats(){
                       isEcart = true;
                   }
               } else if (eqAnswered) {
-                  isNok = !eqOk; 
+                  isNok = !eqOk;
               }
           } else {
               if (cvAnswered) {
@@ -3290,6 +3446,7 @@ if('serviceWorker' in navigator){
 
 (function init(){
   try {
+    autoCleanCache();
     renderLogin();
   } catch(e) {
     document.getElementById('app-root').innerHTML = '<div style="padding:20px;text-align:center;">Démarrage... Veuillez patienter.</div>';
