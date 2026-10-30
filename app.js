@@ -121,15 +121,19 @@ async function translateDynamicText(text, targetLang){
   if(translationCache[cacheKey]) return translationCache[cacheKey];
 
   try {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 1500); 
     const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=fr|${targetLang}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(id);
+    
     const data = await res.json();
     if(data && data.responseData && data.responseData.translatedText){
-      const translated = data.responseData.translatedText;
-      translationCache[cacheKey] = translated;
-      return translated;
+      translationCache[cacheKey] = data.responseData.translatedText;
+      return translationCache[cacheKey];
     }
   } catch(e){}
+  
   return text;
 }
 
@@ -250,6 +254,15 @@ const DEFAULT_POINTS = {
   ]
 };
 
+const LEGACY_TASKS_MAP = {
+  'cui_sol': 'Nettoyage des sols cuisine',
+  'cui_plans': 'Nettoyage des plans de travail',
+  'cui_poub': 'Vidage & nettoyage des poubelles cuisine',
+  'cui_hottes': 'Nettoyage des hottes et filtres',
+  'sal_vitres': 'Nettoyage des surfaces vitrées',
+  'sal_sol': 'Nettoyage et mopage des sols lobby'
+};
+
 /* =========================================================================
    MOTEUR DE STOCKAGE HYBRIDE & CONFIG GLOBALE
    ========================================================================= */
@@ -328,7 +341,6 @@ async function idbDelete(store, id){
   } catch(e) {}
 }
 
-// CORRECTION IMPORTANTE : ON AWAIT BIEN LE "SET" DE FIREBASE POUR GARANTIR LE RETOUR UTILISATEUR
 async function pushToCloud(collection, id, data){
   await idbPut(collection, data);
   if(navigator.onLine){
@@ -357,23 +369,16 @@ async function syncPendingQueue(){
 window.addEventListener('online', syncPendingQueue);
 
 async function getGlobalConfig() {
-  let conf = await idbGet('mail_schedule', 'global_config');
-  if(navigator.onLine){
-    try {
-      const doc = await db.collection('mail_schedule').doc('global_config').get();
-      if(doc.exists) {
-        conf = doc.data();
-        await idbPut('mail_schedule', conf);
-      }
-    } catch(e){}
-  }
-  if (!conf) conf = {};
-  if (conf.active === undefined) conf.active = true;
-  if (!conf.time1) conf.time1 = '18:00';
-  if (!conf.emails) conf.emails = [];
-  if (conf.enableEquipe === undefined) conf.enableEquipe = true;
-  if (conf.appName === undefined) conf.appName = 'SASU SOAN';
-  if (conf.reqPhotoEq === undefined) conf.reqPhotoEq = false;
+  let conf = { active: true, time1: '18:00', emails: [], enableEquipe: true, appName: 'SASU SOAN', reqPhotoEq: false };
+  try {
+    let localConf = await idbGet('mail_schedule', 'global_config');
+    if (localConf) conf = Object.assign(conf, localConf);
+    if(navigator.onLine){
+      db.collection('mail_schedule').doc('global_config').get().then(doc => {
+        if(doc.exists) idbPut('mail_schedule', doc.data());
+      }).catch(()=>{});
+    }
+  } catch(e) {}
   return conf;
 }
 
@@ -398,6 +403,115 @@ async function getPhotoBase64(photoId) {
 }
 
 /* =========================================================================
+   NOUVEAU SLIDER PHOTO INTELLIGENT
+   ========================================================================= */
+function openPhotoViewerSlider(photos, currentIndex, itemLabel, zoneName) {
+  if (!photos || photos.length === 0) return;
+  
+  const backdrop = document.createElement('div');
+  backdrop.className = 'pv-backdrop';
+  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;padding:10px;';
+  
+  let navHtml = '';
+  if (photos.length > 1) {
+    navHtml = `
+      <div style="display:flex; gap:20px; margin-top:20px; align-items:center; width:100%; justify-content:center;">
+        <button id="pv-prev" class="btn ghost" style="color:#fff; border:1px solid rgba(255,255,255,0.3); background:rgba(255,255,255,0.1); padding:10px 20px; border-radius:50px; cursor:pointer;">◀</button>
+        <span id="pv-counter" style="color:#fff; font-family:var(--mono); font-size:14px; font-weight:bold; min-width:50px; text-align:center;">${currentIndex + 1} / ${photos.length}</span>
+        <button id="pv-next" class="btn ghost" style="color:#fff; border:1px solid rgba(255,255,255,0.3); background:rgba(255,255,255,0.1); padding:10px 20px; border-radius:50px; cursor:pointer;">▶</button>
+      </div>
+    `;
+  }
+
+  backdrop.innerHTML = `
+    <button id="pv-close" style="position:absolute;top:15px;right:15px;background:var(--red);color:#fff;border:none;border-radius:50%;width:34px;height:34px;font-size:16px;font-weight:bold;cursor:pointer;z-index:10001;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;">✕</button>
+    
+    <div style="width:100%; padding: 0 40px 15px; text-align:center; border-bottom:1px solid rgba(255,255,255,0.1); margin-bottom:15px; flex-shrink:0;">
+        <div style="color:#C7791B; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">${zoneName}</div>
+        <div style="color:#fff; font-size:14px; font-weight:500; line-height:1.4;">${itemLabel}</div>
+    </div>
+    
+    <div id="pv-img-container" style="position:relative; display:flex; justify-content:center; align-items:center; width:100%; flex:1; overflow:hidden;">
+        <img id="pv-main-img" src="${photos[currentIndex]}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.6); transition: opacity 0.2s ease;">
+    </div>
+    
+    ${navHtml}
+  `;
+  
+  document.body.appendChild(backdrop);
+
+  const mainImg = backdrop.querySelector('#pv-main-img');
+  const counter = backdrop.querySelector('#pv-counter');
+  let current = currentIndex;
+
+  const updateImg = () => {
+    mainImg.style.opacity = 0.3;
+    setTimeout(() => {
+        mainImg.src = photos[current];
+        if(counter) counter.textContent = `${current + 1} / ${photos.length}`;
+        mainImg.style.opacity = 1;
+    }, 200);
+  };
+
+  if (photos.length > 1) {
+    backdrop.querySelector('#pv-prev').onclick = (e) => {
+      e.stopPropagation();
+      current = (current - 1 + photos.length) % photos.length;
+      updateImg();
+    };
+    backdrop.querySelector('#pv-next').onclick = (e) => {
+      e.stopPropagation();
+      current = (current + 1) % photos.length;
+      updateImg();
+    };
+
+    let touchStartX = 0;
+    let touchEndX = 0;
+    const imgContainer = backdrop.querySelector('#pv-img-container');
+    
+    imgContainer.addEventListener('touchstart', e => {
+        touchStartX = e.changedTouches[0].screenX;
+    }, {passive: true});
+    
+    imgContainer.addEventListener('touchend', e => {
+        touchEndX = e.changedTouches[0].screenX;
+        if (touchEndX < touchStartX - 40) {
+            current = (current + 1) % photos.length;
+            updateImg();
+        }
+        if (touchEndX > touchStartX + 40) {
+            current = (current - 1 + photos.length) % photos.length;
+            updateImg();
+        }
+    }, {passive: true});
+  }
+
+  backdrop.querySelector('#pv-close').onclick = () => backdrop.remove();
+  backdrop.onclick = (e) => {
+      if(e.target === backdrop || e.target.id === 'pv-img-container') backdrop.remove();
+  };
+}
+
+// Fonction pour lier tous les événements clics sur les images et grouper celles d'un même item
+function attachSliderListeners(containerElement) {
+    if (!containerElement) return;
+    
+    // Groupements des photos (tâches normales, bilans, historique...)
+    containerElement.querySelectorAll('.point-item, .history-task-item').forEach(itemCard => {
+        const images = Array.from(itemCard.querySelectorAll('.click-zoom'));
+        images.forEach((img, idx) => {
+            img.onclick = (e) => {
+                e.stopPropagation();
+                const photos = images.map(i => i.src);
+                const zone = img.getAttribute('data-zone') || 'Zone';
+                const label = img.getAttribute('data-label') || 'Tâche / Bilan';
+                openPhotoViewerSlider(photos, idx, label, zone);
+            };
+        });
+    });
+}
+
+/* =========================================================================
    SYNCHRONISATION TEMPS RÉEL (ANTI-DESYNC)
    ========================================================================= */
 function clearRealtimeListeners() {
@@ -414,13 +528,12 @@ function clearRealtimeListeners() {
 /* =========================================================================
    RÉCUPÉRATION DYNAMIQUE DES TÂCHES
    ========================================================================= */
-async function getAllTasksMap(forceCloud = false){
+async function getAllTasksMap(forceCloud = false, callback = null){
   if(navigator.onLine && forceCloud){
     try {
       const snap = await db.collection('task_schedule').get();
-      for (const doc of snap.docs) {
-        await idbPut('task_schedule', doc.data());
-      }
+      for (const doc of snap.docs) { await idbPut('task_schedule', doc.data()); }
+      if (callback) callback(); 
     } catch(e) {}
   }
 
@@ -531,19 +644,6 @@ function toast(msg){
   tEl.classList.add('show');
   clearTimeout(window.__toastTimer);
   window.__toastTimer = setTimeout(()=>tEl.classList.remove('show'), 3500);
-}
-
-function openPhotoViewer(src, title){
-  const backdrop = document.createElement('div');
-  backdrop.className = 'pv-backdrop';
-  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;padding:20px;';
-  backdrop.innerHTML = `
-    <div style="color:#fff;margin-bottom:12px;font-weight:600;font-size:14px;text-align:center;">${title||'Visualisation Photo'}</div>
-    <img src="${src}" style="max-width:100%;max-height:78vh;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.6);">
-    <button class="btn amber" style="margin-top:16px;padding:8px 24px;">Fermer</button>
-  `;
-  document.body.appendChild(backdrop);
-  backdrop.onclick = () => backdrop.remove();
 }
 
 function fileToResizedBase64(file, maxWidth){
@@ -823,11 +923,9 @@ async function renderZones(){
     });
   };
 
-  // Affichage immédiat des données locales
   await getAllTasksMap(false);
   await updateGridUI();
 
-  // Mise à jour silencieuse du Cloud en arrière-plan sans bloquer l'écran
   getAllTasksMap(true, updateGridUI);
 
   const globalBtn = document.getElementById('globalReportBtn');
@@ -1203,7 +1301,7 @@ async function renderMailScheduleAdmin(){
 }
 
 /* =========================================================================
-   SAISIE CONTRÔLE / PRESTATION ZONE (OPTIMISÉE ANTI-LAG)
+   SAISIE CONTRÔLE / PRESTATION ZONE
    ========================================================================= */
 let isPhotoUploading = false; 
 let isInteracting = false; 
@@ -1331,10 +1429,12 @@ async function renderControle(){
     }, 2000);
   };
 
-  const renderSinglePhotoHtml = (src, pId, idx, locked) => {
+  const renderSinglePhotoHtml = (src, pId, idx, locked, zoneName, itemLabel) => {
+    const safeZone = zoneName.replace(/"/g, '&quot;');
+    const safeLabel = itemLabel.replace(/"/g, '&quot;');
     return `
       <div class="photo-item-thumb" data-idx="${idx}" style="position:relative;display:inline-block;margin-right:8px;margin-top:4px;">
-        <img class="photo-thumb click-zoom" src="${src}" data-title="Photo - ${pId}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;">
+        <img class="photo-thumb click-zoom" src="${src}" data-zone="${safeZone}" data-label="${safeLabel}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;">
         ${!locked ? `<button class="del-photo-btn" data-point="${pId}" data-idx="${idx}">✕</button>` : ''}
       </div>
     `;
@@ -1409,7 +1509,7 @@ async function renderControle(){
               ${enableEq && isContreVisite && eqPhotosBase64.length ? `
                 <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:8px;">${t('📸 Photos transmises par l\'Équipe :')}</div>
                 <div class="point-photo-row" style="display:flex;gap:6px;overflow-x:auto;padding:6px;background:#DCEEEC;border-radius:8px;margin-top:4px;">
-                  ${eqPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe - ${p.label}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
+                  ${eqPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${displayLabel.replace(/"/g, '&quot;')}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
                 </div>
               ` : ''}
 
@@ -1424,7 +1524,7 @@ async function renderControle(){
                   ${cvR.commentaire ? `<div style="margin-top:4px;font-style:italic;color:#4A453E;">💬 "${cvR.commentaire}"</div>` : ''}
                   ${cvPhotosBase64.length > 0 ? `
                     <div style="display:flex;gap:6px;overflow-x:auto;margin-top:6px;">
-                      ${cvPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Contrôleur" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #C7791B;cursor:pointer;">`).join('')}
+                      ${cvPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${displayLabel.replace(/"/g, '&quot;')}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #C7791B;cursor:pointer;">`).join('')}
                     </div>
                   ` : ''}
                 </div>
@@ -1435,7 +1535,7 @@ async function renderControle(){
               </div>
               <div class="point-photo-row" id="photos_${p.id}" style="display:flex;align-items:center;overflow-x:auto;margin-top:4px;">
                 <div class="my-photos-container" style="display:inline-flex;align-items:center;">
-                  ${myPhotosBase64.map((pSrc, idx) => renderSinglePhotoHtml(pSrc, p.id, idx, isLockedByControl)).join('')}
+                  ${myPhotosBase64.map((pSrc, idx) => renderSinglePhotoHtml(pSrc, p.id, idx, isLockedByControl, translatedZoneName, displayLabel)).join('')}
                 </div>
                 ${!isLockedByControl ? `
                   <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
@@ -1479,7 +1579,7 @@ async function renderControle(){
         ${enableEq && isContreVisite && zsEqPhotosBase64.length ? `
           <div style="font-size:11px;color:#2B6E68;font-weight:700;margin-top:8px;">${t('📸 Photos transmises par l\'Équipe :')}</div>
           <div class="point-photo-row" style="display:flex;gap:6px;overflow-x:auto;padding:6px;background:#DCEEEC;border-radius:8px;margin-top:4px;">
-            ${zsEqPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe - Bilan" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
+            ${zsEqPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${zsTitle.replace(/"/g, '&quot;')}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">`).join('')}
           </div>
         ` : ''}
 
@@ -1493,7 +1593,7 @@ async function renderControle(){
             ${zsCvR.commentaire ? `<div style="margin-top:4px;font-style:italic;color:#4A453E;">💬 "${zsCvR.commentaire}"</div>` : ''}
             ${zsCvPhotosBase64.length > 0 ? `
               <div style="display:flex;gap:6px;overflow-x:auto;margin-top:6px;">
-                ${zsCvPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Contrôleur" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #C7791B;cursor:pointer;">`).join('')}
+                ${zsCvPhotosBase64.map(pSrc=>`<img class="photo-thumb click-zoom" src="${pSrc}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${zsTitle.replace(/"/g, '&quot;')}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #C7791B;cursor:pointer;">`).join('')}
               </div>
             ` : ''}
           </div>
@@ -1501,7 +1601,7 @@ async function renderControle(){
 
         <div class="point-photo-row" id="photos_${zsId}" style="display:flex;align-items:center;overflow-x:auto;margin-top:8px;">
           <div class="my-photos-container" style="display:inline-flex;align-items:center;">
-            ${zsMyPhotosBase64.map((pSrc, idx) => renderSinglePhotoHtml(pSrc, zsId, idx, zsIsLockedByControl)).join('')}
+            ${zsMyPhotosBase64.map((pSrc, idx) => renderSinglePhotoHtml(pSrc, zsId, idx, zsIsLockedByControl, translatedZoneName, zsTitle)).join('')}
           </div>
           ${!zsIsLockedByControl ? `
             <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
@@ -1516,11 +1616,10 @@ async function renderControle(){
     `;
 
     const listEl = document.getElementById('pointsList');
-    if(listEl) listEl.innerHTML = pointsHtml;
-
-    document.querySelectorAll('.click-zoom').forEach(img => {
-      img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
-    });
+    if(listEl) {
+        listEl.innerHTML = pointsHtml;
+        attachSliderListeners(listEl);
+    }
 
     const attachDelButtons = () => {
       document.querySelectorAll('.del-photo-btn').forEach(btn => {
@@ -1641,11 +1740,13 @@ async function renderControle(){
               const myContainer = item.querySelector('.my-photos-container');
               if(myContainer){
                 const newIdx = currentBranch.reponses[pId].photos.length - 1;
-                myContainer.insertAdjacentHTML('beforeend', renderSinglePhotoHtml(dataUrl, pId, newIdx, false));
                 
-                const newImg = myContainer.lastElementChild.querySelector('.click-zoom');
-                if(newImg) newImg.onclick = () => openPhotoViewer(newImg.src, newImg.dataset.title);
+                let tempZoneName = translatedZoneName;
+                let tempItemLabel = pId === 'zone_summary' ? zsTitle : await translateDynamicText(item.querySelector('.point-label span').textContent, userLang);
+
+                myContainer.insertAdjacentHTML('beforeend', renderSinglePhotoHtml(dataUrl, pId, newIdx, false, tempZoneName, tempItemLabel));
                 
+                attachSliderListeners(item);
                 attachDelButtons();
               }
 
@@ -1775,7 +1876,7 @@ async function generatePDFForDate(targetDateIso){
   docPdf.setFont('helvetica', 'normal');
   docPdf.setFontSize(8.5);
   docPdf.setTextColor(100, 100, 100);
-  docPdf.text('Cliquez sur une zone ci-dessous pour accéder directement au rapport détaillé.', 18, 48);
+  docPdf.text('Cliquez sur "Voir ->" pour accéder directement au rapport détaillé.', 18, 48);
 
   let currentY = 64;
   
@@ -1789,11 +1890,6 @@ async function generatePDFForDate(targetDateIso){
     docPdf.setFontSize(10);
     docPdf.setTextColor(...C_AMBER);
     docPdf.text(`• ZONE : ${z.nom.toUpperCase()}`, 18, currentY + 8);
-
-    docPdf.setFont('helvetica', 'normal');
-    docPdf.setFontSize(8.5);
-    docPdf.setTextColor(...C_INK);
-    docPdf.text('Accéder au détail ->', 140, currentY + 8);
 
     zonePageMap[z.id] = { ySommaire: currentY, pageTarget: 0 };
     currentY += 16;
@@ -2172,7 +2268,18 @@ async function generatePDFForDate(targetDateIso){
       }
   }
 
+  // REPARATION DES LIENS PDF CLICABLES
   docPdf.setPage(1);
+  for(const z of ZONES){
+    const info = zonePageMap[z.id];
+    if(info && info.pageTarget > 0){
+      docPdf.setTextColor(43, 110, 104);
+      docPdf.setFontSize(9);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.textWithLink('Voir ->', 165, info.ySommaire + 8.5, { pageNumber: info.pageTarget });
+    }
+  }
+
   docPdf.setFillColor(...(totalNok === 0 ? C_TEAL : C_RED));
   docPdf.roundedRect(14, 140, 182, 14, 3, 3, 'F');
   docPdf.setTextColor(255, 255, 255);
@@ -2334,7 +2441,7 @@ async function renderHistory(){
           const translatedLabel = await translateDynamicText(p.label, userLang);
 
           htmlContent += `
-            <div style="border:1px solid ${isFinalOk ? '#2B6E68' : '#B23A34'};background:${isFinalOk ? '#DCEEEC' : '#FEF2F2'};padding:12px;border-radius:8px;margin-bottom:10px;">
+            <div class="history-task-item" style="border:1px solid ${isFinalOk ? '#2B6E68' : '#B23A34'};background:${isFinalOk ? '#DCEEEC' : '#FEF2F2'};padding:12px;border-radius:8px;margin-bottom:10px;">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
                 <div style="font-weight:600;font-size:13.5px;color:#211E1A;flex:1;">${translatedLabel}</div>
                 ${enableEq && isRealEcart ? `<span style="background:#B23A34;color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;white-space:nowrap;">ÉCART / NOK</span>` : ''}
@@ -2365,14 +2472,14 @@ async function renderHistory(){
                 <div style="display:flex;gap:8px;margin-top:10px;overflow-x:auto;padding-bottom:4px;">
                   ${enableEq ? eqPhotos.map(pSrc => `
                     <div style="position:relative;flex-shrink:0;">
-                      <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo Équipe (${eqAgent} ${eqTime}) - ${translatedLabel}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
+                      <img class="photo-thumb click-zoom" src="${pSrc}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${translatedLabel.replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
                       <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${eqAgent} (${eqTime})</span>
                     </div>
                   `).join('') : ''}
 
                   ${cvPhotos.map(pSrc => `
                     <div style="position:relative;flex-shrink:0;">
-                      <img class="photo-thumb click-zoom" src="${pSrc}" data-title="Photo ${enableEq?'Contrôleur':'Constat'} (${cvCtrl} ${cvTime}) - ${translatedLabel}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
+                      <img class="photo-thumb click-zoom" src="${pSrc}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${translatedLabel.replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
                       <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${enableEq?'CTRL':'CONST'}: ${cvCtrl} (${cvTime})</span>
                     </div>
                   `).join('')}
@@ -2390,9 +2497,10 @@ async function renderHistory(){
         if ((zsEq && (zsEq.commentaire || (zsEq.photos && zsEq.photos.length > 0))) || 
             (zsCv && (zsCv.commentaire || (zsCv.photos && zsCv.photos.length > 0)))) {
             
+            const zsTitle = t('Bilan de la zone');
             htmlContent += `
-              <div style="border:2px solid #C7791B;background:#FAF8F3;padding:12px;border-radius:8px;margin-bottom:10px;margin-top:20px;">
-                <div style="font-weight:800;font-size:13.5px;color:#C7791B;margin-bottom:8px;text-transform:uppercase;">📝 ${t('Bilan de la zone')}</div>
+              <div class="history-task-item" style="border:2px solid #C7791B;background:#FAF8F3;padding:12px;border-radius:8px;margin-bottom:10px;margin-top:20px;">
+                <div style="font-weight:800;font-size:13.5px;color:#C7791B;margin-bottom:8px;text-transform:uppercase;">📝 ${zsTitle}</div>
                 ${zsEq && zsEq.commentaire ? `<div style="font-size:11px;color:#2B6E68;margin-bottom:4px;font-style:italic;">💬 Obs. Équipe : "${zsEq.commentaire}"</div>` : ''}
                 ${zsCv && zsCv.commentaire ? `<div style="font-size:11px;color:#C7791B;margin-bottom:4px;font-style:italic;">💬 Obs. ${enableEq?'Contrôleur':'Constat'} : "${zsCv.commentaire}"</div>` : ''}
             `;
@@ -2406,7 +2514,7 @@ async function renderHistory(){
                         hasPhotos = true;
                         photosHtml += `
                           <div style="position:relative;flex-shrink:0;">
-                            <img class="photo-thumb click-zoom" src="${b64}" data-title="Bilan Zone - Équipe" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
+                            <img class="photo-thumb click-zoom" src="${b64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${zsTitle.replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
                             <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">ÉQUIPE</span>
                           </div>
                         `;
@@ -2420,7 +2528,7 @@ async function renderHistory(){
                         hasPhotos = true;
                         photosHtml += `
                           <div style="position:relative;flex-shrink:0;">
-                            <img class="photo-thumb click-zoom" src="${b64}" data-title="Bilan Zone - Contrôleur" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
+                            <img class="photo-thumb click-zoom" src="${b64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${zsTitle.replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
                             <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${enableEq?'CTRL':'CONST'}</span>
                           </div>
                         `;
@@ -2455,10 +2563,12 @@ async function renderHistory(){
         if ((gZsEq && (gZsEq.commentaire || (gZsEq.photos && gZsEq.photos.length > 0))) || 
             (gZsCv && (gZsCv.commentaire || (gZsCv.photos && gZsCv.photos.length > 0)))) {
             
+            const gTitle = t('BILAN GÉNÉRAL DU JOUR');
+
             htmlContent += `
-              <div style="border:1px solid #E7E1D6;border-radius:12px;margin-bottom:20px;background:#fff;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+              <div class="history-task-item" style="border:1px solid #E7E1D6;border-radius:12px;margin-bottom:20px;background:#fff;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
                 <div style="background:#211E1A;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
-                  <div style="font-weight:700;font-size:14px;color:#F3E2C6;">📝 ${t('BILAN GÉNÉRAL DU JOUR')}</div>
+                  <div style="font-weight:700;font-size:14px;color:#F3E2C6;">📝 ${gTitle}</div>
                   <a href="#histSummary" style="color:#C7791B;font-size:11px;text-decoration:none;">↑ ${t('Sommaire')}</a>
                 </div>
                 <div style="padding:12px;">
@@ -2476,7 +2586,7 @@ async function renderHistory(){
                         hasPhotos = true;
                         photosHtml += `
                           <div style="position:relative;flex-shrink:0;">
-                            <img class="photo-thumb click-zoom" src="${b64}" data-title="Bilan Général - Équipe" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
+                            <img class="photo-thumb click-zoom" src="${b64}" data-zone="${t('Bilan Général').replace(/"/g, '&quot;')}" data-label="${gTitle.replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
                             <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">ÉQUIPE</span>
                           </div>
                         `;
@@ -2490,7 +2600,7 @@ async function renderHistory(){
                         hasPhotos = true;
                         photosHtml += `
                           <div style="position:relative;flex-shrink:0;">
-                            <img class="photo-thumb click-zoom" src="${b64}" data-title="Bilan Général - Contrôleur" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
+                            <img class="photo-thumb click-zoom" src="${b64}" data-zone="${t('Bilan Général').replace(/"/g, '&quot;')}" data-label="${gTitle.replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
                             <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${enableEq?'CTRL':'CONST'}</span>
                           </div>
                         `;
@@ -2514,9 +2624,7 @@ async function renderHistory(){
       content.innerHTML = '<div class="section-note" style="text-align:center;padding:20px;">Aucun rapport enregistré pour cette date.</div>';
     }
 
-    content.querySelectorAll('.click-zoom').forEach(img => {
-      img.onclick = () => openPhotoViewer(img.src, img.dataset.title);
-    });
+    attachSliderListeners(content);
   };
 
   dateInput.onchange = (e) => loadHistoryDate(e.target.value);
@@ -2563,8 +2671,14 @@ async function renderStats(){
 
   if(navigator.onLine){
     try {
-      const snap = await db.collection('controles').get();
-      allControles = snap.docs.map(d=>d.data());
+      // Protection anti-blocage réseau (timeout) pour éviter l'écran blanc infini
+      const snap = await Promise.race([
+         db.collection('controles').get(),
+         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+      ]);
+      if(snap && snap.docs) {
+          allControles = snap.docs.map(d=>d.data());
+      }
     } catch(e){}
   }
 
@@ -2572,8 +2686,6 @@ async function renderStats(){
     let totalChecked = 0, nokCount = 0, ecartsCount = 0;
     let zoneBreakdown = {};
     let itemStatsMap = {};
-
-    ZONES.forEach(z => { zoneBreakdown[z.id] = { total:0, nok:0, nom:z.nom }; });
 
     (allControles || []).filter(c => c && c.date >= startDateIso && c.date <= endDateIso).forEach(c => {
       const eq = (c.passageEquipe && c.passageEquipe.reponses) || {};
@@ -2592,12 +2704,19 @@ async function renderStats(){
 
         if(eqAnswered || cvAnswered){
           totalChecked++;
-          if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].total++;
+          
+          if(!zoneBreakdown[c.zoneId]) {
+              const zObj = ZONES.find(z => z.id === c.zoneId);
+              zoneBreakdown[c.zoneId] = { total: 0, nok: 0, nom: zObj ? zObj.nom : (c.zoneId === 'global' ? 'Bilan Général' : c.zoneId) };
+          }
+          zoneBreakdown[c.zoneId].total++;
+          
           if(!itemStatsMap[pId]) itemStatsMap[pId] = { checked: 0, nok: 0 };
           itemStatsMap[pId].checked++;
 
-          const eqOk = (eqAnswered && rEq.conforme !== false && (!config.reqPhotoEq || (rEq.photos && rEq.photos.length > 0)));
-          const cvOk = (cvAnswered ? rCv.conforme !== false : true);
+          const eqOkRaw = eqAnswered && (rEq.conforme === true || String(rEq.conforme) === 'true');
+          const eqOk = eqOkRaw && (!config.reqPhotoEq || (rEq.photos && rEq.photos.length > 0));
+          const cvOk = cvAnswered ? (rCv.conforme === true || String(rCv.conforme) === 'true') : true;
 
           let isNok = false;
           let isEcart = false;
@@ -2605,14 +2724,13 @@ async function renderStats(){
           if (enableEq) {
               if (cvAnswered) {
                   isNok = !cvOk;
-                  if (eqAnswered && eqOk && !cvOk) {
-                      isEcart = true; // Le contrôleur contredit l'équipe
+                  if (eqAnswered && eqOkRaw && !cvOk) {
+                      isEcart = true;
                   }
               } else if (eqAnswered) {
-                  isNok = !eqOk; // Si le contrôleur n'a pas répondu, la note de l'équipe fait foi
+                  isNok = !eqOk; 
               }
           } else {
-              // Mode "Constat" simple
               if (cvAnswered) {
                   isNok = !cvOk;
               }
@@ -2620,7 +2738,7 @@ async function renderStats(){
 
           if(isNok){
             nokCount++;
-            if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].nok++;
+            zoneBreakdown[c.zoneId].nok++;
             itemStatsMap[pId].nok++;
           }
 
@@ -2720,10 +2838,16 @@ async function renderStats(){
           <div style="font-weight:700;font-size:13px;color:#211E1A;margin-bottom:10px;">${t('Répartition des NOK par Zone (7 derniers jours)')}</div>
       `;
 
-      for(const z of ZONES){
-        const zb = currentStats.zoneBreakdown[z.id];
+      for(const zId of Object.keys(currentStats.zoneBreakdown)){
+        const zb = currentStats.zoneBreakdown[zId];
         const zNokRate = zb.total ? Math.round((zb.nok / zb.total) * 100) : 0;
-        const translatedZoneName = await translateDynamicText(z.nom, userLang);
+        
+        let translatedZoneName = zb.nom;
+        if(zId !== 'global') {
+            translatedZoneName = await translateDynamicText(zb.nom, userLang);
+        } else {
+            translatedZoneName = t('Bilan Général du Jour');
+        }
 
         html += `
           <div style="margin-bottom:10px;">
@@ -2759,8 +2883,7 @@ async function renderStats(){
 
       document.getElementById('statsDashboard').innerHTML = html;
     } catch (err) {
-      console.error("Dashboard error:", err);
-      document.getElementById('statsDashboard').innerHTML = `<div style="color:#B23A34; text-align:center; padding:20px;">Impossible de charger les statistiques. Données anciennes ou corrompues.</div>`;
+      document.getElementById('statsDashboard').innerHTML = `<div style="color:#B23A34; text-align:center; padding:20px;">Erreur lors du calcul des statistiques.</div>`;
     }
   };
 
