@@ -17,7 +17,7 @@ styleFix.innerHTML = `
     padding-bottom: 90px !important;
     background-color: #FAF8F3 !important;
   }
-  button, .pin-key, .role-btn, .back-link {
+  button, .pin-key, .role-btn, .zone-card, .back-link {
     touch-action: manipulation !important;
     -webkit-tap-highlight-color: transparent !important;
   }
@@ -25,17 +25,6 @@ styleFix.innerHTML = `
     color: #211E1A !important;
     text-decoration: none !important;
   }
-  /* Clic infaillible sur les zones */
-  .zone-card {
-    touch-action: manipulation !important;
-    -webkit-tap-highlight-color: transparent !important;
-    cursor: pointer;
-    position: relative;
-  }
-  .zone-card * {
-    pointer-events: none; /* Le doigt tape toujours la carte globale, jamais un sous-élément */
-  }
-  
   .point-photo-row {
     padding: 6px 8px !important;
     overflow-y: visible !important;
@@ -263,6 +252,15 @@ const DEFAULT_POINTS = {
     { id:'cmp_24', label:'Nettoyage des murs', freq:'M' },
     { id:'cmp_25', label:'Nettoyage des grilles d’aérations', freq:'M' }
   ]
+};
+
+const LEGACY_TASKS_MAP = {
+  'cui_sol': 'Nettoyage des sols cuisine',
+  'cui_plans': 'Nettoyage des plans de travail',
+  'cui_poub': 'Vidage & nettoyage des poubelles cuisine',
+  'cui_hottes': 'Nettoyage des hottes et filtres',
+  'sal_vitres': 'Nettoyage des surfaces vitrées',
+  'sal_sol': 'Nettoyage et mopage des sols lobby'
 };
 
 /* =========================================================================
@@ -913,7 +911,7 @@ async function renderZones(){
       ${topbarHtml(roleLabel, fmtDate(date), config.appName)}
       <div class="section">
         <div class="section-title">${t('Zones de Prestation')}</div>
-        <button class="btn block" id="globalReportBtn" style="margin-bottom:12px; border-color:#211E1A; background:#211E1A; color:#fff; font-size:14px; padding:10px;">📝 ${t('Bilan / Infos (Général)')}</button>
+        <button class="btn block" id="globalReportBtn" style="margin-bottom:12px; border-color:#211E1A; background:#211E1A; color:#fff; font-size:14px; padding:10px;">📝 ${t('Bilan Général du Jour')}</button>
         <div class="zone-grid" id="zoneGrid">
           <div style="text-align:center;padding:30px;"><div class="loading-spinner"></div></div>
         </div>
@@ -1471,6 +1469,16 @@ async function renderControle(){
         uiElement.style.opacity = '0.7';
     }
 
+    // On force la capture de tous les commentaires ouverts avant la sauvegarde !
+    document.querySelectorAll('.point-comment').forEach(ta => {
+        if(ta && !ta.disabled) {
+            const pId = ta.dataset.pid;
+            if(pId && currentBranch.reponses[pId]) {
+                currentBranch.reponses[pId].commentaire = ta.value;
+            }
+        }
+    });
+
     const currentTime = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
     currentBranch.heure = currentTime;
     if(isContreVisite) currentBranch.controleurNom = session.nom;
@@ -1562,7 +1570,9 @@ async function renderControle(){
           const cvR = (c.contreVisite && c.contreVisite.reponses && c.contreVisite.reponses[p.id]) || {};
           const isAlreadyControlled = cvR.conforme !== undefined && cvR.conforme !== null;
 
-          if (!isContreVisite && isAlreadyControlled) continue; 
+          if (!isContreVisite && isAlreadyControlled) {
+              continue;
+          }
 
           if(!r || r.conforme === null || r.conforme === undefined){
             missingTasks++;
@@ -1703,7 +1713,7 @@ async function renderControle(){
                 ` : ''}
               </div>
               
-              <textarea class="point-comment" placeholder="${!enableEq ? t('Remarques (optionnel)') : (isContreVisite ? t('Remarques Contrôleur (optionnel)') : t('Remarques Équipe (optionnel)'))}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6; box-sizing:border-box;" ${isLockedByControl ? 'disabled' : ''}>${r.commentaire||''}</textarea>
+              <textarea class="point-comment" data-pid="${p.id}" placeholder="${!enableEq ? t('Remarques (optionnel)') : (isContreVisite ? t('Remarques Contrôleur (optionnel)') : t('Remarques Équipe (optionnel)'))}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6; box-sizing:border-box;" ${isLockedByControl ? 'disabled' : ''}>${r.commentaire||''}</textarea>
             </div>
           `;
         }
@@ -1758,7 +1768,7 @@ async function renderControle(){
 
         <div class="point-photo-row" id="photos_${zsId}" style="display:flex;align-items:center;overflow-x:auto;margin-top:8px;">
           <div class="my-photos-container" style="display:inline-flex;align-items:center;">
-            ${zsMyPhotosData.map((pSrc, idx) => renderSinglePhotoHtml(pSrc.base64, zsId, idx, zsIsLockedByControl, translatedZoneName, zsTitle, pSrc.author, pSrc.time)).join('')}
+            ${zsMyPhotosData.map((pData, idx) => renderSinglePhotoHtml(pData.base64, zsId, idx, zsIsLockedByControl, translatedZoneName, zsTitle, pData.author, pData.time)).join('')}
           </div>
           ${!zsIsLockedByControl ? `
             <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
@@ -1768,7 +1778,7 @@ async function renderControle(){
           ` : ''}
         </div>
         
-        <textarea class="point-comment" placeholder="${isGlobal ? t('Saisissez le bilan général ici (optionnel)...') : t('Remarques (optionnel)')}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6; box-sizing:border-box; min-height:60px;" ${zsIsLockedByControl ? 'disabled' : ''}>${zsR.commentaire||''}</textarea>
+        <textarea class="point-comment" data-pid="${zsId}" placeholder="${isGlobal ? t('Saisissez le bilan général ici (optionnel)...') : t('Remarques (optionnel)')}" style="width:100%;margin-top:8px;padding:6px;border-radius:6px;border:1px solid #E7E1D6; box-sizing:border-box; min-height:60px;" ${zsIsLockedByControl ? 'disabled' : ''}>${zsR.commentaire||''}</textarea>
       </div>
     `;
 
@@ -1869,7 +1879,6 @@ async function renderControle(){
              btn.style.borderColor = '#B23A34';
           }
           
-          // Sauvegarde locale instantanée, pas de blocage UI pour un clic normal
           triggerAutoSaveBackground();
         };
       });
@@ -1916,7 +1925,6 @@ async function renderControle(){
                 attachDelButtons();
               }
 
-              // DEBLOCAGE INSTANTANÉ DE L'INTERFACE NOK/OK
               item.querySelectorAll('.toggle-btn').forEach(b => {
                 b.dataset.locked = 'false';
                 b.style.opacity = '1';
@@ -1933,15 +1941,27 @@ async function renderControle(){
           };
       }
 
-      item.querySelector('.point-comment').oninput = (e)=>{
-        r.commentaire = e.target.value;
-        updateItemMeta(r);
-        isInteracting = true;
-        clearTimeout(item.__commentTimer);
-        item.__commentTimer = setTimeout(()=>{
-          triggerAutoSaveBackground();
-        }, 800);
-      };
+      // CORRECTION CRITIQUE DU COMMENTAIRE
+      const textarea = item.querySelector('.point-comment');
+      if (textarea) {
+          textarea.oninput = (e)=>{
+            r.commentaire = e.target.value;
+            updateItemMeta(r);
+            isInteracting = true;
+            clearTimeout(interactionTimer);
+            interactionTimer = setTimeout(() => { isInteracting = false; }, 4000);
+            
+            clearTimeout(item.__commentTimer);
+            item.__commentTimer = setTimeout(()=>{
+              triggerAutoSaveBackground();
+            }, 1200);
+          };
+          textarea.onchange = (e)=>{
+            r.commentaire = e.target.value;
+            updateItemMeta(r);
+            triggerAutoSaveBackground();
+          };
+      }
     });
   };
 
@@ -1958,7 +1978,10 @@ async function renderControle(){
         currentBranch = isContreVisite ? c.contreVisite : c.passageEquipe;
         equipeReponses = c.passageEquipe.reponses;
 
-        if(document.getElementById('pointsList') && !isInteracting && !isPhotoUploading) {
+        // VÉRIFICATION STRICTE : JAMAIS DE RAFRAÎCHISSEMENT SI UN CHAMP TEXTE EST SÉLECTIONNÉ
+        const isTyping = document.activeElement && document.activeElement.tagName === 'TEXTAREA';
+
+        if(document.getElementById('pointsList') && !isInteracting && !isPhotoUploading && !isTyping) {
             refreshPointsListUI();
         }
       }
@@ -2652,7 +2675,7 @@ async function renderHistory(){
                   ${cvPhotos.map(pData => `
                     <div style="position:relative;flex-shrink:0;">
                       <img class="photo-thumb click-zoom" src="${pData.base64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${translatedLabel.replace(/"/g, '&quot;')}" data-author="${(pData.author||'').replace(/"/g, '&quot;')}" data-time="${(pData.time||'').replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
-                      <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${pData.author}</span>
+                      <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${enableEq?'CTRL':'CONST'}: ${pData.author}</span>
                     </div>
                   `).join('')}
                 </div>
@@ -2867,8 +2890,6 @@ async function renderStats(){
     let zoneBreakdown = {};
     let itemStatsMap = {};
 
-    ZONES.forEach(z => { zoneBreakdown[z.id] = { total:0, nok:0, nom:z.nom }; });
-
     (allControles || []).filter(c => c && c.date >= startDateIso && c.date <= endDateIso).forEach(c => {
       const eq = (c.passageEquipe && c.passageEquipe.reponses) || {};
       const cv = (c.contreVisite && c.contreVisite.reponses) || {};
@@ -2886,7 +2907,13 @@ async function renderStats(){
 
         if(eqAnswered || cvAnswered){
           totalChecked++;
-          if(zoneBreakdown[c.zoneId]) zoneBreakdown[c.zoneId].total++;
+          
+          if(!zoneBreakdown[c.zoneId]) {
+              const zObj = ZONES.find(z => z.id === c.zoneId);
+              zoneBreakdown[c.zoneId] = { total: 0, nok: 0, nom: zObj ? zObj.nom : (c.zoneId === 'global' ? 'Bilan Général' : c.zoneId) };
+          }
+          zoneBreakdown[c.zoneId].total++;
+          
           if(!itemStatsMap[pId]) itemStatsMap[pId] = { checked: 0, nok: 0 };
           itemStatsMap[pId].checked++;
 
@@ -3466,7 +3493,7 @@ if('serviceWorker' in navigator){
 
 (function init(){
   try {
-    autoCleanCache();
+    autoCleanCache(); // Nettoyage de printemps (15j max) au lancement
     renderLogin();
   } catch(e) {
     document.getElementById('app-root').innerHTML = '<div style="padding:20px;text-align:center;">Démarrage... Veuillez patienter.</div>';
