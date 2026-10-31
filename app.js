@@ -17,7 +17,7 @@ styleFix.innerHTML = `
     padding-bottom: 90px !important;
     background-color: #FAF8F3 !important;
   }
-  button, .pin-key, .role-btn, .zone-card, .back-link {
+  button, .pin-key, .role-btn, .back-link {
     touch-action: manipulation !important;
     -webkit-tap-highlight-color: transparent !important;
   }
@@ -25,6 +25,17 @@ styleFix.innerHTML = `
     color: #211E1A !important;
     text-decoration: none !important;
   }
+  /* Clic infaillible sur les zones */
+  .zone-card {
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: transparent !important;
+    cursor: pointer;
+    position: relative;
+  }
+  .zone-card * {
+    pointer-events: none; /* Le doigt tape toujours la carte globale, jamais un sous-élément */
+  }
+  
   .point-photo-row {
     padding: 6px 8px !important;
     overflow-y: visible !important;
@@ -252,15 +263,6 @@ const DEFAULT_POINTS = {
     { id:'cmp_24', label:'Nettoyage des murs', freq:'M' },
     { id:'cmp_25', label:'Nettoyage des grilles d’aérations', freq:'M' }
   ]
-};
-
-const LEGACY_TASKS_MAP = {
-  'cui_sol': 'Nettoyage des sols cuisine',
-  'cui_plans': 'Nettoyage des plans de travail',
-  'cui_poub': 'Vidage & nettoyage des poubelles cuisine',
-  'cui_hottes': 'Nettoyage des hottes et filtres',
-  'sal_vitres': 'Nettoyage des surfaces vitrées',
-  'sal_sol': 'Nettoyage et mopage des sols lobby'
 };
 
 /* =========================================================================
@@ -911,7 +913,7 @@ async function renderZones(){
       ${topbarHtml(roleLabel, fmtDate(date), config.appName)}
       <div class="section">
         <div class="section-title">${t('Zones de Prestation')}</div>
-        <button class="btn block" id="globalReportBtn" style="margin-bottom:12px; border-color:#211E1A; background:#211E1A; color:#fff; font-size:14px; padding:10px;">📝 ${t('Bilan Général du Jour')}</button>
+        <button class="btn block" id="globalReportBtn" style="margin-bottom:12px; border-color:#211E1A; background:#211E1A; color:#fff; font-size:14px; padding:10px;">📝 ${t('Bilan / Infos (Général)')}</button>
         <div class="zone-grid" id="zoneGrid">
           <div style="text-align:center;padding:30px;"><div class="loading-spinner"></div></div>
         </div>
@@ -971,7 +973,7 @@ async function renderZones(){
       const translatedZoneName = await translateDynamicText(z.nom, userLang);
 
       html += `
-        <div class="zone-card" data-zone="${z.id}" style="cursor:pointer;">
+        <div class="zone-card" data-zone="${z.id}">
           <div>
             <div class="zone-name">${translatedZoneName}</div>
             <div class="zone-meta">${nbTasks} ${taskLabelPlural} ${t('au planning')}</div>
@@ -1452,58 +1454,72 @@ async function renderControle(){
     </div>
   `;
 
-  const triggerAutoSave = async (immediate = false, uiElement = null) => {
+  // LA SAUVEGARDE TOTALEMENT BLINDÉE ET VISUELLE
+  const triggerBlockingSave = async (uiElement, successText, callback) => {
     isInteracting = true;
     clearTimeout(interactionTimer);
-    interactionTimer = setTimeout(() => { isInteracting = false; }, 3000);
+    interactionTimer = setTimeout(() => { isInteracting = false; }, 4000);
+
+    let originalText = '';
+    let originalW = '';
+    if (uiElement) {
+        originalText = uiElement.innerHTML;
+        originalW = uiElement.style.width;
+        uiElement.style.width = uiElement.offsetWidth + 'px'; 
+        uiElement.innerHTML = '<div class="loading-spinner" style="width:14px;height:14px;border-width:2px;border-top-color:#C7791B;margin-right:6px;vertical-align:middle;"></div> Patience...';
+        uiElement.style.pointerEvents = 'none';
+        uiElement.style.opacity = '0.7';
+    }
 
     const currentTime = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
     currentBranch.heure = currentTime;
     if(isContreVisite) currentBranch.controleurNom = session.nom;
     else currentBranch.agentNom = session.nom;
 
+    // 1. Sauvegarde locale INFAILLIBLE
     await idbPut('controles', c); 
 
-    clearTimeout(autoSaveTimer);
-    if (immediate) {
-        let originalText = '';
-        let originalW = '';
-        if (uiElement) {
-            originalText = uiElement.innerHTML;
-            originalW = uiElement.style.width;
-            uiElement.style.width = uiElement.offsetWidth + 'px'; 
-            uiElement.innerHTML = '⏳...';
-            uiElement.style.opacity = '0.6';
-            uiElement.style.pointerEvents = 'none';
-        }
-        
-        if(navigator.onLine) {
-            try {
-                await db.collection('controles').doc(c.id).set(c, {merge: true});
-                await idbDelete('sync_queue', `controles_${c.id}`);
-            } catch(e) {
-                await idbPut('sync_queue', { id: `controles_${c.id}`, collection: 'controles', docId: c.id, data: c });
-            }
-        } else {
+    // 2. Sauvegarde Cloud avec Timeout (pour éviter le freeze si réseau lent)
+    if(navigator.onLine) {
+        try {
+            await Promise.race([
+               db.collection('controles').doc(c.id).set(c, {merge: true}),
+               new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+            ]);
+            await idbDelete('sync_queue', `controles_${c.id}`);
+        } catch(e) {
             await idbPut('sync_queue', { id: `controles_${c.id}`, collection: 'controles', docId: c.id, data: c });
         }
-        
-        if (uiElement) {
-            uiElement.innerHTML = '✅ OK';
-            await new Promise(r => setTimeout(r, 600));
-            uiElement.innerHTML = originalText;
-            uiElement.style.width = originalW;
-            uiElement.style.opacity = '1';
-            uiElement.style.pointerEvents = 'auto';
-        }
     } else {
-        autoSaveTimer = setTimeout(() => {
-            if(navigator.onLine) pushToCloud('controles', c.id, c);
-        }, 1500);
+        await idbPut('sync_queue', { id: `controles_${c.id}`, collection: 'controles', docId: c.id, data: c });
     }
+    
+    // 3. Restauration de l'UI
+    if (uiElement) {
+        uiElement.innerHTML = successText || '✅ OK';
+        await new Promise(r => setTimeout(r, 600));
+        uiElement.innerHTML = originalText;
+        uiElement.style.width = originalW;
+        uiElement.style.opacity = '1';
+        uiElement.style.pointerEvents = 'auto';
+    }
+
+    if (callback) callback();
   };
 
-  // Met à jour la personne exacte qui fait l'action sur une tâche précise
+  // Sauvegarde discrète en arrière-plan sans bloquer l'UI
+  const triggerAutoSaveBackground = () => {
+    const currentTime = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+    currentBranch.heure = currentTime;
+    if(isContreVisite) currentBranch.controleurNom = session.nom;
+    else currentBranch.agentNom = session.nom;
+    idbPut('controles', c);
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => {
+        if(navigator.onLine) pushToCloud('controles', c.id, c);
+    }, 1500);
+  };
+
   const updateItemMeta = (r) => {
     const tNow = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
     if(isContreVisite) {
@@ -1521,8 +1537,7 @@ async function renderControle(){
       return;
     }
     const btn = document.getElementById('backBtn');
-    await triggerAutoSave(true, btn);
-    goToZones();
+    await triggerBlockingSave(btn, '✅ OK', goToZones);
   };
 
   document.getElementById('forceSaveBtn').onclick = async () => {
@@ -1531,7 +1546,7 @@ async function renderControle(){
       return;
     }
     const btn = document.getElementById('forceSaveBtn');
-    await triggerAutoSave(true, btn);
+    await triggerBlockingSave(btn, '✅ Enregistré', null);
   };
 
   document.getElementById('saveBtn').onclick = async ()=>{
@@ -1561,8 +1576,7 @@ async function renderControle(){
     }
 
     const btn = document.getElementById('saveBtn');
-    await triggerAutoSave(true, btn);
-    goToZones();
+    await triggerBlockingSave(btn, '✅ Parfait !', goToZones);
   };
 
   const renderSinglePhotoHtml = (src, pId, idx, locked, zoneName, itemLabel, author, time) => {
@@ -1645,8 +1659,8 @@ async function renderControle(){
                 </div>
                 
                 <div class="point-toggle" style="display:flex; gap:6px; flex-shrink:0;">
-                  <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" data-locked="${disableOk || isLockedByControl ? 'true' : 'false'}" data-locked-by-control="${isLockedByControl ? 'true' : 'false'}" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===true?'#2B6E68':'#E7E1D6'}; background:${r.conforme===true?'#2B6E68':'#fff'}; color:${r.conforme===true?'#fff':'#6B655C'}; ${disableOk || isLockedByControl ? 'opacity:0.4; cursor:not-allowed;' : ''}">✓ OK</button>
-                  <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" data-locked="${disableNok || isLockedByControl ? 'true' : 'false'}" data-locked-by-control="${isLockedByControl ? 'true' : 'false'}" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===false?'#B23A34':'#E7E1D6'}; background:${r.conforme===false?'#B23A34':'#fff'}; color:${r.conforme===false?'#fff':'#6B655C'}; ${disableNok || isLockedByControl ? 'opacity:0.4; cursor:not-allowed;' : ''}">✕ NOK</button>
+                  <button class="toggle-btn conforme ${r.conforme===true?'active':''}" data-val="true" data-locked="${disableOk || isLockedByControl ? 'true' : 'false'}" data-locked-by-control="${isLockedByControl ? 'true' : 'false'}" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===true?'#2B6E68':'#E7E1D6'}; background:${r.conforme===true?'#2B6E68':'#fff'}; color:${r.conforme===true?'#fff':'#6B655C'}; ${disableOk || isLockedByControl ? 'opacity:0.4; cursor:not-allowed;' : 'cursor:pointer;'}">✓ OK</button>
+                  <button class="toggle-btn non-conforme ${r.conforme===false?'active':''}" data-val="false" data-locked="${disableNok || isLockedByControl ? 'true' : 'false'}" data-locked-by-control="${isLockedByControl ? 'true' : 'false'}" style="padding:4px 12px; font-size:12px; font-weight:600; border-radius:20px; min-width:60px; height:32px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border:1px solid ${r.conforme===false?'#B23A34':'#E7E1D6'}; background:${r.conforme===false?'#B23A34':'#fff'}; color:${r.conforme===false?'#fff':'#6B655C'}; ${disableNok || isLockedByControl ? 'opacity:0.4; cursor:not-allowed;' : 'cursor:pointer;'}">✕ NOK</button>
                 </div>
               </div>
 
@@ -1744,7 +1758,7 @@ async function renderControle(){
 
         <div class="point-photo-row" id="photos_${zsId}" style="display:flex;align-items:center;overflow-x:auto;margin-top:8px;">
           <div class="my-photos-container" style="display:inline-flex;align-items:center;">
-            ${zsMyPhotosData.map((pData, idx) => renderSinglePhotoHtml(pData.base64, zsId, idx, zsIsLockedByControl, translatedZoneName, zsTitle, pData.author, pData.time)).join('')}
+            ${zsMyPhotosData.map((pSrc, idx) => renderSinglePhotoHtml(pSrc.base64, zsId, idx, zsIsLockedByControl, translatedZoneName, zsTitle, pSrc.author, pSrc.time)).join('')}
           </div>
           ${!zsIsLockedByControl ? `
             <label class="photo-btn" style="border:1px dashed #C7791B;padding:8px 12px;border-radius:6px;font-size:12px;color:#C7791B;cursor:pointer;white-space:nowrap;margin-top:4px;">
@@ -1798,11 +1812,13 @@ async function renderControle(){
 
                   if(lock){
                     b.dataset.locked = 'true';
+                    b.style.opacity = '0.4';
+                    b.style.cursor = 'not-allowed';
                   }
                 });
               }
             }
-            triggerAutoSave();
+            triggerAutoSaveBackground();
           }
         };
       });
@@ -1853,7 +1869,8 @@ async function renderControle(){
              btn.style.borderColor = '#B23A34';
           }
           
-          triggerAutoSave();
+          // Sauvegarde locale instantanée, pas de blocage UI pour un clic normal
+          triggerAutoSaveBackground();
         };
       });
 
@@ -1899,11 +1916,14 @@ async function renderControle(){
                 attachDelButtons();
               }
 
+              // DEBLOCAGE INSTANTANÉ DE L'INTERFACE NOK/OK
               item.querySelectorAll('.toggle-btn').forEach(b => {
                 b.dataset.locked = 'false';
+                b.style.opacity = '1';
+                b.style.cursor = 'pointer';
               });
 
-              triggerAutoSave();
+              triggerAutoSaveBackground();
             } catch (err) {
               console.error("Erreur capture photo :", err);
               toast("Erreur d'enregistrement photo");
@@ -1919,7 +1939,7 @@ async function renderControle(){
         isInteracting = true;
         clearTimeout(item.__commentTimer);
         item.__commentTimer = setTimeout(()=>{
-          triggerAutoSave();
+          triggerAutoSaveBackground();
         }, 800);
       };
     });
@@ -2625,14 +2645,14 @@ async function renderHistory(){
                   ${enableEq ? eqPhotos.map(pData => `
                     <div style="position:relative;flex-shrink:0;">
                       <img class="photo-thumb click-zoom" src="${pData.base64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${translatedLabel.replace(/"/g, '&quot;')}" data-author="${(pData.author||'').replace(/"/g, '&quot;')}" data-time="${(pData.time||'').replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #2B6E68;cursor:pointer;">
-                      <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${pData.author} (${pData.time})</span>
+                      <span style="position:absolute;bottom:0;left:0;right:0;background:#2B6E68;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${pData.author}</span>
                     </div>
                   `).join('') : ''}
 
                   ${cvPhotos.map(pData => `
                     <div style="position:relative;flex-shrink:0;">
                       <img class="photo-thumb click-zoom" src="${pData.base64}" data-zone="${translatedZoneName.replace(/"/g, '&quot;')}" data-label="${translatedLabel.replace(/"/g, '&quot;')}" data-author="${(pData.author||'').replace(/"/g, '&quot;')}" data-time="${(pData.time||'').replace(/"/g, '&quot;')}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:2px solid #C7791B;cursor:pointer;">
-                      <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${enableEq?'CTRL':'CONST'}: ${pData.author} (${pData.time})</span>
+                      <span style="position:absolute;bottom:0;left:0;right:0;background:#C7791B;color:#fff;font-size:6.5px;padding:1px 2px;text-align:center;font-weight:bold;white-space:nowrap;overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;">${pData.author}</span>
                     </div>
                   `).join('')}
                 </div>
@@ -2832,7 +2852,6 @@ async function renderStats(){
 
   if(navigator.onLine){
     try {
-      // Protection anti-blocage réseau (timeout) pour éviter l'écran blanc infini
       const snap = await Promise.race([
          db.collection('controles').get(),
          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
@@ -2848,6 +2867,8 @@ async function renderStats(){
     let zoneBreakdown = {};
     let itemStatsMap = {};
 
+    ZONES.forEach(z => { zoneBreakdown[z.id] = { total:0, nok:0, nom:z.nom }; });
+
     (allControles || []).filter(c => c && c.date >= startDateIso && c.date <= endDateIso).forEach(c => {
       const eq = (c.passageEquipe && c.passageEquipe.reponses) || {};
       const cv = (c.contreVisite && c.contreVisite.reponses) || {};
@@ -2860,9 +2881,8 @@ async function renderStats(){
         const rEq = eq[pId];
         const rCv = cv[pId];
 
-        // Vérification robuste des anciennes données (où conforme pouvait être juste un string)
-        const eqAnswered = rEq && rEq.conforme !== undefined && rEq.conforme !== null;
-        const cvAnswered = rCv && rCv.conforme !== undefined && rCv.conforme !== null;
+        const eqAnswered = rEq && typeof rEq === 'object' && rEq.conforme !== undefined && rEq.conforme !== null;
+        const cvAnswered = rCv && typeof rCv === 'object' && rCv.conforme !== undefined && rCv.conforme !== null;
 
         if(eqAnswered || cvAnswered){
           totalChecked++;
@@ -2999,9 +3019,9 @@ async function renderStats(){
         const zNokRate = zb.total ? Math.round((zb.nok / zb.total) * 100) : 0;
         
         let translatedZoneName = zb.nom;
-        if(zId !== 'global') {
-            translatedZoneName = await translateDynamicText(zb.nom, userLang);
-        } else {
+        if(zId !== 'global' && zb.nom) {
+            try { translatedZoneName = await translateDynamicText(zb.nom, userLang) || zb.nom; } catch(e){}
+        } else if (zId === 'global') {
             translatedZoneName = t('Bilan Général du Jour');
         }
 
@@ -3039,7 +3059,7 @@ async function renderStats(){
 
       document.getElementById('statsDashboard').innerHTML = html;
     } catch (err) {
-      document.getElementById('statsDashboard').innerHTML = `<div style="color:#B23A34; text-align:center; padding:20px;">Erreur lors du calcul des statistiques.</div>`;
+      document.getElementById('statsDashboard').innerHTML = `<div style="color:#B23A34; text-align:center; padding:20px;">Erreur lors du calcul des statistiques. Données incompatibles.</div>`;
     }
   };
 
